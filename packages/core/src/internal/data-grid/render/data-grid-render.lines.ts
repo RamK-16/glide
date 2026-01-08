@@ -7,7 +7,7 @@ import { getStickyWidth, type MappedGridColumn, getFreezeTrailingHeight } from "
 import { mergeAndRealizeTheme, type FullTheme } from "../../../common/styles.js";
 import { blendCache } from "../color-parser.js";
 import { intersectRect } from "../../../common/math.js";
-import { getSkipPoint, walkColumns, walkRowsInCol } from "./data-grid-render.walk.js";
+import { getSkipPoint, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type GetRowThemeCallback } from "./data-grid-render.cells.js";
 
 export function drawBlanks(
@@ -286,7 +286,7 @@ export function drawGridLines(
     height: number,
     drawRegions: Rectangle[] | undefined,
     spans: Rectangle[] | undefined,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     totalHeaderHeight: number,
     getRowHeight: (row: number) => number,
     getRowThemeOverride: GetRowThemeCallback | undefined,
@@ -324,7 +324,7 @@ export function drawGridLines(
         if (tx >= minX && tx <= maxX && verticalBorder(index + 1)) {
             toDraw.push({
                 x1: tx,
-                y1: Math.max(groupHeaderHeight, minY),
+                y1: Math.max(getTotalGroupHeaderHeight(groupHeaderHeight), minY),
                 x2: tx,
                 y2: Math.min(height, maxY),
                 color: vColor,

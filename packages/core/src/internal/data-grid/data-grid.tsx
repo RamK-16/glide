@@ -103,7 +103,7 @@ export interface DataGridProps {
     readonly rows: number;
 
     readonly headerHeight: number;
-    readonly groupHeaderHeight: number;
+    readonly groupHeaderHeight: number | number[];
     readonly enableGroups: boolean;
     readonly rowHeight: number | ((index: number) => number);
 
@@ -431,7 +431,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             }),
         [headerIcons]
     );
-    const totalHeaderHeight = enableGroups ? groupHeaderHeight + headerHeight : headerHeight;
+    const groupHeights = enableGroups 
+        ? (Array.isArray(groupHeaderHeight) 
+            ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+            : groupHeaderHeight)
+        : 0;
+    const totalHeaderHeight = headerHeight + groupHeights;
 
     const scrollingStopRef = React.useRef(-1);
     const enableFirefoxRescaling = (experimental?.enableFirefoxRescaling ?? false) && browserIsFirefox.value;
@@ -455,7 +460,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         [mappedColumns, dragAndDropState, fixedShadowX]
     );
 
-    // row: -1 === columnHeader, -2 === groupHeader
+    // row: -1 === columnHeader, -2, -3, -4... === groupHeader levels (from top to bottom)
     const getBoundsForItem = React.useCallback(
         (canvas: HTMLCanvasElement, col: number, row: number): Rectangle | undefined => {
             const rect = canvas.getBoundingClientRect();
@@ -621,10 +626,14 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     bounds = getBoundsForItem(canvas, previousCol, row);
                     assert(bounds !== undefined);
                     result = {
-                        kind: enableGroups && row === -2 ? groupHeaderKind : headerKind,
+                        kind: enableGroups && row <= -2 ? groupHeaderKind : headerKind,
                         location: [previousCol, row] as any,
                         bounds: bounds,
-                        group: mappedColumns[previousCol].group ?? "",
+                        group: row <= -2 
+                            ? (Array.isArray(mappedColumns[previousCol].group) 
+                                ? mappedColumns[previousCol].group[-2 - row] ?? ""
+                                : (row === -2 ? mappedColumns[previousCol].group ?? "" : ""))
+                            : "",
                         isEdge,
                         shiftKey,
                         ctrlKey,
@@ -638,8 +647,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     };
                 } else {
                     result = {
-                        kind: enableGroups && row === -2 ? groupHeaderKind : headerKind,
-                        group: mappedColumns[col].group ?? "",
+                        kind: enableGroups && row <= -2 ? groupHeaderKind : headerKind,
+                        group: row <= -2 
+                            ? (Array.isArray(mappedColumns[col].group) 
+                                ? mappedColumns[col].group[-2 - row] ?? ""
+                                : (row === -2 ? mappedColumns[col].group ?? "" : ""))
+                            : "",
                         location: [col, row] as any,
                         bounds: bounds,
                         isEdge,

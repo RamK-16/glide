@@ -92,16 +92,57 @@ export type WalkGroupsCallback = (
     x: number,
     y: number,
     width: number,
-    height: number
+    height: number,
+    level: number
 ) => void;
+
+export function getGroupLevels(effectiveCols: readonly MappedGridColumn[]): number {
+    let maxLevels = 0;
+    for (const col of effectiveCols) {
+        if (col.group !== undefined) {
+            const levels = Array.isArray(col.group) ? col.group.length : 1;
+            maxLevels = Math.max(maxLevels, levels);
+        }
+    }
+    return maxLevels;
+}
+
+export function getTotalGroupHeaderHeight(
+    groupHeaderHeight: number | number[],
+    effectiveCols?: readonly MappedGridColumn[]
+): number {
+    if (Array.isArray(groupHeaderHeight)) {
+        if (groupHeaderHeight.length === 0) return 0;
+        return groupHeaderHeight.reduce((sum, h) => sum + h, 0);
+    }
+    if (effectiveCols !== undefined) {
+        const levels = getGroupLevels(effectiveCols);
+        if (levels === 0) return 0;
+        return groupHeaderHeight * levels;
+    }
+    return groupHeaderHeight;
+}
+
+export function getGroupAtLevel(group: string | string[] | undefined, level: number): string {
+    if (group === undefined) return "";
+    if (Array.isArray(group)) {
+        return group[level] ?? "";
+    }
+    return level === 0 ? group : "";
+}
 
 export function walkGroups(
     effectiveCols: readonly MappedGridColumn[],
     width: number,
     translateX: number,
-    groupHeaderHeight: number,
+    groupHeaderHeights: number | number[],
+    level: number,
     cb: WalkGroupsCallback
 ): void {
+    const groupHeaderHeight = Array.isArray(groupHeaderHeights)
+        ? groupHeaderHeights[level] ?? groupHeaderHeights[0] ?? 0
+        : groupHeaderHeights;
+
     let x = 0;
     let clipX = 0;
     for (let index = 0; index < effectiveCols.length; index++) {
@@ -114,7 +155,7 @@ export function walkGroups(
         }
         while (
             end < effectiveCols.length &&
-            isGroupEqual(effectiveCols[end].group, startCol.group) &&
+            isGroupEqual(effectiveCols[end].group, startCol.group, level) &&
             effectiveCols[end].sticky === effectiveCols[index].sticky
         ) {
             const endCol = effectiveCols[end];
@@ -130,13 +171,15 @@ export function walkGroups(
         const localX = x + t;
         const delta = startCol.sticky ? 0 : Math.max(0, clipX - localX);
         const w = Math.min(boxWidth - delta, width - (localX + delta));
+        const groupName = getGroupAtLevel(startCol.group, level);
         cb(
             [startCol.sourceIndex, effectiveCols[end - 1].sourceIndex],
-            startCol.group ?? "",
+            groupName,
             localX + delta,
             0,
             w,
-            groupHeaderHeight
+            groupHeaderHeight,
+            level
         );
 
         x += boxWidth;

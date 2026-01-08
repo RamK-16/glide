@@ -4,7 +4,7 @@ import { getDataEditorTheme, type Theme } from "../common/styles.js";
 interface DataEditorDimensions {
     rowHeight: number | ((n: number) => number);
     headerHeight: number;
-    groupHeaderHeight: number;
+    groupHeaderHeight: number | number[];
     theme: Partial<Theme> | undefined;
     overscrollX: number | undefined;
     overscrollY: number | undefined;
@@ -13,7 +13,7 @@ interface DataEditorDimensions {
 interface DataEditorProps {
     rowHeight: number | ((n: number) => number);
     headerHeight: number;
-    groupHeaderHeight: number;
+    groupHeaderHeight: number | number[];
     theme?: Partial<Theme>;
     overscrollX?: number;
     overscrollY?: number;
@@ -37,10 +37,13 @@ export function useRemAdjuster({
         const scaler = remSize / 16;
         const rh = rowHeightIn;
         const bt = getDataEditorTheme();
+        const scaledGroupHeaderHeight = Array.isArray(groupHeaderHeightIn)
+            ? groupHeaderHeightIn.map(h => Math.ceil(h * scaler))
+            : Math.ceil(groupHeaderHeightIn * scaler);
         return [
             typeof rh === "number" ? rh * scaler : (n: number) => Math.ceil(rh(n) * scaler),
             Math.ceil(headerHeightIn * scaler),
-            Math.ceil(groupHeaderHeightIn * scaler),
+            scaledGroupHeaderHeight,
             {
                 ...themeIn,
                 headerIconSize: (themeIn?.headerIconSize ?? bt.headerIconSize) * scaler,

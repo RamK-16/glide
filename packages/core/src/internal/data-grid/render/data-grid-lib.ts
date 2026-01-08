@@ -68,8 +68,30 @@ export function gridSelectionHasItem(sel: GridSelection, item: Item): boolean {
     return false;
 }
 
-export function isGroupEqual(left: string | undefined, right: string | undefined): boolean {
-    return (left ?? "") === (right ?? "");
+export function isGroupEqual(
+    left: string | string[] | undefined,
+    right: string | string[] | undefined,
+    level?: number
+): boolean {
+    if (left === undefined && right === undefined) return true;
+    if (left === undefined || right === undefined) return false;
+
+    const leftArray = Array.isArray(left) ? left : [left];
+    const rightArray = Array.isArray(right) ? right : [right];
+
+    if (level !== undefined) {
+        // Compare at specific level
+        const leftVal = leftArray[level] ?? "";
+        const rightVal = rightArray[level] ?? "";
+        return leftVal === rightVal;
+    }
+
+    // Compare all levels
+    if (leftArray.length !== rightArray.length) return false;
+    for (let i = 0; i < leftArray.length; i++) {
+        if (leftArray[i] !== rightArray[i]) return false;
+    }
+    return true;
 }
 
 export function cellIsSelected(location: Item, cell: InnerGridCell, selection: GridSelection): boolean {
@@ -266,15 +288,18 @@ export function getRowIndexForY(
     height: number,
     hasGroups: boolean,
     headerHeight: number,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     rows: number,
     rowHeight: number | ((index: number) => number),
     cellYOffset: number,
     translateY: number,
     freezeTrailingRows: number
 ): number | undefined {
-    const totalHeaderHeight = headerHeight + groupHeaderHeight;
-    if (hasGroups && targetY <= groupHeaderHeight) return -2;
+    const groupHeights = Array.isArray(groupHeaderHeight) 
+        ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+        : groupHeaderHeight;
+    const totalHeaderHeight = headerHeight + groupHeights;
+    if (hasGroups && targetY <= groupHeights) return -2;
     if (targetY <= totalHeaderHeight) return -1;
 
     let y = height;
@@ -761,7 +786,7 @@ export function computeBounds(
     row: number,
     width: number,
     height: number,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     totalHeaderHeight: number,
     cellXOffset: number,
     cellYOffset: number,
@@ -784,7 +809,10 @@ export function computeBounds(
         return result;
     }
 
-    const headerHeight = totalHeaderHeight - groupHeaderHeight;
+    const groupHeights = Array.isArray(groupHeaderHeight) 
+        ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+        : groupHeaderHeight;
+    const headerHeight = totalHeaderHeight - groupHeights;
 
     if (col >= freezeColumns) {
         const dir = cellXOffset > col ? -1 : 1;
@@ -801,18 +829,26 @@ export function computeBounds(
     result.width = mappedColumns[col].width + 1;
 
     if (row === -1) {
-        result.y = groupHeaderHeight;
+        result.y = groupHeights;
         result.height = headerHeight;
-    } else if (row === -2) {
-        result.y = 0;
-        result.height = groupHeaderHeight;
+    } else if (row <= -2) {
+        // Multi-level group headers: -2 is top level, -3 is second level, etc.
+        const level = -2 - row;
+        const heights = Array.isArray(groupHeaderHeight) ? groupHeaderHeight : [groupHeaderHeight];
+        let yOffset = 0;
+        for (let i = 0; i < level && i < heights.length; i++) {
+            yOffset += heights[i] ?? heights[0] ?? 0;
+        }
+        const levelHeight = heights[level] ?? heights[0] ?? 0;
+        result.y = yOffset;
+        result.height = levelHeight;
 
         let start = col;
         const group = mappedColumns[col].group;
         const sticky = mappedColumns[col].sticky;
         while (
             start > 0 &&
-            isGroupEqual(mappedColumns[start - 1].group, group) &&
+            isGroupEqual(mappedColumns[start - 1].group, group, level) &&
             mappedColumns[start - 1].sticky === sticky
         ) {
             const c = mappedColumns[start - 1];
@@ -824,7 +860,7 @@ export function computeBounds(
         let end = col;
         while (
             end + 1 < mappedColumns.length &&
-            isGroupEqual(mappedColumns[end + 1].group, group) &&
+            isGroupEqual(mappedColumns[end + 1].group, group, level) &&
             mappedColumns[end + 1].sticky === sticky
         ) {
             const c = mappedColumns[end + 1];

@@ -2,6 +2,7 @@ import * as React from "react";
 import DataGridDnd, { type DataGridDndProps } from "../data-grid-dnd/data-grid-dnd.js";
 import type { Rectangle } from "../data-grid/data-grid-types.js";
 import { InfiniteScroller } from "./infinite-scroller.js";
+import { getTotalGroupHeaderHeight } from "../data-grid/render/data-grid-render.walk.js";
 
 type Props = Omit<DataGridDndProps, "width" | "height" | "eventTargetRef">;
 
@@ -104,7 +105,10 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
 
     const width = nonGrowWidth + Math.max(0, overscrollX ?? 0);
 
-    let height = enableGroups ? headerHeight + groupHeaderHeight : headerHeight;
+    const groupHeights = enableGroups 
+        ? getTotalGroupHeaderHeight(groupHeaderHeight, columns)
+        : 0;
+    let height = headerHeight + groupHeights;
     if (typeof rowHeight === "number") {
         height += rows * rowHeight;
     } else {

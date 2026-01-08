@@ -156,7 +156,8 @@ export function drawCells(
 
             const colSelected = selection.columns.hasIndex(c.sourceIndex);
 
-            const groupTheme = getGroupDetails(c.group ?? "").overrideTheme;
+            const groupName = Array.isArray(c.group) ? (c.group[0] ?? "") : (c.group ?? "");
+            const groupTheme = getGroupDetails(groupName).overrideTheme;
             const colTheme =
                 c.themeOverride === undefined && groupTheme === undefined
                     ? outerTheme

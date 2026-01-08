@@ -309,7 +309,7 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @defaultValue `headerHeight`
      * @group Style
      */
-    readonly groupHeaderHeight?: number;
+    readonly groupHeaderHeight?: number | number[];
 
     /**
      * The number of rows in the grid.
@@ -1132,7 +1132,12 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         return columns.some(c => c.group !== undefined);
     }, [columns]);
 
-    const totalHeaderHeight = enableGroups ? headerHeight + groupHeaderHeight : headerHeight;
+    const groupHeights = enableGroups
+        ? Array.isArray(groupHeaderHeight)
+            ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+            : groupHeaderHeight
+        : 0;
+    const totalHeaderHeight = headerHeight + groupHeights;
 
     const numSelectedRows = gridSelection.rows.length;
     const rowMarkerChecked =
@@ -1429,8 +1434,13 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         (val: Omit<NonNullable<typeof overlay>, "theme">) => {
             const [col, row] = val.cell;
             const column = mangledCols[col];
-            const groupTheme =
-                column?.group !== undefined ? mangledGetGroupDetails(column.group)?.overrideTheme : undefined;
+            const groupName =
+                column?.group !== undefined
+                    ? Array.isArray(column.group)
+                        ? (column.group[0] ?? "")
+                        : column.group
+                    : "";
+            const groupTheme = groupName !== "" ? mangledGetGroupDetails(groupName)?.overrideTheme : undefined;
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
@@ -2143,21 +2153,45 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 return;
             }
             const isMultiKey = browserIsOSX.value ? args.metaKey : args.ctrlKey;
-            const [col] = args.location;
+            const [col, row] = args.location;
             const selectedColumns = gridSelection.columns;
 
             if (col < rowMarkerOffset) return;
 
+            // Determine the level of the clicked group header
+            // row is -2 for level 0, -3 for level 1, etc.
+            const level = row <= -2 ? -2 - row : 0;
+
             const needle = mangledCols[col];
+
+            // Find all columns that belong to the same group at this level and all levels below
+            // We need to find columns that match at the clicked level AND all parent levels
             let start = col;
             let end = col;
+
+            // Find start: go backwards and check if groups match at all levels from 0 to the clicked level
             for (let i = col - 1; i >= rowMarkerOffset; i--) {
-                if (!isGroupEqual(needle.group, mangledCols[i].group)) break;
+                let matches = true;
+                for (let l = 0; l <= level; l++) {
+                    if (!isGroupEqual(needle.group, mangledCols[i].group, l)) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (!matches) break;
                 start--;
             }
 
+            // Find end: go forwards and check if groups match at all levels from 0 to the clicked level
             for (let i = col + 1; i < mangledCols.length; i++) {
-                if (!isGroupEqual(needle.group, mangledCols[i].group)) break;
+                let matches = true;
+                for (let l = 0; l <= level; l++) {
+                    if (!isGroupEqual(needle.group, mangledCols[i].group, l)) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (!matches) break;
                 end++;
             }
 

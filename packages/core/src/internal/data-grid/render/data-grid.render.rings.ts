@@ -7,6 +7,7 @@ import { blend, withAlpha } from "../color-parser.js";
 import { hugRectToTarget, intersectRect, rectContains, splitRectIntoRegions } from "../../../common/math.js";
 import { getSpanBounds, walkColumns, walkRowsInCol } from "./data-grid-render.walk.js";
 import { type Highlight } from "./data-grid-render.cells.js";
+import { getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 
 export function drawHighlightRings(
     ctx: CanvasRenderingContext2D,
@@ -19,7 +20,7 @@ export function drawHighlightRings(
     mappedColumns: readonly MappedGridColumn[],
     freezeColumns: number,
     headerHeight: number,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     rowHeight: number | ((index: number) => number),
     freezeTrailingRows: number,
     rows: number,
@@ -47,7 +48,7 @@ export function drawHighlightRings(
                 width,
                 height,
                 groupHeaderHeight,
-                headerHeight + groupHeaderHeight,
+                headerHeight + getTotalGroupHeaderHeight(groupHeaderHeight),
                 cellXOffset,
                 cellYOffset,
                 translateX,
@@ -67,7 +68,7 @@ export function drawHighlightRings(
                           width,
                           height,
                           groupHeaderHeight,
-                          headerHeight + groupHeaderHeight,
+                          headerHeight + getTotalGroupHeaderHeight(groupHeaderHeight),
                           cellXOffset,
                           cellYOffset,
                           translateX,

@@ -15,7 +15,7 @@ import {
     type MappedGridColumn,
 } from "./data-grid-lib.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
-import { walkColumns, walkGroups } from "./data-grid-render.walk.js";
+import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
 import type { DragAndDropState, HoverInfo } from "./draw-grid-arg.js";
 
@@ -27,7 +27,7 @@ export function drawGridHeaders(
     width: number,
     translateX: number,
     headerHeight: number,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     dragAndDropState: DragAndDropState | undefined,
     isResizing: boolean,
     selection: GridSelection,
@@ -40,7 +40,8 @@ export function drawGridHeaders(
     drawHeaderCallback: DrawHeaderCallback | undefined,
     touchMode: boolean
 ) {
-    const totalHeaderHeight = headerHeight + groupHeaderHeight;
+    const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
+    const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     if (totalHeaderHeight <= 0) return;
 
     ctx.fillStyle = outerTheme.bgHeader;
@@ -59,10 +60,11 @@ export function drawGridHeaders(
         const diff = Math.max(0, clipX - x);
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + diff, groupHeaderHeight, c.width - diff, headerHeight);
+        ctx.rect(x + diff, totalGroupHeaderHeight, c.width - diff, headerHeight);
         ctx.clip();
 
-        const groupTheme = getGroupDetails(c.group ?? "").overrideTheme;
+        const groupName = Array.isArray(c.group) ? (c.group[0] ?? "") : (c.group ?? "");
+        const groupTheme = getGroupDetails(groupName).overrideTheme;
         const theme =
             c.themeOverride === undefined && groupTheme === undefined
                 ? outerTheme
@@ -87,7 +89,7 @@ export function drawGridHeaders(
 
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
-        const y = enableGroups ? groupHeaderHeight : 0;
+        const y = enableGroups ? totalGroupHeaderHeight : 0;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
@@ -152,25 +154,87 @@ export function drawGroups(
     effectiveCols: readonly MappedGridColumn[],
     width: number,
     translateX: number,
-    groupHeaderHeight: number,
+    groupHeaderHeight: number | number[],
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
     _hoverValues: HoverValues,
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
-    damage: CellSet | undefined
+    damage: CellSet | undefined,
+    selection?: GridSelection
+) {
+    const levels = getGroupLevels(effectiveCols);
+    if (levels === 0) return;
+    
+    const heights = Array.isArray(groupHeaderHeight)
+        ? groupHeaderHeight
+        : Array(levels).fill(groupHeaderHeight);
+    
+    let currentY = 0;
+    const totalGroupHeight = heights.reduce((sum, h) => sum + h, 0);
+    
+    for (let level = 0; level < levels; level++) {
+        const levelHeight = heights[level] ?? heights[0] ?? 0;
+        if (levelHeight <= 0) continue;
+        drawGroupLevel(
+            ctx,
+            effectiveCols,
+            width,
+            translateX,
+            levelHeight,
+            currentY,
+            level,
+            hovered,
+            theme,
+            spriteManager,
+            _hoverValues,
+            verticalBorder,
+            getGroupDetails,
+            damage,
+            selection
+        );
+        currentY += levelHeight;
+        
+        // Draw horizontal border between levels
+        ctx.beginPath();
+        ctx.moveTo(0, currentY + 0.5);
+        ctx.lineTo(width, currentY + 0.5);
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
+
+function drawGroupLevel(
+    ctx: CanvasRenderingContext2D,
+    effectiveCols: readonly MappedGridColumn[],
+    width: number,
+    translateX: number,
+    groupHeaderHeight: number,
+    yOffset: number,
+    level: number,
+    hovered: HoverInfo | undefined,
+    theme: FullTheme,
+    spriteManager: SpriteManager,
+    _hoverValues: HoverValues,
+    verticalBorder: (col: number) => boolean,
+    getGroupDetails: GroupDetailsCallback,
+    damage: CellSet | undefined,
+    selection?: GridSelection
 ) {
     const xPad = 8;
     const [hCol, hRow] = hovered?.[0] ?? [];
+    // hRow: -2 is group header, we use -2 - level for multi-level
+    const targetRow = -2 - level;
 
     let finalX = 0;
-    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, (span, groupName, x, y, w, h) => {
+    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h) => {
         if (
             damage !== undefined &&
             !damage.hasItemInRectangle({
                 x: span[0],
-                y: -2,
+                y: targetRow,
                 width: span[1] - span[0] + 1,
                 height: 1,
             })
@@ -178,14 +242,23 @@ export function drawGroups(
             return;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x, y, w, h);
+        ctx.rect(x, y + yOffset, w, h);
         ctx.clip();
 
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
-        const isHovered = hRow === -2 && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
-        const fillColor = isHovered
+        const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
+        
+        // Check if all columns in this group span are selected
+        let isSelected = false;
+        if (selection !== undefined) {
+            isSelected = selection.columns.hasAll([span[0], span[1] + 1]);
+        }
+        
+        const fillColor = isSelected
+            ? (groupTheme.accentColor ?? theme.accentColor)
+            : isHovered
             ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
             : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
 
@@ -195,7 +268,7 @@ export function drawGroups(
         }
 
         ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
-        if (group !== undefined) {
+        if (group !== undefined && groupName !== "") {
             let drawX = x;
             if (group.icon !== undefined) {
                 spriteManager.drawSprite(
@@ -203,25 +276,27 @@ export function drawGroups(
                     "normal",
                     ctx,
                     drawX + xPad,
-                    (groupHeaderHeight - 20) / 2,
+                    yOffset + (groupHeaderHeight - 20) / 2,
                     20,
                     groupTheme
                 );
                 drawX += 26;
             }
-            ctx.fillText(
-                group.name,
-                drawX + xPad,
-                groupHeaderHeight / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
-            );
+            if (group.name !== "") {
+                ctx.fillText(
+                    group.name,
+                    drawX + xPad,
+                    yOffset + groupHeaderHeight / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+                );
+            }
 
             if (group.actions !== undefined && isHovered) {
-                const actionBoxes = getActionBoundsForGroup({ x, y, width: w, height: h }, group.actions);
+                const actionBoxes = getActionBoundsForGroup({ x, y: y + yOffset, width: w, height: h }, group.actions);
 
                 ctx.beginPath();
                 const fadeStartX = actionBoxes[0].x - 10;
                 const fadeWidth = x + w - fadeStartX;
-                ctx.rect(fadeStartX, 0, fadeWidth, groupHeaderHeight);
+                ctx.rect(fadeStartX, yOffset, fadeWidth, groupHeaderHeight);
                 const grad = ctx.createLinearGradient(fadeStartX, 0, fadeStartX + fadeWidth, 0);
                 const trans = withAlpha(fillColor, 0);
                 grad.addColorStop(0, trans);
@@ -238,7 +313,7 @@ export function drawGroups(
                 for (let i = 0; i < group.actions.length; i++) {
                     const action = group.actions[i];
                     const box = actionBoxes[i];
-                    const actionHovered = pointInRect(box, mouseX + x, mouseY);
+                    const actionHovered = pointInRect(box, mouseX + x, mouseY + yOffset);
                     if (actionHovered) {
                         ctx.globalAlpha = 1;
                     }
@@ -262,8 +337,8 @@ export function drawGroups(
 
         if (x !== 0 && verticalBorder(span[0])) {
             ctx.beginPath();
-            ctx.moveTo(x + 0.5, 0);
-            ctx.lineTo(x + 0.5, groupHeaderHeight);
+            ctx.moveTo(x + 0.5, yOffset);
+            ctx.lineTo(x + 0.5, yOffset + groupHeaderHeight);
             ctx.strokeStyle = theme.borderColor;
             ctx.lineWidth = 1;
             ctx.stroke();
@@ -275,14 +350,14 @@ export function drawGroups(
     });
 
     ctx.beginPath();
-    ctx.moveTo(finalX + 0.5, 0);
-    ctx.lineTo(finalX + 0.5, groupHeaderHeight);
-
-    ctx.moveTo(0, groupHeaderHeight + 0.5);
-    ctx.lineTo(width, groupHeaderHeight + 0.5);
+    ctx.moveTo(finalX + 0.5, yOffset);
+    ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
     ctx.strokeStyle = theme.borderColor;
     ctx.lineWidth = 1;
     ctx.stroke();
+    
+    // Horizontal border at the bottom of the last level (level 0 is the bottommost)
+    // This will be drawn in drawGroups function between levels
 }
 
 const menuButtonSize = 30;
