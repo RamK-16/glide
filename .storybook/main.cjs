@@ -10,9 +10,27 @@ module.exports = {
 
     async viteFinal(config) {
         const { mergeConfig } = await import("vite");
+        const { resolve } = require("path");
         const wyw = await import("@wyw-in-js/vite");
         return mergeConfig(config, {
             plugins: [wyw.default()],
+            resolve: {
+                alias: {
+                    "@glideapps/glide-data-grid": resolve(__dirname, "../packages/core/src/index.ts"),
+                },
+            },
+            optimizeDeps: {
+                include: ["@glideapps/glide-data-grid"],
+                exclude: ["@wyw-in-js/vite"],
+                esbuildOptions: {
+                    logOverride: { "this-is-undefined-in-esm": "silent" },
+                },
+            },
+            server: {
+                fs: {
+                    allow: [".."],
+                },
+            },
         });
     },
 

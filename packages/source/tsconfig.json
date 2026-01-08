@@ -1,6 +1,10 @@
 {
     "compilerOptions": {
-        "lib": ["dom", "ES6", "ES2017"]
+        "lib": ["dom", "ES6", "ES2017"],
+        "baseUrl": ".",
+        "paths": {
+            "@glideapps/glide-data-grid": ["../core/src/index.ts"]
+        }
     },
     "extends": "../../tsconfig.json",
     "include": ["./src/**/*.ts", "./src/**/*.tsx", "test/use-data-source.test.tsx", "test/use-column-sort.test.tsx"],
