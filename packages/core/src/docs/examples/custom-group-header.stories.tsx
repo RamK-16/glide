@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { DataEditorAll as DataEditor } from "../../data-editor-all.js";
 import {
     BeautifulWrapper,
@@ -235,7 +235,7 @@ export const MinimalGroupHeader: React.VFC = () => {
     );
 };
 
-export const StyledGroupHeaderByType: React.VFC = () => {
+export const UnstickyHeader: React.VFC = () => {
     const { cols, getCellContent } = useMockDataGenerator(20, true, true);
 
     // Create groups with different types
@@ -312,9 +312,44 @@ export const StyledGroupHeaderByType: React.VFC = () => {
 
         ctx.restore();
     }, []);
+    const dataEditorClassName = "data-editor-" + useId();
+    const dataEditorSelector = `.${dataEditorClassName}`;
+    const headerHeight = [32, 28, 40];
+    const headerHeightNum = headerHeight.reduce((acc, curr) => acc + curr, 0);
 
     return (
         <DataEditor
+            className={dataEditorClassName}
+            height={1000}
+            ref={() => {
+                /** пример реализации незакрепленного шапки */
+                const dataEditorElement = document.querySelector(dataEditorSelector) as HTMLElement | undefined;
+                if (!dataEditorElement) return;
+
+                const scroller = dataEditorElement?.children?.[0]?.children?.[0]?.children?.[1] as
+                    | HTMLElement
+                    | undefined;
+
+                if (!scroller) return;
+
+                const scrollCb = () => {
+                    const y = scroller.scrollTop;
+
+                    const tableFirstInner = dataEditorElement?.children[0] as HTMLElement | undefined;
+                    const canvasTableWrapper = dataEditorElement?.children[0].children[0].children[0] as
+                        | HTMLCanvasElement
+                        | undefined;
+
+                    if (!tableFirstInner || !canvasTableWrapper) return;
+                    const fixedY = y < headerHeightNum ? y : headerHeightNum;
+                    /** его высота удобна тем, что =100%; его высота влияет на высоту canvas элемента таблицы */
+                    tableFirstInner.style = `height: calc(100% + ${headerHeightNum}px`;
+                    canvasTableWrapper.style.transform = `translateY(-${fixedY}px)`;
+                };
+                scroller.addEventListener("scroll", scrollCb);
+
+                return () => scroller?.removeEventListener?.("scroll", scrollCb);
+            }}
             {...defaultProps}
             getCellContent={getCellContent}
             columns={styledCols}
@@ -323,9 +358,66 @@ export const StyledGroupHeaderByType: React.VFC = () => {
                 name: g,
                 icon: g === "" ? undefined : GridColumnIcon.HeaderCode,
             })}
-            groupHeaderHeight={[32, 28]}
+            headerHeight={headerHeight[headerHeight.length - 1]}
+            groupHeaderHeight={headerHeight.slice(0, -1)}
             drawGroupHeader={drawGroupHeader}
             rowMarkers="both"
         />
     );
 };
+
+// Версия с последовательным скроллом (чтобы первые строки не заезжали под шапку - на будущее, версия сырая)
+// () => {
+//     /** пример реализации незакрепленного шапки */
+//     const dataEditorElement = document.querySelector(dataEditorSelector) as HTMLElement | undefined;
+//     if (!dataEditorElement) return;
+
+//     const scroller = dataEditorElement?.children?.[0]?.children?.[0]?.children?.[1] as
+//         | HTMLElement
+//         | undefined;
+
+//     if (!scroller) return;
+
+//     let y = 0;
+//     let accumulatedScroll = 0;
+
+//     const tableFirstInner = dataEditorElement?.children[0] as HTMLElement | undefined;
+//     const canvasTableWrapper = dataEditorElement?.children[0].children[0].children[0] as
+//         | HTMLCanvasElement
+//         | undefined;
+
+//     const scrollCb = () => {
+//         y = scroller.scrollTop;
+
+//         if (!tableFirstInner || !canvasTableWrapper) return;
+//         const fixedY = y < headerHeightNum ? y : headerHeightNum;
+//         const accessedToScroll = accumulatedScroll > headerHeightNum;
+
+//         if (!accessedToScroll) {
+//             scroller.scrollTop = 0;
+//         }
+//     };
+//     scroller.addEventListener("scroll", scrollCb);
+
+//     const wheelCb = (e: WheelEvent) => {
+//         const d = 3;
+//         if (e.wheelDeltaY > 0) {
+//             accumulatedScroll = accumulatedScroll - d < 0 ? 0 : accumulatedScroll - d;
+//         } else {
+//             accumulatedScroll += d;
+//         }
+
+//         const fixedAccessedScroll =
+//             accumulatedScroll < headerHeightNum ? accumulatedScroll : headerHeightNum;
+//         /** его высота удобна тем, что =100%; его высота влияет на высоту canvas элемента таблицы */
+//         tableFirstInner.style = `height: calc(100% + ${headerHeightNum}px`;
+//         canvasTableWrapper.style.transform = `translateY(-${fixedAccessedScroll}px)`;
+//         console.log("WheelEvent", accumulatedScroll);
+//     };
+//     scroller.addEventListener("wheel", wheelCb);
+
+//     return () => {
+//         scroller?.removeEventListener?.("scroll", scrollCb);
+//         scroller?.removeEventListener?.("wheel", wheelCb);
+//     };
+// }
