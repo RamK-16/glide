@@ -3,6 +3,10 @@ on:
     push:
         branches: ["main"]
         paths: ["packages/core/**", "packages/cells/**", "packages/source/**"]
+permissions:
+    contents: read
+    pages: write
+    id-token: write
 jobs:
     build-and-deploy:
         runs-on: ubuntu-latest
@@ -20,6 +24,10 @@ jobs:
                   npm run build-storybook
             - name: "Add .nojekyll 📄"
               run: cd storybook-build && touch .nojekyll
+            - name: Configure Git
+              run: |
+                  git config --global user.name "github-actions[bot]"
+                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
             - name: Deploy 🚀
               uses: JamesIves/github-pages-deploy-action@v4.6.4
               with:
@@ -28,3 +36,4 @@ jobs:
                   FOLDER: storybook-build
                   CLEAN: true
                   TARGET_FOLDER: docs
+                  SINGLE_COMMIT: true
