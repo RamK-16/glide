@@ -12,6 +12,7 @@ import { standardBeforeEach } from "./test-utils.js";
 const basicProps: DataGridProps = {
     cellXOffset: 0,
     cellYOffset: 0,
+    drawGroupHeader: undefined,
     headerIcons: undefined,
     isDraggable: undefined,
     onCanvasBlur: () => undefined,

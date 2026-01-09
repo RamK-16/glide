@@ -176,7 +176,6 @@ export function drawGroups(
         : Array(levels).fill(groupHeaderHeight);
     
     let currentY = 0;
-    const totalGroupHeight = heights.reduce((sum, h) => sum + h, 0);
     
     for (let level = 0; level < levels; level++) {
         const levelHeight = heights[level] ?? heights[0] ?? 0;
@@ -218,7 +217,7 @@ function drawGroupHeaderInner(
     width: number,
     height: number,
     groupName: string,
-    level: number,
+    _level: number,
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,

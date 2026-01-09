@@ -238,7 +238,7 @@ export function prep(resetTimers: boolean = true) {
     return scroller;
 }
 
-export const Context: React.FC = p => {
+export const Context: React.FC<React.PropsWithChildren> = p => {
     return (
         <>
             {p.children}

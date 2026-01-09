@@ -13,7 +13,10 @@ import {
     AllCellRenderers,
     type InternalCellRenderer,
     type InnerGridCell,
+    type MarkerCell,
+    InnerGridCellKind,
 } from "../../index.js";
+import type { DrawArgs } from "../../cells/cell-types.js";
 
 export default {
     title: "Glide-Data-Grid/DataEditor Demos",
@@ -44,11 +47,13 @@ export const OverrideMarkerRenderer: React.VFC = () => {
             ...AllCellRenderers,
             {
                 ...markerCellRenderer,
-                draw: args => {
+                draw: (args, cell) => {
                     const { ctx, rect } = args;
                     ctx.fillStyle = "#ffe0e0";
                     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-                    markerCellRenderer.draw(args as any);
+                    if (cell.kind === InnerGridCellKind.Marker) {
+                        markerCellRenderer.draw(args as DrawArgs<MarkerCell>, cell as MarkerCell);
+                    }
                 },
             } as InternalCellRenderer<InnerGridCell>,
         ];

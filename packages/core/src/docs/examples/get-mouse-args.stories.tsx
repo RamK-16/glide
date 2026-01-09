@@ -27,7 +27,7 @@ export const GetMouseArgsForPosition: React.VFC = () => {
     const [info, setInfo] = React.useState<string>("Move the mouse over the grid");
 
     const onMouseMove = React.useCallback((ev: React.MouseEvent<HTMLDivElement>) => {
-        const args = ref.current?.getMouseArgsForPosition(ev.clientX, ev.clientY, ev);
+        const args = ref.current?.getMouseArgsForPosition(ev.clientX, ev.clientY, ev.nativeEvent);
         if (args === undefined) {
             setInfo("Outside grid");
         } else if (args.kind === "cell") {

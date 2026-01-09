@@ -82,7 +82,8 @@ function clipHeaderDamage(
             const finalX = drawX + diff + 1;
             const finalWidth = c.width - diff - 1;
             if (damage.has([c.sourceIndex, -1])) {
-                ctx.rect(finalX, groupHeaderHeight, finalWidth, totalHeaderHeight - groupHeaderHeight);
+                const groupHeight = Array.isArray(groupHeaderHeight) ? groupHeaderHeight.reduce((sum, h) => sum + h, 0) : groupHeaderHeight;
+                ctx.rect(finalX, groupHeight, finalWidth, totalHeaderHeight - groupHeight);
             }
         }
     );

@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useId } from "react";
 import { DataEditorAll as DataEditor } from "../../data-editor-all.js";
 import {
     BeautifulWrapper,
@@ -65,7 +65,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
         }
     });
 
-    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback((args, draw) => {
+    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, groupName, level, span, rect, theme, isSelected, isHovered } = args;
 
         // First draw default to get icons and actions, but we'll draw over the background
@@ -189,7 +189,7 @@ export const MinimalGroupHeader: React.VFC = () => {
         }
     });
 
-    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback((args, draw) => {
+    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, rect, theme, isSelected, isHovered } = args;
 
         // Call default drawing first
@@ -251,7 +251,7 @@ export const UnstickyHeader: React.VFC = () => {
         }
     });
 
-    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback((args, draw) => {
+    const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, groupName, level, rect, theme, isSelected, isHovered } = args;
 
         // Call default drawing first

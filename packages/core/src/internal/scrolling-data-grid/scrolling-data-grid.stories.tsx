@@ -90,6 +90,7 @@ export function Simplenotest() {
             cellXOffset={x}
             cellYOffset={y}
             drawHeader={undefined}
+            drawGroupHeader={undefined}
             experimental={undefined}
             headerIcons={undefined}
             isDraggable={undefined}
@@ -157,6 +158,7 @@ export function Simplenotest() {
             verticalBorder={() => true}
             smoothScrollX={true}
             smoothScrollY={true}
+            setScrollDir={() => undefined}
         />
     );
 }

@@ -46,7 +46,10 @@ function useCollapsableColumnGroups(cols: readonly GridColumn[]) {
     const onGroupHeaderClicked = React.useCallback(
         (colIndex: number, args: GroupHeaderClickedEventArgs) => {
             const group = cols[colIndex].group ?? "";
-            setCollapsed(cv => (cv.includes(group) ? cv.filter(g => g !== group) : [...cv, group]));
+            setCollapsed(cv => {
+                const groupStr = Array.isArray(group) ? group[0] ?? "" : group;
+                return (cv.includes(groupStr) ? cv.filter(g => g !== groupStr) : [...cv, groupStr]) as readonly string[];
+            });
             args.preventDefault();
         },
         [cols]
@@ -62,7 +65,8 @@ function useCollapsableColumnGroups(cols: readonly GridColumn[]) {
 
     const columns = React.useMemo(() => {
         return cols.map(c => {
-            if (!collapsed.includes(c.group ?? ""))
+            const groupStr = Array.isArray(c.group) ? c.group[0] ?? "" : (c.group ?? "");
+            if (!collapsed.includes(groupStr))
                 return {
                     ...c,
                     hasMenu: true,

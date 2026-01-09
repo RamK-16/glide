@@ -10,7 +10,6 @@ import {
     clearCell,
 } from "../../data-editor/stories/utils.js";
 import { GridCellKind, type FillHandleDirection } from "../../internal/data-grid/data-grid-types.js";
-import type { FillPatternEventArgs } from "../../index.js";
 import { SimpleThemeWrapper } from "../../stories/story-utils.js";
 
 export default {

@@ -502,7 +502,7 @@ export const MoreInfo = styled.p`
     }
 `;
 
-export const DocWrapper: React.FC = p => {
+export const DocWrapper: React.FC<React.PropsWithChildren> = p => {
     const { children } = p;
     return (
         <BeautifulStyle>

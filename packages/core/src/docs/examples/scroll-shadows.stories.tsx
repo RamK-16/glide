@@ -59,7 +59,7 @@ export const ScrollShadows: React.VFC = () => {
         []
     );
 
-    const getRowThemeOverride = React.useCallback(row => (row % 2 === 0 ? undefined : { bgCell: "#f5f5f6" }), []);
+    const getRowThemeOverride = React.useCallback((row: number) => (row % 2 === 0 ? undefined : { bgCell: "#f5f5f6" }), []);
 
     return (
         <DataEditor

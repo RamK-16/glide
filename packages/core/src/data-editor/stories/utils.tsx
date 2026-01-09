@@ -14,7 +14,6 @@ import {
 import { faker } from "@faker-js/faker";
 import { styled } from "@linaria/react";
 import isArray from "lodash/isArray.js";
-import { assertNever } from "../../common/support.js";
 import { browserIsFirefox } from "../../common/browser-detect.js";
 import { useResizeDetector } from "react-resize-detector";
 import type { DataEditorProps } from "../data-editor.js";

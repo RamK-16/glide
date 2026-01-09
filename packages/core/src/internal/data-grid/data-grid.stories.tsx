@@ -60,6 +60,7 @@ export function Simplenotest() {
             height={1000}
             cellXOffset={0}
             drawHeader={undefined}
+            drawGroupHeader={undefined}
             drawCell={undefined}
             experimental={undefined}
             onHeaderIndicatorClick={() => undefined}
@@ -148,6 +149,7 @@ export function SelectedCellnotest() {
             isFocused={true}
             resizeIndicator="full"
             drawHeader={undefined}
+            drawGroupHeader={undefined}
             drawCell={undefined}
             experimental={undefined}
             headerIcons={undefined}
@@ -243,6 +245,7 @@ export function SelectedRownotest() {
             resizeIndicator="full"
             resizeColumn={undefined}
             drawHeader={undefined}
+            drawGroupHeader={undefined}
             drawCell={undefined}
             experimental={undefined}
             headerIcons={undefined}
@@ -331,6 +334,7 @@ export const SelectedColumnnotest = () => {
             resizeIndicator="full"
             resizeColumn={undefined}
             drawHeader={undefined}
+            drawGroupHeader={undefined}
             experimental={undefined}
             headerIcons={undefined}
             isDraggable={undefined}
