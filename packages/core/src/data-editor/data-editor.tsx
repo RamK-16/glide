@@ -805,6 +805,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         onFinishedEditing,
         coercePasteValue,
         drawHeader: drawHeaderIn,
+        drawGroupHeader: drawGroupHeaderIn,
         drawCell: drawCellIn,
         editorBloom,
         onHeaderClicked,
@@ -4290,6 +4291,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     columns={mangledCols}
                     nonGrowWidth={nonGrowWidth}
                     drawHeader={drawHeader}
+                    drawGroupHeader={drawGroupHeaderIn}
                     onColumnProposeMove={onColumnProposeMoveImpl}
                     drawCell={drawCell}
                     disabledRows={disabledRows}

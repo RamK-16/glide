@@ -6,7 +6,13 @@ import { getEffectiveColumns, type MappedGridColumn, rectBottomRight } from "./d
 import { blend } from "../color-parser.js";
 import { assert } from "../../../common/support.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
-import { walkColumns, walkGroups, walkRowsInCol, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
+import {
+    walkColumns,
+    walkGroups,
+    walkRowsInCol,
+    getGroupLevels,
+    getTotalGroupHeaderHeight,
+} from "./data-grid-render.walk.js";
 import { drawCells } from "./data-grid-render.cells.js";
 import { drawGridHeaders } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
@@ -40,23 +46,28 @@ function clipHeaderDamage(
     ctx.beginPath();
 
     const levels = getGroupLevels(effectiveColumns);
-    const heights = Array.isArray(groupHeaderHeight)
-        ? groupHeaderHeight
-        : Array(levels).fill(groupHeaderHeight);
-    
+    const heights = Array.isArray(groupHeaderHeight) ? groupHeaderHeight : new Array(levels).fill(groupHeaderHeight);
+
     for (let level = 0; level < levels; level++) {
         const targetRow = -2 - level;
-        walkGroups(effectiveColumns, width, translateX, heights[level] ?? heights[0] ?? 0, level, (span, _group, x, y, w, h) => {
-            const hasItemInSpan = damage.hasItemInRectangle({
-                x: span[0],
-                y: targetRow,
-                width: span[1] - span[0] + 1,
-                height: 1,
-            });
-            if (hasItemInSpan) {
-                ctx.rect(x, y, w, h);
+        walkGroups(
+            effectiveColumns,
+            width,
+            translateX,
+            heights[level] ?? heights[0] ?? 0,
+            level,
+            (span, _group, x, y, w, h) => {
+                const hasItemInSpan = damage.hasItemInRectangle({
+                    x: span[0],
+                    y: targetRow,
+                    width: span[1] - span[0] + 1,
+                    height: 1,
+                });
+                if (hasItemInSpan) {
+                    ctx.rect(x, y, w, h);
+                }
             }
-        });
+        );
     }
 
     walkColumns(
@@ -152,6 +163,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         getRowThemeOverride,
         isFocused,
         drawHeaderCallback,
+        drawGroupHeaderCallback,
         prelightCells,
         drawCellCallback,
         highlightRegions,
@@ -296,6 +308,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             getGroupDetails,
             damage,
             drawHeaderCallback,
+            drawGroupHeaderCallback,
             touchMode
         );
 
@@ -452,7 +465,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             const selectionCurrent = selection.current;
 
             if (
-                (fillHandle !== false && fillHandle !== undefined) &&
+                fillHandle !== false &&
+                fillHandle !== undefined &&
                 drawFocus &&
                 selectionCurrent !== undefined &&
                 damage.has(rectBottomRight(selectionCurrent.range))

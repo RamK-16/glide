@@ -5,7 +5,7 @@ import type { HoverValues } from "../animation-manager.js";
 import type { CellSet } from "../cell-set.js";
 import { withAlpha } from "../color-parser.js";
 import type { SpriteManager, SpriteVariant } from "../data-grid-sprites.js";
-import { GridColumnMenuIcon, type DrawHeaderCallback, type GridSelection, type Rectangle } from "../data-grid-types.js";
+import { GridColumnMenuIcon, type DrawHeaderCallback, type DrawGroupHeaderCallback, type GridSelection, type Rectangle } from "../data-grid-types.js";
 import {
     drawMenuDots,
     getMeasuredTextCache,
@@ -38,6 +38,7 @@ export function drawGridHeaders(
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
     drawHeaderCallback: DrawHeaderCallback | undefined,
+    drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined,
     touchMode: boolean
 ) {
     const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
@@ -144,7 +145,9 @@ export function drawGridHeaders(
             hoverValues,
             verticalBorder,
             getGroupDetails,
-            damage
+            damage,
+            selection,
+            drawGroupHeaderCallback
         );
     }
 }
@@ -162,7 +165,8 @@ export function drawGroups(
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
-    selection?: GridSelection
+    selection?: GridSelection,
+    drawGroupHeaderCallback?: DrawGroupHeaderCallback
 ) {
     const levels = getGroupLevels(effectiveCols);
     if (levels === 0) return;
@@ -192,7 +196,8 @@ export function drawGroups(
             verticalBorder,
             getGroupDetails,
             damage,
-            selection
+            selection,
+            drawGroupHeaderCallback
         );
         currentY += levelHeight;
         
@@ -200,6 +205,114 @@ export function drawGroups(
         ctx.beginPath();
         ctx.moveTo(0, currentY + 0.5);
         ctx.lineTo(width, currentY + 0.5);
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
+
+function drawGroupHeaderInner(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    groupName: string,
+    level: number,
+    span: readonly [number, number],
+    isSelected: boolean,
+    isHovered: boolean,
+    theme: FullTheme,
+    groupTheme: FullTheme,
+    group: GroupDetails,
+    spriteManager: SpriteManager,
+    hovered: HoverInfo | undefined,
+    verticalBorder: (col: number) => boolean
+) {
+    const xPad = 8;
+    const fillColor = isSelected
+        ? (groupTheme.accentColor ?? theme.accentColor)
+        : isHovered
+        ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
+        : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
+
+    if (fillColor !== theme.bgHeader) {
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+    }
+
+    ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
+    if (groupName !== "") {
+        let drawX = x;
+        if (group?.icon !== undefined) {
+            spriteManager.drawSprite(
+                group.icon,
+                "normal",
+                ctx,
+                drawX + xPad,
+                y + (height - 20) / 2,
+                20,
+                groupTheme
+            );
+            drawX += 26;
+        }
+        if (group?.name !== undefined && group.name !== "") {
+            ctx.fillText(
+                group.name,
+                drawX + xPad,
+                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            );
+        }
+
+        if (group?.actions !== undefined && isHovered) {
+            const actionBoxes = getActionBoundsForGroup({ x, y, width, height }, group.actions);
+
+            ctx.beginPath();
+            const fadeStartX = actionBoxes[0].x - 10;
+            const fadeWidth = x + width - fadeStartX;
+            ctx.rect(fadeStartX, y, fadeWidth, height);
+            const grad = ctx.createLinearGradient(fadeStartX, 0, fadeStartX + fadeWidth, 0);
+            const trans = withAlpha(fillColor, 0);
+            grad.addColorStop(0, trans);
+            grad.addColorStop(10 / fadeWidth, fillColor);
+            grad.addColorStop(1, fillColor);
+            ctx.fillStyle = grad;
+
+            ctx.fill();
+
+            ctx.globalAlpha = 0.6;
+
+            // eslint-disable-next-line prefer-const
+            const [mouseX, mouseY] = hovered?.[1] ?? [-1, -1];
+            for (let i = 0; i < group.actions.length; i++) {
+                const action = group.actions[i];
+                const box = actionBoxes[i];
+                const actionHovered = pointInRect(box, mouseX + x, mouseY + y);
+                if (actionHovered) {
+                    ctx.globalAlpha = 1;
+                }
+                spriteManager.drawSprite(
+                    action.icon,
+                    "normal",
+                ctx,
+                    box.x + box.width / 2 - 10,
+                    box.y + box.height / 2 - 10,
+                    20,
+                    groupTheme
+                );
+                if (actionHovered) {
+                    ctx.globalAlpha = 0.6;
+                }
+            }
+
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    if (x !== 0 && verticalBorder(span[0])) {
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, y);
+        ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
         ctx.lineWidth = 1;
         ctx.stroke();
@@ -221,10 +334,12 @@ function drawGroupLevel(
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
-    selection?: GridSelection
+    selection?: GridSelection,
+    drawGroupHeaderCallback?: DrawGroupHeaderCallback
 ) {
-    const xPad = 8;
     const [hCol, hRow] = hovered?.[0] ?? [];
+    const hPosX = hovered?.[1]?.[0];
+    const hPosY = hovered?.[1]?.[1];
     // hRow: -2 is group header, we use -2 - level for multi-level
     const targetRow = -2 - level;
 
@@ -255,93 +370,61 @@ function drawGroupLevel(
         if (selection !== undefined) {
             isSelected = selection.columns.hasAll([span[0], span[1] + 1]);
         }
-        
-        const fillColor = isSelected
-            ? (groupTheme.accentColor ?? theme.accentColor)
-            : isHovered
-            ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
-            : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
 
-        if (fillColor !== theme.bgHeader) {
-            ctx.fillStyle = fillColor;
-            ctx.fill();
-        }
-
-        ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
-        if (group !== undefined && groupName !== "") {
-            let drawX = x;
-            if (group.icon !== undefined) {
-                spriteManager.drawSprite(
-                    group.icon,
-                    "normal",
+        if (drawGroupHeaderCallback !== undefined) {
+            drawGroupHeaderCallback(
+                {
                     ctx,
-                    drawX + xPad,
-                    yOffset + (groupHeaderHeight - 20) / 2,
-                    20,
-                    groupTheme
-                );
-                drawX += 26;
-            }
-            if (group.name !== "") {
-                ctx.fillText(
-                    group.name,
-                    drawX + xPad,
-                    yOffset + groupHeaderHeight / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
-                );
-            }
-
-            if (group.actions !== undefined && isHovered) {
-                const actionBoxes = getActionBoundsForGroup({ x, y: y + yOffset, width: w, height: h }, group.actions);
-
-                ctx.beginPath();
-                const fadeStartX = actionBoxes[0].x - 10;
-                const fadeWidth = x + w - fadeStartX;
-                ctx.rect(fadeStartX, yOffset, fadeWidth, groupHeaderHeight);
-                const grad = ctx.createLinearGradient(fadeStartX, 0, fadeStartX + fadeWidth, 0);
-                const trans = withAlpha(fillColor, 0);
-                grad.addColorStop(0, trans);
-                grad.addColorStop(10 / fadeWidth, fillColor);
-                grad.addColorStop(1, fillColor);
-                ctx.fillStyle = grad;
-
-                ctx.fill();
-
-                ctx.globalAlpha = 0.6;
-
-                // eslint-disable-next-line prefer-const
-                const [mouseX, mouseY] = hovered?.[1] ?? [-1, -1];
-                for (let i = 0; i < group.actions.length; i++) {
-                    const action = group.actions[i];
-                    const box = actionBoxes[i];
-                    const actionHovered = pointInRect(box, mouseX + x, mouseY + yOffset);
-                    if (actionHovered) {
-                        ctx.globalAlpha = 1;
-                    }
-                    spriteManager.drawSprite(
-                        action.icon,
-                        "normal",
+                    groupName,
+                    level,
+                    span,
+                    theme: groupTheme,
+                    rect: { x, y: y + yOffset, width: w, height: h },
+                    isSelected,
+                    isHovered,
+                    spriteManager,
+                    hoverX: isHovered ? hPosX : undefined,
+                    hoverY: isHovered ? hPosY : undefined,
+                },
+                () =>
+                    drawGroupHeaderInner(
                         ctx,
-                        box.x + box.width / 2 - 10,
-                        box.y + box.height / 2 - 10,
-                        20,
-                        groupTheme
-                    );
-                    if (actionHovered) {
-                        ctx.globalAlpha = 0.6;
-                    }
-                }
-
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        if (x !== 0 && verticalBorder(span[0])) {
-            ctx.beginPath();
-            ctx.moveTo(x + 0.5, yOffset);
-            ctx.lineTo(x + 0.5, yOffset + groupHeaderHeight);
-            ctx.strokeStyle = theme.borderColor;
-            ctx.lineWidth = 1;
-            ctx.stroke();
+                        x,
+                        y + yOffset,
+                        w,
+                        h,
+                        groupName,
+                        level,
+                        span,
+                        isSelected,
+                        isHovered,
+                        theme,
+                        groupTheme,
+                        group,
+                        spriteManager,
+                        hovered,
+                        verticalBorder
+                    )
+            );
+        } else {
+            drawGroupHeaderInner(
+                ctx,
+                x,
+                y + yOffset,
+                w,
+                h,
+                groupName,
+                level,
+                span,
+                isSelected,
+                isHovered,
+                theme,
+                groupTheme,
+                group,
+                spriteManager,
+                hovered,
+                verticalBorder
+            );
         }
 
         ctx.restore();

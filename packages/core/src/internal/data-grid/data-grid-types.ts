@@ -58,6 +58,24 @@ export type DrawHeaderCallback = (
 ) => void;
 
 /** @category Types */
+export type DrawGroupHeaderCallback = (
+    args: {
+        ctx: CanvasRenderingContext2D;
+        groupName: string;
+        level: number;
+        span: readonly [start: number, end: number];
+        theme: Theme;
+        rect: Rectangle;
+        isSelected: boolean;
+        isHovered: boolean;
+        spriteManager: SpriteManager;
+        hoverX: number | undefined;
+        hoverY: number | undefined;
+    },
+    drawContent: () => void
+) => void;
+
+/** @category Types */
 export type DrawCellCallback = (
     args: {
         ctx: CanvasRenderingContext2D;

@@ -18,6 +18,7 @@ import {
     CompactSelection,
     type Item,
     type DrawHeaderCallback,
+    type DrawGroupHeaderCallback,
     isReadWriteCell,
     isInnerOnlyCell,
     booleanCellIsEditable,
@@ -222,6 +223,18 @@ export interface DataGridProps {
      */
     readonly drawHeader: DrawHeaderCallback | undefined;
 
+    /**
+     * Overrides the rendering of a group header. The grid will call this for every group header it needs to render.
+     * Group header rendering is not as well optimized because they do not redraw as often, but very heavy drawing
+     * methods can negatively impact horizontal scrolling performance.
+     *
+     * It is possible to return `false` after rendering just a background and the regular foreground rendering
+     * will happen.
+     * @group Drawing
+     * @returns `false` if default group header rendering should still happen, `true` to cancel rendering.
+     */
+    readonly drawGroupHeader: DrawGroupHeaderCallback | undefined;
+
     readonly drawCell: DrawCellCallback | undefined;
 
     /**
@@ -390,6 +403,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         verticalBorder,
         drawCell: drawCellCallback,
         drawHeader: drawHeaderCallback,
+        drawGroupHeader: drawGroupHeaderCallback,
         onCellFocused,
         onDragOverCell,
         onDrop,
@@ -843,6 +857,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             getGroupDetails: getGroupDetails ?? (name => ({ name })),
             getRowThemeOverride,
             drawHeaderCallback,
+            drawGroupHeaderCallback,
             prelightCells,
             highlightRegions,
             imageLoader,
@@ -914,6 +929,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         getRowThemeOverride,
         drawCellCallback,
         drawHeaderCallback,
+        drawGroupHeaderCallback,
         prelightCells,
         highlightRegions,
         imageLoader,

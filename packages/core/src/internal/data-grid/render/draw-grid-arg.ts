@@ -11,6 +11,7 @@ import type {
     Item,
     InnerGridCell,
     DrawHeaderCallback,
+    DrawGroupHeaderCallback,
     CellList,
     DrawCellCallback,
     FillHandle,
@@ -63,6 +64,7 @@ export interface DrawGridArg {
     readonly getGroupDetails: GroupDetailsCallback;
     readonly getRowThemeOverride: GetRowThemeCallback | undefined;
     readonly drawHeaderCallback: DrawHeaderCallback | undefined;
+    readonly drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined;
     readonly drawCellCallback: DrawCellCallback | undefined;
     readonly prelightCells: CellList | undefined;
     readonly highlightRegions: readonly Highlight[] | undefined;
