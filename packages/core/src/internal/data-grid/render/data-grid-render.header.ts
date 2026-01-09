@@ -5,7 +5,13 @@ import type { HoverValues } from "../animation-manager.js";
 import type { CellSet } from "../cell-set.js";
 import { withAlpha } from "../color-parser.js";
 import type { SpriteManager, SpriteVariant } from "../data-grid-sprites.js";
-import { GridColumnMenuIcon, type DrawHeaderCallback, type DrawGroupHeaderCallback, type GridSelection, type Rectangle } from "../data-grid-types.js";
+import {
+    GridColumnMenuIcon,
+    type DrawHeaderCallback,
+    type DrawGroupHeaderCallback,
+    type GridSelection,
+    type Rectangle,
+} from "../data-grid-types.js";
 import {
     drawMenuDots,
     getMeasuredTextCache,
@@ -170,13 +176,13 @@ export function drawGroups(
 ) {
     const levels = getGroupLevels(effectiveCols);
     if (levels === 0) return;
-    
+
     const heights = Array.isArray(groupHeaderHeight)
         ? groupHeaderHeight
-        : Array(levels).fill(groupHeaderHeight);
-    
+        : Array.from({ length: levels }, () => groupHeaderHeight);
+
     let currentY = 0;
-    
+
     for (let level = 0; level < levels; level++) {
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
@@ -199,7 +205,7 @@ export function drawGroups(
             drawGroupHeaderCallback
         );
         currentY += levelHeight;
-        
+
         // Draw horizontal border between levels
         ctx.beginPath();
         ctx.moveTo(0, currentY + 0.5);
@@ -232,8 +238,8 @@ function drawGroupHeaderInner(
     const fillColor = isSelected
         ? (groupTheme.accentColor ?? theme.accentColor)
         : isHovered
-        ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
-        : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
+          ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
+          : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
 
     if (fillColor !== theme.bgHeader) {
         ctx.fillStyle = fillColor;
@@ -244,23 +250,11 @@ function drawGroupHeaderInner(
     if (groupName !== "") {
         let drawX = x;
         if (group?.icon !== undefined) {
-            spriteManager.drawSprite(
-                group.icon,
-                "normal",
-                ctx,
-                drawX + xPad,
-                y + (height - 20) / 2,
-                20,
-                groupTheme
-            );
+            spriteManager.drawSprite(group.icon, "normal", ctx, drawX + xPad, y + (height - 20) / 2, 20, groupTheme);
             drawX += 26;
         }
         if (group?.name !== undefined && group.name !== "") {
-            ctx.fillText(
-                group.name,
-                drawX + xPad,
-                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
-            );
+            ctx.fillText(group.name, drawX + xPad, y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull));
         }
 
         if (group?.actions !== undefined && isHovered) {
@@ -293,7 +287,7 @@ function drawGroupHeaderInner(
                 spriteManager.drawSprite(
                     action.icon,
                     "normal",
-                ctx,
+                    ctx,
                     box.x + box.width / 2 - 10,
                     box.y + box.height / 2 - 10,
                     20,
@@ -363,7 +357,7 @@ function drawGroupLevel(
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
         const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
-        
+
         // Check if all columns in this group span are selected
         let isSelected = false;
         if (selection !== undefined) {
@@ -437,7 +431,7 @@ function drawGroupLevel(
     ctx.strokeStyle = theme.borderColor;
     ctx.lineWidth = 1;
     ctx.stroke();
-    
+
     // Horizontal border at the bottom of the last level (level 0 is the bottommost)
     // This will be drawn in drawGroups function between levels
 }

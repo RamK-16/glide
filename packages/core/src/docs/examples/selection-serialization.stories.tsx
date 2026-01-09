@@ -1,11 +1,6 @@
 import React from "react";
 import { DataEditorAll as DataEditor } from "../../data-editor-all.js";
-import {
-    BeautifulWrapper,
-    Description,
-    PropName,
-    useMockDataGenerator,
-} from "../../data-editor/stories/utils.js";
+import { BeautifulWrapper, Description, PropName, useMockDataGenerator } from "../../data-editor/stories/utils.js";
 import type { GridSelection, CompactSelectionRanges } from "../../internal/data-grid/data-grid-types.js";
 import { CompactSelection } from "../../internal/data-grid/data-grid-types.js";
 import { SimpleThemeWrapper } from "../../stories/story-utils.js";
@@ -38,6 +33,7 @@ export const SelectionSerialization: React.VFC = () => {
                 };
             }
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error("Failed to restore selection", error);
         }
         return {
@@ -66,8 +62,15 @@ export const SelectionSerialization: React.VFC = () => {
 
     const createExampleSelection = () => {
         setSelection({
-            columns: CompactSelection.create([[2, 5], [8, 10]]),
-            rows: CompactSelection.create([[1, 4], [10, 15], [20, 23]]),
+            columns: CompactSelection.create([
+                [2, 5],
+                [8, 10],
+            ]),
+            rows: CompactSelection.create([
+                [1, 4],
+                [10, 15],
+                [20, 23],
+            ]),
             current: {
                 cell: [3, 5],
                 range: { x: 3, y: 5, width: 1, height: 1 },
@@ -82,8 +85,8 @@ export const SelectionSerialization: React.VFC = () => {
             description={
                 <Description>
                     This example demonstrates how to serialize and persist grid selections using the new{" "}
-                    <PropName>CompactSelection.create()</PropName> and <PropName>.items</PropName> APIs. 
-                    The selection is automatically saved to localStorage and restored when the page refreshes.
+                    <PropName>CompactSelection.create()</PropName> and <PropName>.items</PropName> APIs. The selection
+                    is automatically saved to localStorage and restored when the page refreshes.
                     <br />
                     <br />
                     <button onClick={createExampleSelection} style={{ marginRight: 8 }}>
@@ -94,7 +97,8 @@ export const SelectionSerialization: React.VFC = () => {
                     <br />
                     <strong>Current selection:</strong> {selection.rows.length} rows, {selection.columns.length} columns
                     <br />
-                    <strong>Persisted data:</strong> <code>{JSON.stringify({ columns: selection.columns.items, rows: selection.rows.items })}</code>
+                    <strong>Persisted data:</strong>{" "}
+                    <code>{JSON.stringify({ columns: selection.columns.items, rows: selection.rows.items })}</code>
                 </Description>
             }>
             <DataEditor
@@ -113,12 +117,12 @@ export const SelectionSerialization: React.VFC = () => {
 
 export const SelectionRoundTrip: React.VFC = () => {
     const { cols, getCellContent } = useMockDataGenerator(30, true, true);
-    
+
     const [originalSelection, setOriginalSelection] = React.useState<GridSelection>({
         columns: CompactSelection.empty(),
         rows: CompactSelection.empty(),
     });
-    
+
     const [restoredSelection, setRestoredSelection] = React.useState<GridSelection>({
         columns: CompactSelection.empty(),
         rows: CompactSelection.empty(),
@@ -131,19 +135,24 @@ export const SelectionRoundTrip: React.VFC = () => {
             rows: originalSelection.rows.items,
             current: originalSelection.current,
         };
-        
+
         // Simulate persistence (e.g., sending to server, storing in database)
         const jsonString = JSON.stringify(serialized);
+        // eslint-disable-next-line no-console
         console.log("Serialized selection:", jsonString);
-        
+
         // Deserialize and restore
-        const parsed = JSON.parse(jsonString) as { columns: CompactSelectionRanges; rows: CompactSelectionRanges; current?: any };
+        const parsed = JSON.parse(jsonString) as {
+            columns: CompactSelectionRanges;
+            rows: CompactSelectionRanges;
+            current?: any;
+        };
         const restored = {
             columns: CompactSelection.create(parsed.columns),
             rows: CompactSelection.create(parsed.rows),
             current: parsed.current,
         };
-        
+
         setRestoredSelection(restored);
     };
 
@@ -152,14 +161,18 @@ export const SelectionRoundTrip: React.VFC = () => {
             title="Selection Round Trip"
             description={
                 <Description>
-                    This example demonstrates a complete round trip: create a selection, serialize it to JSON, 
-                    then deserialize it back to a <PropName>CompactSelection</PropName> using the new APIs.
+                    This example demonstrates a complete round trip: create a selection, serialize it to JSON, then
+                    deserialize it back to a <PropName>CompactSelection</PropName> using the new APIs.
                     <br />
                     <br />
                     <button onClick={performRoundTrip}>Perform Round Trip</button>
                     <br />
                     <br />
-                    <strong>Original equals restored:</strong> {originalSelection.columns.equals(restoredSelection.columns) && originalSelection.rows.equals(restoredSelection.rows) ? "✅ Yes" : "❌ No"}
+                    <strong>Original equals restored:</strong>{" "}
+                    {originalSelection.columns.equals(restoredSelection.columns) &&
+                    originalSelection.rows.equals(restoredSelection.rows)
+                        ? "✅ Yes"
+                        : "❌ No"}
                 </Description>
             }>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, height: 600 }}>

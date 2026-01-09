@@ -46,7 +46,9 @@ function clipHeaderDamage(
     ctx.beginPath();
 
     const levels = getGroupLevels(effectiveColumns);
-    const heights = Array.isArray(groupHeaderHeight) ? groupHeaderHeight : new Array(levels).fill(groupHeaderHeight);
+    const heights = Array.isArray(groupHeaderHeight)
+        ? groupHeaderHeight
+        : Array.from({ length: levels }, () => groupHeaderHeight);
 
     for (let level = 0; level < levels; level++) {
         const targetRow = -2 - level;
@@ -82,7 +84,9 @@ function clipHeaderDamage(
             const finalX = drawX + diff + 1;
             const finalWidth = c.width - diff - 1;
             if (damage.has([c.sourceIndex, -1])) {
-                const groupHeight = Array.isArray(groupHeaderHeight) ? groupHeaderHeight.reduce((sum, h) => sum + h, 0) : groupHeaderHeight;
+                const groupHeight = Array.isArray(groupHeaderHeight)
+                    ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+                    : groupHeaderHeight;
                 ctx.rect(finalX, groupHeight, finalWidth, totalHeaderHeight - groupHeight);
             }
         }
