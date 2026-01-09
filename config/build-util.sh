@@ -20,14 +20,16 @@ generate_index_css() {
 }
 
 ensure_bash_4() {
+    # Check if bash version is 4+ or try to find newer version
     if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
         if [ -x "/opt/homebrew/bin/bash" ]; then
             exec /opt/homebrew/bin/bash "$0" "$@"
         elif [ -x "/usr/local/bin/bash" ]; then
             exec /usr/local/bin/bash "$0" "$@"
         else
-            echo "Bash 4 or higher is required."
-            exit 1
+            # Bash 4+ not found, but we can continue with bash 3.2
+            # globstar is not actually needed as **/*.js is passed to wyw-in-js, not expanded by bash
+            echo "Warning: Using bash ${BASH_VERSION}. Some features may not work, but build should continue."
         fi
     fi
 }

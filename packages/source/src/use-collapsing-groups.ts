@@ -33,7 +33,7 @@ export function useCollapsingGroups(props: Props): Result {
         let lastGroup: string | undefined;
         for (let i = freezeColumns; i < columnsIn.length; i++) {
             const c = columnsIn[i];
-            const group = c.group ?? "";
+            const group = Array.isArray(c.group) ? (c.group[0] ?? "") : (c.group ?? "");
             const isCollapsed = collapsed.includes(group);
 
             if (lastGroup !== group && current[0] !== -1) {
@@ -80,7 +80,8 @@ export function useCollapsingGroups(props: Props): Result {
         (index, a) => {
             onGroupHeaderClickedIn?.(index, a);
 
-            const group = columns[index]?.group ?? "";
+            const groupRaw = columns[index]?.group;
+            const group = Array.isArray(groupRaw) ? (groupRaw[0] ?? "") : (groupRaw ?? "");
             if (group === "") return;
             a.preventDefault();
             setCollapsed(cv => (cv.includes(group) ? cv.filter(x => x !== group) : [...cv, group]));
@@ -93,9 +94,11 @@ export function useCollapsingGroups(props: Props): Result {
             if (s.current !== undefined) {
                 const col = s.current.cell[0];
                 const column = columns[col];
+                const groupRaw = column?.group;
+                const group = Array.isArray(groupRaw) ? (groupRaw[0] ?? "") : (groupRaw ?? "");
                 setCollapsed(cv => {
-                    if (cv.includes(column?.group ?? "")) {
-                        return cv.filter(g => g !== column.group);
+                    if (cv.includes(group)) {
+                        return cv.filter(g => g !== group);
                     }
                     return cv;
                 });
@@ -112,11 +115,12 @@ export function useCollapsingGroups(props: Props): Result {
     const getGroupDetails = React.useCallback<NonNullable<Props["getGroupDetails"]>>(
         group => {
             const result = getGroupDetailsIn?.(group);
+            const groupStr = Array.isArray(group) ? (group[0] ?? "") : (group ?? "");
 
             return {
                 ...result,
-                name: group,
-                overrideTheme: collapsed.includes(group ?? "")
+                name: groupStr,
+                overrideTheme: collapsed.includes(groupStr)
                     ? {
                           bgHeader: theme.bgHeaderHasFocus,
                       }

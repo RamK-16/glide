@@ -4,8 +4,6 @@ source ../../config/build-util.sh
 
 ensure_bash_4
 
-shopt -s globstar
-
 ## Delete the dist folder
 rm -rf dist
 
