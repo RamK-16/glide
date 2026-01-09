@@ -1,9 +1,9 @@
-import * as React from "react";
 import DataGridDnd, { type DataGridDndProps } from "../data-grid-dnd/data-grid-dnd.js";
 import type { Rectangle } from "../data-grid/data-grid-types.js";
 import { InfiniteScroller } from "./infinite-scroller.js";
 import { getTotalGroupHeaderHeight } from "../data-grid/render/data-grid-render.walk.js";
 import { useMappedColumns } from "../data-grid/render/data-grid-lib.js";
+import React from "react";
 
 type Props = Omit<DataGridDndProps, "width" | "height" | "eventTargetRef">;
 
@@ -99,10 +99,10 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
     const { paddingRight, paddingBottom } = experimental ?? {};
 
     const [clientWidth, clientHeight] = clientSize;
-    const last = React.useRef<Rectangle | undefined>();
-    const lastX = React.useRef<number | undefined>();
-    const lastY = React.useRef<number | undefined>();
-    const lastSize = React.useRef<readonly [number, number] | undefined>();
+    const last = React.useRef<Rectangle | undefined>(undefined);
+    const lastX = React.useRef<number | undefined>(undefined);
+    const lastY = React.useRef<number | undefined>(undefined);
+    const lastSize = React.useRef<readonly [number, number] | undefined>(undefined);
 
     const width = nonGrowWidth + Math.max(0, overscrollX ?? 0);
 
@@ -120,7 +120,7 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
         height += overscrollY;
     }
 
-    const lastArgs = React.useRef<Rectangle & { paddingRight: number }>();
+    const lastArgs = React.useRef<(Rectangle & { paddingRight: number }) | undefined>(undefined);
 
     const processArgs = React.useCallback(() => {
         if (lastArgs.current === undefined) return;
