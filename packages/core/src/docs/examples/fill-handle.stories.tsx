@@ -102,7 +102,7 @@ export const FillHandle: React.VFC<{
             columns={cols}
             rowMarkers={"both"}
             onPaste={true}
-            fillHandle={fillHandleEnabled ? { shape, size, offsetX, offsetY, outline } : false}
+            fillHandle={fillHandleEnabled === true ? { shape, size, offsetX, offsetY, outline } : false}
             allowedFillDirections={allowedFillDirections}
             keybindings={{ downFill: true, rightFill: true }}
             onCellEdited={setCellValue}
