@@ -1,5 +1,5 @@
 {
-    "name": "@glideapps/glide-data-grid-source",
+    "name": "@glideapps-final/glide-data-grid-source",
     "version": "6.0.4-alpha24",
     "description": "Useful data source hooks for Glide Data Grid",
     "sideEffects": false,
