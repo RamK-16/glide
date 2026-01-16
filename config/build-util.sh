@@ -27,9 +27,8 @@ ensure_bash_4() {
         elif [ -x "/usr/local/bin/bash" ]; then
             exec /usr/local/bin/bash "$0" "$@"
         else
-            # Bash 4+ not found, but we can continue with bash 3.2
-            # globstar is not actually needed as **/*.js is passed to wyw-in-js, not expanded by bash
-            echo "Warning: Using bash ${BASH_VERSION}. Some features may not work, but build should continue."
+            echo "Bash 4 or higher is required."
+            exit 1
         fi
     fi
 }
