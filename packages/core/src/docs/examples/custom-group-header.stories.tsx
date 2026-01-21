@@ -67,6 +67,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, groupName, level, span, rect, theme, isSelected, isHovered } = args;
+        console.log(groupName, level, isHovered);
 
         // First draw default to get icons and actions, but we'll draw over the background
         // Save the context state before default drawing
@@ -119,6 +120,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
             ctx.shadowOffsetY = 1;
 
             const padding = 12 + level * 4;
+         
             ctx.fillText(groupName, rect.x + padding, rect.y + rect.height / 2);
 
             // Reset shadow
@@ -190,8 +192,8 @@ export const MinimalGroupHeader: React.VFC = () => {
     });
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
-        const { ctx, rect, theme, isSelected, isHovered } = args;
-
+        const { ctx, rect, theme, isSelected, isHovered, groupName } = args;
+    
         // Call default drawing first
         ctx.save();
         // draw();
@@ -362,6 +364,12 @@ export const UnstickyHeader: React.VFC = () => {
             groupHeaderHeight={headerHeight.slice(0, -1)}
             drawGroupHeader={drawGroupHeader}
             rowMarkers="both"
+            onMouseMove={(args) => {
+                if(args.kind !== "groupHeader") {
+
+                    console.log(args);
+                }
+            }}
         />
     );
 };

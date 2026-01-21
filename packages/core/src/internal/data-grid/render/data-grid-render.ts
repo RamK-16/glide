@@ -50,13 +50,16 @@ function clipHeaderDamage(
         ? groupHeaderHeight
         : Array.from({ length: levels }, () => groupHeaderHeight);
 
+    let currentY = 0;
     for (let level = 0; level < levels; level++) {
+        const levelHeight = heights[level] ?? heights[0] ?? 0;
+        if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
         walkGroups(
             effectiveColumns,
             width,
             translateX,
-            heights[level] ?? heights[0] ?? 0,
+            levelHeight,
             level,
             (span, _group, x, y, w, h) => {
                 const hasItemInSpan = damage.hasItemInRectangle({
@@ -66,10 +69,11 @@ function clipHeaderDamage(
                     height: 1,
                 });
                 if (hasItemInSpan) {
-                    ctx.rect(x, y, w, h);
+                    ctx.rect(x, y + currentY, w, h);
                 }
             }
         );
+        currentY += levelHeight;
     }
 
     walkColumns(
@@ -394,12 +398,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // handle damage updates by directly drawing to the target to avoid large blits
     if (damage !== undefined) {
         const viewRegionWidth = effectiveCols[effectiveCols.length - 1].sourceIndex + 1;
+        const groupHeaderLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
+        const headerRegionRowStart = -1 - groupHeaderLevels;
+        const headerRegionHeight = groupHeaderLevels + 1;
         const damageInView = damage.hasItemInRegion([
             {
                 x: cellXOffset,
-                y: -2,
+                y: headerRegionRowStart,
                 width: viewRegionWidth,
-                height: 2,
+                height: headerRegionHeight,
             },
             {
                 x: cellXOffset,
@@ -415,9 +422,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             },
             {
                 x: 0,
-                y: -2,
+                y: headerRegionRowStart,
                 width: freezeColumns,
-                height: 2,
+                height: headerRegionHeight,
             },
             {
                 x: cellXOffset,
