@@ -98,11 +98,15 @@ export function drawGridHeaders(
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
         const y = enableGroups ? totalGroupHeaderHeight : 0;
+        const isFirstSelected = selected && selection.columns.first() === c.sourceIndex;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
             ctx.fillStyle = bgFillStyle;
             ctx.fillRect(x + xOffset, y, c.width - xOffset, headerHeight);
+            if (isFirstSelected) {
+                ctx.fillRect(x, y, 1, headerHeight);
+            }
         } else if (hasSelectedCell || hover > 0) {
             ctx.beginPath();
             ctx.rect(x + xOffset, y, c.width - xOffset, headerHeight);
@@ -247,10 +251,10 @@ function drawGroupHeaderInner(
         ctx.fillStyle = fillColor;
         if (hoverAmount > 0) {
             ctx.globalAlpha = hoverAmount;
-            ctx.fill();
+            ctx.fillRect(x, y + 1, width, height - 1);
             ctx.globalAlpha = 1;
         } else {
-            ctx.fill();
+            ctx.fillRect(x, y, width, height);
         }
     }
 
@@ -396,7 +400,7 @@ function drawGroupLevel(
                     level,
                     span,
                     theme: groupTheme,
-                    rect: { x, y: y + yOffset, width: w, height: h },
+                    rect: { x: x + 0.5, y: y + yOffset, width: w, height: h },
                     isSelected,
                     isHovered,
                     spriteManager,
