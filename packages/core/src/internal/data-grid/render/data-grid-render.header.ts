@@ -19,7 +19,6 @@ import {
     measureTextCached,
     roundedPoly,
     type MappedGridColumn,
-    isGroupEqual,
 } from "./data-grid-lib.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
