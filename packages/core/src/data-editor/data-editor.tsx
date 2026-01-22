@@ -2197,29 +2197,72 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
 
             focus();
+            lastSelectedRowRef.current = undefined;
 
-            if (isMultiKey || args.isTouch || columnSelectionMode === "multi") {
+            const rowsToSelect = showTrailingBlankRow ? rows + 1 : rows;
+            const groupRange = {
+                x: start,
+                y: 0,
+                width: end - start + 1,
+                height: rowsToSelect,
+            };
+            const cell = [start, row <= -2 ? row : -2] as const;
+            const expand = true;
+            const append = isMultiKey || args.isTouch || columnSelectionMode === "multi";
+            const newSelection: GridSelection = {
+                current: { cell, range: groupRange, rangeStack: [] },
+                columns: selectedColumns,
+                rows: gridSelection.rows,
+            };
+
+            if (append) {
                 if (selectedColumns.hasAll([start, end + 1])) {
-                    let newVal = selectedColumns;
+                    let newCols = selectedColumns;
                     for (let index = start; index <= end; index++) {
-                        newVal = newVal.remove(index);
+                        newCols = newCols.remove(index);
                     }
-                    setSelectedColumns(newVal, undefined, isMultiKey);
+                    setGridSelection(
+                        {
+                            ...newSelection,
+                            current: undefined,
+                            columns: newCols,
+                        },
+                        expand
+                    );
                 } else {
-                    setSelectedColumns(undefined, [start, end + 1], isMultiKey);
+                    const newCols = selectedColumns.add([start, end + 1]);
+                    setGridSelection(
+                        {
+                            ...newSelection,
+                            columns: newCols,
+                        },
+                        expand
+                    );
                 }
             } else {
-                setSelectedColumns(CompactSelection.fromSingleSelection([start, end + 1]), undefined, isMultiKey);
+                setGridSelection(
+                    {
+                        ...newSelection,
+                        columns: CompactSelection.fromSingleSelection([start, end + 1]),
+                    },
+                    expand
+                );
             }
+            lastSelectedColRef.current = start;
         },
         [
             columnSelect,
             focus,
             gridSelection.columns,
+            gridSelection.rows,
             mangledCols,
             rowMarkerOffset,
-            setSelectedColumns,
             columnSelectionMode,
+            lastSelectedColRef,
+            lastSelectedRowRef,
+            rows,
+            setGridSelection,
+            showTrailingBlankRow,
         ]
     );
 

@@ -7,9 +7,10 @@ import {
     useMockDataGenerator,
     defaultProps,
 } from "../../data-editor/stories/utils.js";
-import type { DrawGroupHeaderCallback } from "../../internal/data-grid/data-grid-types.js";
+import type { DrawGroupHeaderCallback, GridSelection } from "../../internal/data-grid/data-grid-types.js";
 import { GridColumnIcon } from "../../internal/data-grid/data-grid-types.js";
 import { SimpleThemeWrapper } from "../../stories/story-utils.js";
+import { emptyGridSelection } from "../../data-editor/data-editor.js";
 
 const COMPOSITE_DESTINATION_OVER = "destination-over";
 const COMPOSITE_SOURCE_OVER = "source-over";
@@ -66,7 +67,8 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
     });
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
-        const { ctx, groupName, level, span, rect, theme, isSelected, isHovered } = args;
+        const { ctx, groupName, level, span, rect, theme, isSelected, isHovered, } = args;
+        console.log(args);
 
         // First draw default to get icons and actions, but we'll draw over the background
         // Save the context state before default drawing
@@ -96,7 +98,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
         // Use composite operation to draw background behind existing content
         ctx.globalCompositeOperation = COMPOSITE_DESTINATION_OVER;
         ctx.fillStyle = gradient;
-        ctx.fill();
+        // ctx.fill();
         ctx.globalCompositeOperation = COMPOSITE_SOURCE_OVER;
 
         // Draw border
@@ -107,7 +109,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
 
         // Draw custom text with shadow effect
         if (groupName !== "") {
-            ctx.fillStyle = isSelected ? theme.textHeaderSelected : theme.textHeader;
+            // ctx.fillStyle = isSelected ? theme.textHeaderSelected : theme.textHeader;
             ctx.font = `bold ${14 + level * 2}px ${theme.fontFamily}`;
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
@@ -119,6 +121,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
             ctx.shadowOffsetY = 1;
 
             const padding = 12 + level * 4;
+         
             ctx.fillText(groupName, rect.x + padding, rect.y + rect.height / 2);
 
             // Reset shadow
@@ -130,7 +133,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
             // Draw span indicator (number of columns in group)
             const spanText = `(${span[1] - span[0] + 1} cols)`;
             ctx.font = `${10}px ${theme.fontFamily}`;
-            ctx.fillStyle = isSelected ? theme.textHeaderSelected : (theme.textGroupHeader ?? theme.textHeader);
+            // ctx.fillStyle = isSelected ? theme.textHeaderSelected : (theme.textGroupHeader ?? theme.textHeader);
             ctx.globalAlpha = 0.7;
             const textWidth = ctx.measureText(groupName).width;
             ctx.fillText(spanText, rect.x + padding + textWidth + 8, rect.y + rect.height / 2);
@@ -138,16 +141,16 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
         }
 
         // Draw level indicator badge in top-right corner
-        ctx.fillStyle = isSelected ? theme.accentColor : theme.bgHeader;
+        // ctx.fillStyle = isSelected ? theme.accentColor : theme.bgHeader;
         ctx.beginPath();
         const badgeSize = 20;
         const badgePadding = 4;
         const badgeX = rect.x + rect.width - badgeSize - badgePadding;
         const badgeY = rect.y + badgePadding;
         ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
-        ctx.fill();
+        // ctx.fill();
 
-        ctx.fillStyle = theme.textHeader;
+        // ctx.fillStyle = theme.textHeader;
         ctx.font = `bold ${10}px ${theme.fontFamily}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -155,6 +158,8 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
 
         ctx.restore();
     }, []);
+    const [sel, setSel] = React.useState<GridSelection>(emptyGridSelection);
+
 
     return (
         <DataEditor
@@ -166,9 +171,34 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
                 name: g,
                 icon: g === "" ? undefined : GridColumnIcon.HeaderCode,
             })}
+            // freezeColumns={3}
             groupHeaderHeight={[36, 32, 30, 28]} // Four different heights for four levels
-            drawGroupHeader={drawGroupHeader}
+            // drawGroupHeader={drawGroupHeader}
+            drawHeader={(args,draw) => {
+                console.log(args);
+                draw();
+            }}
             rowMarkers="both"
+            gridSelection={sel}
+            onGridSelectionChange={(args) => {
+                setSel(args)
+                console.log('onGridSelectionChange',args);
+            }}
+            onGroupHeaderClicked={(args) => {
+                console.log('onGroupHeaderClicked',args);
+            }}
+            onMouseMove={(args) => {
+                if(args.kind === "group-header") {
+
+                    // console.log('onMouseMove',args);
+                }
+            }}
+            onCellClicked={(args) => {
+                
+
+                    // console.log('onCellClicked',args);
+                
+            }}
         />
     );
 };
@@ -190,8 +220,8 @@ export const MinimalGroupHeader: React.VFC = () => {
     });
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
-        const { ctx, rect, theme, isSelected, isHovered } = args;
-
+        const { ctx, rect, theme, isSelected, isHovered, groupName } = args;
+    
         // Call default drawing first
         ctx.save();
         // draw();

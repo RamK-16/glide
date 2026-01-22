@@ -293,13 +293,31 @@ export function getRowIndexForY(
     rowHeight: number | ((index: number) => number),
     cellYOffset: number,
     translateY: number,
-    freezeTrailingRows: number
+    freezeTrailingRows: number,
+    groupHeaderLevels?: number
 ): number | undefined {
-    const groupHeights = Array.isArray(groupHeaderHeight) 
-        ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
-        : groupHeaderHeight;
+    const groupHeightsArray = Array.isArray(groupHeaderHeight) ? groupHeaderHeight : undefined;
+    const groupHeaderHeightValue = typeof groupHeaderHeight === "number" ? groupHeaderHeight : undefined;
+    const levels = groupHeightsArray?.length ?? (groupHeaderLevels ?? (hasGroups ? 1 : 0));
+    const groupHeights = hasGroups
+        ? (groupHeightsArray !== undefined
+              ? groupHeightsArray.reduce((sum, h) => sum + h, 0)
+              : (levels > 0 && groupHeaderHeightValue !== undefined ? groupHeaderHeightValue * levels : 0))
+        : 0;
     const totalHeaderHeight = headerHeight + groupHeights;
-    if (hasGroups && targetY <= groupHeights) return -2;
+    if (hasGroups && levels > 0 && targetY <= groupHeights) {
+        if (groupHeightsArray !== undefined) {
+            let yOffset = 0;
+            for (let level = 0; level < levels; level++) {
+                yOffset += groupHeightsArray[level] ?? groupHeightsArray[0] ?? 0;
+                if (targetY <= yOffset) return -2 - level;
+            }
+            return -2 - (levels - 1);
+        }
+        if (groupHeaderHeightValue === undefined || groupHeaderHeightValue <= 0) return -2;
+        const groupLevel = Math.min(levels - 1, Math.max(0, Math.floor(targetY / groupHeaderHeightValue)));
+        return -2 - groupLevel;
+    }
     if (targetY <= totalHeaderHeight) return -1;
 
     let y = height;
@@ -805,7 +823,7 @@ export function computeBounds(
         height: 0,
     };
 
-    if (col >= mappedColumns.length || row >= rows || row < -2 || col < 0) {
+    if (col >= mappedColumns.length || row >= rows || col < 0) {
         return result;
     }
 

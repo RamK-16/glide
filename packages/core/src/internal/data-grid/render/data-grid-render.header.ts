@@ -97,11 +97,15 @@ export function drawGridHeaders(
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
         const y = enableGroups ? totalGroupHeaderHeight : 0;
+        const isFirstSelected = selected && selection.columns.first() === c.sourceIndex;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
             ctx.fillStyle = bgFillStyle;
             ctx.fillRect(x + xOffset, y, c.width - xOffset, headerHeight);
+            if (isFirstSelected) {
+                ctx.fillRect(x, y, 1, headerHeight);
+            }
         } else if (hasSelectedCell || hover > 0) {
             ctx.beginPath();
             ctx.rect(x + xOffset, y, c.width - xOffset, headerHeight);
@@ -227,6 +231,7 @@ function drawGroupHeaderInner(
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
+    hoverAmount: number,
     theme: FullTheme,
     groupTheme: FullTheme,
     group: GroupDetails,
@@ -243,7 +248,13 @@ function drawGroupHeaderInner(
 
     if (fillColor !== theme.bgHeader) {
         ctx.fillStyle = fillColor;
-        ctx.fill();
+        if (hoverAmount > 0) {
+            ctx.globalAlpha = hoverAmount;
+            ctx.fillRect(x, y + 1, width, height - 1);
+            ctx.globalAlpha = 1;
+        } else {
+            ctx.fillRect(x, y, width, height);
+        }
     }
 
     ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
@@ -335,6 +346,15 @@ function drawGroupLevel(
     const hPosY = hovered?.[1]?.[1];
     // hRow: -2 is group header, we use -2 - level for multi-level
     const targetRow = -2 - level;
+    const selectionRow = selection?.current?.cell[1];
+    const selectionLevel = selectionRow !== undefined && selectionRow <= -2 ? -2 - selectionRow : undefined;
+    const selectionSpan =
+        selection?.current === undefined || selectionLevel === undefined
+            ? undefined
+            : ([
+                  selection.current.range.x,
+                  selection.current.range.x + selection.current.range.width - 1,
+              ] as const);
 
     let finalX = 0;
     walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h) => {
@@ -356,13 +376,20 @@ function drawGroupLevel(
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
-        const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
-
         // Check if all columns in this group span are selected
         let isSelected = false;
         if (selection !== undefined) {
-            isSelected = selection.columns.hasAll([span[0], span[1] + 1]);
+            const selectionMatchesLevel = selectionRow !== undefined && targetRow <= selectionRow;
+            const spanInSelection =
+                selectionSpan !== undefined && span[0] >= selectionSpan[0] && span[1] <= selectionSpan[1];
+            isSelected =
+                selectionMatchesLevel && spanInSelection && selection.columns.hasAll([span[0], span[1] + 1]);
         }
+        const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
+        const hoverAmount =
+            isSelected || !isHovered
+                ? 0
+                : (_hoverValues.find(s => s.item[0] === hCol && s.item[1] === targetRow)?.hoverAmount ?? 0);
 
         if (drawGroupHeaderCallback !== undefined) {
             drawGroupHeaderCallback(
@@ -372,7 +399,7 @@ function drawGroupLevel(
                     level,
                     span,
                     theme: groupTheme,
-                    rect: { x, y: y + yOffset, width: w, height: h },
+                    rect: { x: x + 0.5, y: y + yOffset, width: w, height: h },
                     isSelected,
                     isHovered,
                     spriteManager,
@@ -391,6 +418,7 @@ function drawGroupLevel(
                         span,
                         isSelected,
                         isHovered,
+                        hoverAmount,
                         theme,
                         groupTheme,
                         group,
@@ -411,6 +439,7 @@ function drawGroupLevel(
                 span,
                 isSelected,
                 isHovered,
+                hoverAmount,
                 theme,
                 groupTheme,
                 group,
