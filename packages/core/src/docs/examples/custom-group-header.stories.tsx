@@ -67,7 +67,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, groupName, level, span, rect, theme, isSelected, isHovered } = args;
-        console.log(groupName, level, isHovered);
+        // console.log(groupName, level, isHovered);
 
         // First draw default to get icons and actions, but we'll draw over the background
         // Save the context state before default drawing
@@ -169,8 +169,24 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
                 icon: g === "" ? undefined : GridColumnIcon.HeaderCode,
             })}
             groupHeaderHeight={[36, 32, 30, 28]} // Four different heights for four levels
-            drawGroupHeader={drawGroupHeader}
+            // drawGroupHeader={drawGroupHeader}
             rowMarkers="both"
+            
+            onGroupHeaderClicked={(args) => {
+                console.log('onGroupHeaderClicked',args);
+            }}
+            onMouseMove={(args) => {
+                if(args.kind === "group-header") {
+
+                    // console.log('onMouseMove',args);
+                }
+            }}
+            onCellClicked={(args) => {
+                
+
+                    // console.log('onCellClicked',args);
+                
+            }}
         />
     );
 };
@@ -364,12 +380,6 @@ export const UnstickyHeader: React.VFC = () => {
             groupHeaderHeight={headerHeight.slice(0, -1)}
             drawGroupHeader={drawGroupHeader}
             rowMarkers="both"
-            onMouseMove={(args) => {
-                if(args.kind !== "groupHeader") {
-
-                    console.log(args);
-                }
-            }}
         />
     );
 };

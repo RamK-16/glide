@@ -19,6 +19,7 @@ import {
     measureTextCached,
     roundedPoly,
     type MappedGridColumn,
+    isGroupEqual,
 } from "./data-grid-lib.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
@@ -227,6 +228,7 @@ function drawGroupHeaderInner(
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
+    hoverAmount: number,
     theme: FullTheme,
     groupTheme: FullTheme,
     group: GroupDetails,
@@ -243,7 +245,13 @@ function drawGroupHeaderInner(
 
     if (fillColor !== theme.bgHeader) {
         ctx.fillStyle = fillColor;
-        ctx.fill();
+        if (hoverAmount > 0) {
+            ctx.globalAlpha = hoverAmount;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        } else {
+            ctx.fill();
+        }
     }
 
     ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
@@ -335,6 +343,15 @@ function drawGroupLevel(
     const hPosY = hovered?.[1]?.[1];
     // hRow: -2 is group header, we use -2 - level for multi-level
     const targetRow = -2 - level;
+    const selectionRow = selection?.current?.cell[1];
+    const selectionLevel = selectionRow !== undefined && selectionRow <= -2 ? -2 - selectionRow : undefined;
+    const selectionSpan =
+        selection?.current === undefined || selectionLevel === undefined
+            ? undefined
+            : ([
+                  selection.current.range.x,
+                  selection.current.range.x + selection.current.range.width - 1,
+              ] as const);
 
     let finalX = 0;
     walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h) => {
@@ -356,13 +373,20 @@ function drawGroupLevel(
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
-        const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
-
         // Check if all columns in this group span are selected
         let isSelected = false;
         if (selection !== undefined) {
-            isSelected = selection.columns.hasAll([span[0], span[1] + 1]);
+            const selectionMatchesLevel = selectionRow !== undefined && targetRow <= selectionRow;
+            const spanInSelection =
+                selectionSpan !== undefined && span[0] >= selectionSpan[0] && span[1] <= selectionSpan[1];
+            isSelected =
+                selectionMatchesLevel && spanInSelection && selection.columns.hasAll([span[0], span[1] + 1]);
         }
+        const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
+        const hoverAmount =
+            isSelected || !isHovered
+                ? 0
+                : (_hoverValues.find(s => s.item[0] === hCol && s.item[1] === targetRow)?.hoverAmount ?? 0);
 
         if (drawGroupHeaderCallback !== undefined) {
             drawGroupHeaderCallback(
@@ -391,6 +415,7 @@ function drawGroupLevel(
                         span,
                         isSelected,
                         isHovered,
+                        hoverAmount,
                         theme,
                         groupTheme,
                         group,
@@ -411,6 +436,7 @@ function drawGroupLevel(
                 span,
                 isSelected,
                 isHovered,
+                hoverAmount,
                 theme,
                 groupTheme,
                 group,
