@@ -305,9 +305,17 @@ describe("data-grid", () => {
 
     test("Header hovered when scrolled", () => {
         const spy = vi.fn();
+        const groupedColumns = basicProps.columns.map(col => ({ ...col, group: "A" }));
 
         render(
-            <DataGrid {...basicProps} groupHeaderHeight={32} enableGroups={true} cellYOffset={10} onItemHovered={spy} />
+            <DataGrid
+                {...basicProps}
+                columns={groupedColumns}
+                groupHeaderHeight={32}
+                enableGroups={true}
+                cellYOffset={10}
+                onItemHovered={spy}
+            />
         );
 
         const el = screen.getByTestId(dataGridCanvasId);
@@ -327,7 +335,11 @@ describe("data-grid", () => {
     test("Group header hovered", () => {
         const spy = vi.fn();
 
-        render(<DataGrid {...basicProps} onItemHovered={spy} enableGroups={true} groupHeaderHeight={28} />);
+        const groupedColumns = basicProps.columns.map(col => ({ ...col, group: "A" }));
+        // TODO old test 
+        //render(<DataGrid {...basicProps} onItemHovered={spy} enableGroups={true} groupHeaderHeight={28} />);
+
+        render(<DataGrid {...basicProps} columns={groupedColumns} onItemHovered={spy} enableGroups={true} groupHeaderHeight={28} />);
 
         const el = screen.getByTestId(dataGridCanvasId);
         fireEvent.pointerMove(el, {

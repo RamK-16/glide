@@ -966,10 +966,13 @@ describe("data-editor", () => {
         });
 
         expect(spy).toHaveBeenCalledTimes(1);
-        expect(spy).toHaveBeenCalledWith({
-            columns: CompactSelection.fromSingleSelection([0, 11]),
-            rows: CompactSelection.empty(),
-        });
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                columns: CompactSelection.fromSingleSelection([0, 11]),
+                rows: CompactSelection.empty(),
+                current: expect.objectContaining({ cell: [0, -2] }),
+            })
+        );
 
         spy.mockClear();
 
@@ -980,10 +983,13 @@ describe("data-editor", () => {
         });
 
         expect(spy).toHaveBeenCalled();
-        expect(spy).toHaveBeenCalledWith({
-            columns: CompactSelection.empty(),
-            rows: CompactSelection.empty(),
-        });
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                columns: CompactSelection.empty(),
+                rows: CompactSelection.empty(),
+                current: undefined,
+            })
+        );
 
         spy.mockClear();
 
@@ -994,11 +1000,13 @@ describe("data-editor", () => {
         });
 
         expect(spy).toHaveBeenCalled();
-        expect(spy).toHaveBeenCalledWith({
-            rows: CompactSelection.empty(),
-            current: undefined,
-            columns: CompactSelection.fromSingleSelection([0, 11]),
-        });
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                rows: CompactSelection.empty(),
+                columns: CompactSelection.fromSingleSelection([0, 11]),
+                current: expect.objectContaining({ cell: [0, -2] }),
+            })
+        );
     });
 
     test("Rename group header shows", async () => {
