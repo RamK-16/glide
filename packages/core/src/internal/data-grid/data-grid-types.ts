@@ -54,7 +54,7 @@ export type DrawHeaderCallback = (
         hoverX: number | undefined;
         hoverY: number | undefined;
     },
-    drawContent: () => void
+    drawContent: (headerNameOverride?: string) => void
 ) => void;
 
 /** @category Types */
@@ -72,7 +72,7 @@ export type DrawGroupHeaderCallback = (
         hoverX: number | undefined;
         hoverY: number | undefined;
     },
-    drawContent: () => void
+    drawContent: (groupNameOverride?: string) => void
 ) => void;
 
 /** @category Types */

@@ -67,7 +67,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
     });
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
-        const { ctx, groupName, level, span, rect, theme, isSelected, isHovered, } = args;
+        const { ctx, groupName, level, span, rect, theme, isSelected, isHovered } = args;
         console.log(args);
 
         // First draw default to get icons and actions, but we'll draw over the background
@@ -101,12 +101,6 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
         // ctx.fill();
         ctx.globalCompositeOperation = COMPOSITE_SOURCE_OVER;
 
-        // Draw border
-        ctx.strokeStyle = isSelected ? theme.accentColor : theme.borderColor;
-        const borderWidth = isSelected ? 2 : 1;
-        ctx.lineWidth = borderWidth;
-        ctx.stroke();
-
         // Draw custom text with shadow effect
         if (groupName !== "") {
             // ctx.fillStyle = isSelected ? theme.textHeaderSelected : theme.textHeader;
@@ -121,7 +115,7 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
             ctx.shadowOffsetY = 1;
 
             const padding = 12 + level * 4;
-         
+
             ctx.fillText(groupName, rect.x + padding, rect.y + rect.height / 2);
 
             // Reset shadow
@@ -160,7 +154,6 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
     }, []);
     const [sel, setSel] = React.useState<GridSelection>(emptyGridSelection);
 
-
     return (
         <DataEditor
             {...defaultProps}
@@ -173,31 +166,27 @@ export const CustomGroupHeaderDrawing: React.VFC = () => {
             })}
             // freezeColumns={3}
             groupHeaderHeight={[36, 32, 30, 28]} // Four different heights for four levels
-            // drawGroupHeader={drawGroupHeader}
-            drawHeader={(args,draw) => {
+            drawGroupHeader={drawGroupHeader}
+            drawHeader={(args, draw) => {
                 console.log(args);
                 draw();
             }}
             rowMarkers="both"
             gridSelection={sel}
-            onGridSelectionChange={(args) => {
-                setSel(args)
-                console.log('onGridSelectionChange',args);
+            onGridSelectionChange={args => {
+                setSel(args);
+                console.log("onGridSelectionChange", args);
             }}
-            onGroupHeaderClicked={(args) => {
-                console.log('onGroupHeaderClicked',args);
+            onGroupHeaderClicked={args => {
+                console.log("onGroupHeaderClicked", args);
             }}
-            onMouseMove={(args) => {
-                if(args.kind === "group-header") {
-
+            onMouseMove={args => {
+                if (args.kind === "group-header") {
                     // console.log('onMouseMove',args);
                 }
             }}
-            onCellClicked={(args) => {
-                
-
-                    // console.log('onCellClicked',args);
-                
+            onCellClicked={args => {
+                // console.log('onCellClicked',args);
             }}
         />
     );
@@ -221,7 +210,7 @@ export const MinimalGroupHeader: React.VFC = () => {
 
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, rect, theme, isSelected, isHovered, groupName } = args;
-    
+
         // Call default drawing first
         ctx.save();
         // draw();

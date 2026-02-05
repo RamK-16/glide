@@ -205,6 +205,7 @@ export function drawGroups(
             verticalBorder,
             getGroupDetails,
             damage,
+            levels,
             selection,
             drawGroupHeaderCallback
         );
@@ -227,7 +228,7 @@ function drawGroupHeaderInner(
     width: number,
     height: number,
     groupName: string,
-    _level: number,
+    level: number,
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
@@ -265,7 +266,12 @@ function drawGroupHeaderInner(
             drawX += 26;
         }
         if (group?.name !== undefined && group.name !== "") {
-            ctx.fillText(group.name, drawX + xPad, y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull));
+            const latestGroupName = groupName ?? group.name;
+            ctx.fillText(
+                latestGroupName,
+                drawX + xPad,
+                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            );
         }
 
         if (group?.actions !== undefined && isHovered) {
@@ -314,8 +320,9 @@ function drawGroupHeaderInner(
     }
 
     if (x !== 0 && verticalBorder(span[0])) {
+        const preventOverlaysOffset = level === 0 ? 0 : 1; // prevent overlays of vert and horiz borders
         ctx.beginPath();
-        ctx.moveTo(x + 0.5, y);
+        ctx.moveTo(x + 0.5, y + preventOverlaysOffset);
         ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
         ctx.lineWidth = 1;
@@ -338,6 +345,7 @@ function drawGroupLevel(
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
+    levels: number,
     selection?: GridSelection,
     drawGroupHeaderCallback?: DrawGroupHeaderCallback
 ) {
@@ -351,11 +359,7 @@ function drawGroupLevel(
     const selectionSpan =
         selection?.current === undefined || selectionLevel === undefined
             ? undefined
-            : ([
-                  selection.current.range.x,
-                  selection.current.range.x + selection.current.range.width - 1,
-              ] as const);
-
+            : ([selection.current.range.x, selection.current.range.x + selection.current.range.width - 1] as const);
     let finalX = 0;
     walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h) => {
         if (
@@ -382,8 +386,7 @@ function drawGroupLevel(
             const selectionMatchesLevel = selectionRow !== undefined && targetRow <= selectionRow;
             const spanInSelection =
                 selectionSpan !== undefined && span[0] >= selectionSpan[0] && span[1] <= selectionSpan[1];
-            isSelected =
-                selectionMatchesLevel && spanInSelection && selection.columns.hasAll([span[0], span[1] + 1]);
+            isSelected = selectionMatchesLevel && spanInSelection && selection.columns.hasAll([span[0], span[1] + 1]);
         }
         const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
         const hoverAmount =
@@ -392,6 +395,17 @@ function drawGroupLevel(
                 : (_hoverValues.find(s => s.item[0] === hCol && s.item[1] === targetRow)?.hoverAmount ?? 0);
 
         if (drawGroupHeaderCallback !== undefined) {
+            const isFirstColumn = x === 0;
+            const offsetForVisibleBorderX = isFirstColumn ? 0 : 1;
+
+            const isLastLevelGroupRow = level === levels - 1;
+            const offsetForVisibleBorderY = isLastLevelGroupRow ? 0 : 1;
+
+            const headerInnerMapper = {
+                y: y + yOffset,
+            };
+
+            let wasUsedDefDraw = false;
             drawGroupHeaderCallback(
                 {
                     ctx,
@@ -399,21 +413,27 @@ function drawGroupLevel(
                     level,
                     span,
                     theme: groupTheme,
-                    rect: { x: x + 0.5, y: y + yOffset, width: w, height: h },
+                    // rect: { x: x + 0.5, y: y + yOffset, width: w, height: h },
+                    rect: {
+                        x: x + offsetForVisibleBorderX,
+                        y: y + yOffset,
+                        width: w - offsetForVisibleBorderX,
+                        height: h - offsetForVisibleBorderY,
+                    },
                     isSelected,
                     isHovered,
                     spriteManager,
                     hoverX: isHovered ? hPosX : undefined,
                     hoverY: isHovered ? hPosY : undefined,
                 },
-                () =>
+                groupNameOverride => {
                     drawGroupHeaderInner(
                         ctx,
                         x,
-                        y + yOffset,
+                        headerInnerMapper.y,
                         w,
                         h,
-                        groupName,
+                        groupNameOverride ?? groupName,
                         level,
                         span,
                         isSelected,
@@ -425,8 +445,20 @@ function drawGroupLevel(
                         spriteManager,
                         hovered,
                         verticalBorder
-                    )
+                    );
+                    wasUsedDefDraw = true;
+                }
             );
+            // vertical border between custom groupHeaders (required)
+            if (!wasUsedDefDraw && x !== 0 && verticalBorder(span[0])) {
+                const preventOverlaysOffset = level === 0 ? 0 : 1; // prevent overlays of vert and horiz borders
+                ctx.beginPath();
+                ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
+                ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
+                ctx.strokeStyle = theme.borderColor;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
         } else {
             drawGroupHeaderInner(
                 ctx,
@@ -608,7 +640,8 @@ function drawHeaderInner(
     spriteManager: SpriteManager,
     touchMode: boolean,
     isRtl: boolean,
-    headerLayout: HeaderLayout
+    headerLayout: HeaderLayout,
+    headerNameOverride: string | undefined
 ) {
     if (c.rowMarker !== undefined && c.headerRowMarkerDisabled !== true) {
         const checked = c.rowMarkerChecked;
@@ -696,7 +729,7 @@ function drawHeaderInner(
     }
     if (headerLayout.textBounds !== undefined) {
         ctx.fillText(
-            c.title,
+            headerNameOverride ?? c.title,
             isRtl ? headerLayout.textBounds.x + headerLayout.textBounds.width : headerLayout.textBounds.x,
             y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
         );
@@ -828,7 +861,7 @@ export function drawHeader(
                 hoverX: posX,
                 hoverY: posY,
             },
-            () =>
+            headerNameOverride =>
                 drawHeaderInner(
                     ctx,
                     x,
@@ -845,7 +878,8 @@ export function drawHeader(
                     spriteManager,
                     touchMode,
                     isRtl,
-                    headerLayout
+                    headerLayout,
+                    headerNameOverride
                 )
         );
     } else {
@@ -865,7 +899,8 @@ export function drawHeader(
             spriteManager,
             touchMode,
             isRtl,
-            headerLayout
+            headerLayout,
+            undefined // headerNameOverride
         );
     }
 }
