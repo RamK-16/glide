@@ -397,7 +397,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 freezeTrailingRows,
                 rows,
                 highlightRegions,
-                theme
+                theme,
+                headerOffset
             );
         }
 
@@ -419,7 +420,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 freezeTrailingRows,
                 hasAppendRow,
                 fillHandle,
-                rows
+                rows,
+                headerOffset
             );
         }
     };
@@ -646,7 +648,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         freezeTrailingRows,
         rows,
         highlightRegions,
-        theme
+        theme,
+        headerOffset
     );
 
     // the overdraw may have nuked out our focus ring right edge.

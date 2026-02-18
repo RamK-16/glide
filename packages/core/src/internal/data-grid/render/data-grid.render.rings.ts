@@ -30,7 +30,8 @@ export function drawHighlightRings(
     freezeTrailingRows: number,
     rows: number,
     allHighlightRegions: readonly Highlight[] | undefined,
-    theme: FullTheme
+    theme: FullTheme,
+    headerOffset: number = 0
 ): (() => void) | undefined {
     const highlightRegions = allHighlightRegions?.filter(x => x.style !== "no-outline");
 
@@ -62,7 +63,8 @@ export function drawHighlightRings(
                 freezeColumns,
                 freezeTrailingRows,
                 mappedColumns,
-                rowHeight
+                rowHeight,
+                headerOffset
             );
             const bottomRightBounds =
                 rect.width === 1 && rect.height === 1
@@ -82,7 +84,8 @@ export function drawHighlightRings(
                           freezeColumns,
                           freezeTrailingRows,
                           mappedColumns,
-                          rowHeight
+                          rowHeight,
+                          headerOffset
                       );
 
             if (rect.x + rect.width >= mappedColumns.length) {
@@ -195,7 +198,8 @@ export function drawFillHandle(
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     fillHandle: FillHandle,
-    rows: number
+    rows: number,
+    headerOffset: number = 0
 ): (() => void) | undefined {
     if (selectedCell.current === undefined) return undefined;
 
@@ -227,12 +231,13 @@ export function drawFillHandle(
 
     let drawHandleCb: (() => void) | undefined = undefined;
 
+    const effectiveHeaderHeight = totalHeaderHeight - headerOffset;
     walkColumns(
         effectiveCols,
         cellYOffset,
         translateX,
         translateY,
-        totalHeaderHeight,
+        effectiveHeaderHeight,
         (col, drawX, colDrawY, clipX, startRow) => {
             clipX;
             if (col.sticky && targetCol > col.sourceIndex) return;
@@ -334,7 +339,7 @@ export function drawFillHandle(
     const result = () => {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, totalHeaderHeight, width, height - totalHeaderHeight - stickRowHeight);
+        ctx.rect(0, effectiveHeaderHeight, width, height - effectiveHeaderHeight - stickRowHeight);
         ctx.clip();
 
         drawHandleCb?.();

@@ -821,7 +821,8 @@ export function computeBounds(
 ): Rectangle {
     const result: Rectangle = {
         x: 0,
-        y: totalHeaderHeight + translateY,
+        // Для data rows шапка сдвинута на headerOffset вверх, поэтому ячейки начинаются раньше.
+        y: (totalHeaderHeight - headerOffset) + translateY,
         width: 0,
         height: 0,
     };
