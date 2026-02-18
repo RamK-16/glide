@@ -109,6 +109,13 @@ export interface DataGridProps {
     readonly enableGroups: boolean;
     readonly rowHeight: number | ((index: number) => number);
 
+    /** Когда true, шапка (заголовки колонок + групповые заголовки) скроллится с контентом, а не остаётся закреплённой.
+     * Вычисляется в processArgs компонента ScrollingDataGrid и передаётся вниз по цепочке компонентов. */
+    readonly unstickyHeader?: boolean;
+    /** Количество пикселей шапки, ушедших за верхний край (от 0 до totalHeaderHeight). Управляется React state
+     * в ScrollingDataGrid, чтобы изменения пропа вызывали ре-рендер и перерисовку canvas. */
+    readonly headerOffset?: number;
+
     readonly canvasRef: React.MutableRefObject<HTMLCanvasElement | null> | undefined;
 
     readonly eventTargetRef: React.MutableRefObject<HTMLDivElement | null> | undefined;
@@ -415,9 +422,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         experimental,
         getCellRenderer,
         resizeIndicator = "full",
+        unstickyHeader = false,
     } = p;
     const translateX = p.translateX ?? 0;
     const translateY = p.translateY ?? 0;
+    // Когда unstickyHeader выключен, headerOffset всегда 0 (шапка на месте).
+    // Когда включён — показывает, сколько пикселей шапки ушло за верхний край.
+    const headerOffset = unstickyHeader ? (p.headerOffset ?? 0) : 0;
     const cellXOffset = Math.max(freezeColumns, Math.min(columns.length - 1, cellXOffsetReal));
 
     const ref = React.useRef<HTMLCanvasElement | null>(null);
@@ -497,7 +508,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 freezeColumns,
                 freezeTrailingRows,
                 mappedColumns,
-                rowHeight
+                rowHeight,
+                headerOffset
             );
 
             if (scale !== 1) {
@@ -521,6 +533,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             cellYOffset,
             translateX,
             translateY,
+            headerOffset,
             rows,
             freezeColumns,
             freezeTrailingRows,
@@ -565,9 +578,15 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
             // -1: header or above
             // undefined: offbottom
+            // unstickyHeader коррекция мыши: когда шапка частично ускроллена,
+            // Y-координату мыши (относительно canvas) нужно скорректировать, чтобы она совпадала
+            // с виртуальной системой координат getRowIndexForY. Добавление headerOffset компенсирует
+            // пиксели шапки, которые больше не видны, поэтому клики по частично видимой шапке
+            // и по строкам данных корректно определяют нужную строку.
+            const adjustedY = unstickyHeader ? y + headerOffset : y;
             const row = getRowIndexForY(
-                y,
-                height,
+                adjustedY,
+                height + headerOffset,
                 enableGroups,
                 headerHeight,
                 groupHeaderHeight,
@@ -583,9 +602,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             const ctrlKey = ev?.ctrlKey === true;
             const metaKey = ev?.metaKey === true;
 
+            // effectiveHeaderHeight = сколько шапки реально видно на экране.
+            // Используется для определения scroll edge: если курсор выше нижней границы видимой шапки — он в «зоне шапки».
+            const effectiveHeaderHeight = totalHeaderHeight - headerOffset;
             const scrollEdge: GridMouseEventArgs["scrollEdge"] = [
                 x < 0 ? -1 : width < x ? 1 : 0,
-                y < totalHeaderHeight ? -1 : height < y ? 1 : 0,
+                y < effectiveHeaderHeight ? -1 : height < y ? 1 : 0,
             ];
 
             let result: GridMouseEventArgs;
@@ -749,6 +771,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             fillHandle,
             selection,
             totalHeaderHeight,
+            headerOffset,
+            unstickyHeader,
         ]
     );
 
@@ -874,6 +898,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             getCellRenderer,
             minimumCellWidth,
             resizeIndicator,
+            headerOffset: headerOffset,
         };
 
         // This confusing bit of code due to some poor design. Long story short, the damage property is only used
@@ -941,6 +966,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         getCellRenderer,
         minimumCellWidth,
         resizeIndicator,
+        headerOffset,
     ]);
 
     const lastDrawRef = React.useRef(draw);
@@ -1926,13 +1952,16 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             boxShadow: "inset 13px 0 10px -13px rgba(0, 0, 0, 0.2)",
         };
 
+        // unstickyHeader: вертикальная тень располагается прямо под видимой областью шапки.
+        // По мере скролла шапки тень двигается вверх вместе с ней. Когда шапка полностью ушла —
+        // тень скрывается (opacity 0), потому что нет края шапки, от которого она отбрасывается.
         const styleY: React.CSSProperties = {
             position: "absolute",
-            top: totalHeaderHeight,
+            top: totalHeaderHeight - headerOffset,
             left: 0,
             width: width,
             height: height,
-            opacity: opacityY,
+            opacity: headerOffset >= totalHeaderHeight ? 0 : opacityY,
             pointerEvents: "none",
             transition: !smoothScrollY ? "opacity 0.2s" : undefined,
             boxShadow: "inset 0 13px 10px -13px rgba(0, 0, 0, 0.2)",
@@ -1944,7 +1973,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 {opacityY > 0 && <div id="shadow-y" style={styleY} />}
             </>
         );
-    }, [opacityX, opacityY, stickyX, width, smoothScrollX, totalHeaderHeight, height, smoothScrollY]);
+    }, [opacityX, opacityY, stickyX, width, smoothScrollX, totalHeaderHeight, height, smoothScrollY, headerOffset]);
 
     const overlayStyle = React.useMemo<React.CSSProperties>(
         () => ({

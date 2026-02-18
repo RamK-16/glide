@@ -16,10 +16,14 @@ export interface ScrollingDataGridProps extends Props {
               clientHeight: number,
               rightElWidth: number,
               tx: number,
-              ty: number
+              ty: number,
+              headerOffset: number
           ) => void)
         | undefined;
     readonly scrollRef: React.MutableRefObject<HTMLDivElement | null> | undefined;
+    /** Когда true, шапка скроллится вместе с контентом. headerOffset вычисляется локально
+     * в processArgs и передаётся в DataGrid через React state для отрисовки. */
+    readonly unstickyHeader?: boolean;
 
     /**
      * The overscroll properties are used to allow the grid to scroll past the logical end of the content by a fixed
@@ -95,6 +99,7 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
         smoothScrollX = false,
         smoothScrollY = false,
         isDraggable,
+        unstickyHeader,
     } = p;
     const { paddingRight, paddingBottom } = experimental ?? {};
 
@@ -103,6 +108,15 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
     const lastX = React.useRef<number | undefined>(undefined);
     const lastY = React.useRef<number | undefined>(undefined);
     const lastSize = React.useRef<readonly [number, number] | undefined>(undefined);
+    // === Управление состоянием unstickyHeader ===
+    // Когда unstickyHeader включён, шапка скроллится вместе с контентом, а не остаётся закреплённой.
+    // headerOffset отслеживает, сколько пикселей шапки ушло за верхний край (от 0 до totalHeaderHeight).
+    // Нужен и ref (для синхронного доступа при расчётах скролла), и state (для запуска React-ререндера,
+    // который прокидывает новое значение вниз в DataGrid → drawGrid и вызывает перерисовку canvas).
+    // lastHeaderOffsetRef используется для обнаружения реальных изменений и предотвращения лишних setState.
+    const headerOffsetRef = React.useRef(0);
+    const lastHeaderOffsetRef = React.useRef(0);
+    const [headerOffsetState, setHeaderOffsetState] = React.useState(0);
 
     const width = nonGrowWidth + Math.max(0, overscrollX ?? 0);
 
@@ -160,15 +174,35 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
             }
         }
 
+        const totalHeaderHeight = headerHeight + groupHeights;
+
+        // === unstickyHeader: разделение scroll offset на шапочную и строковую части ===
+        // args.y — сырой пиксельный offset скролла от InfiniteScroller (0 = верх контента).
+        // Когда unstickyHeader включён, диапазон скролла включает высоту шапки.
+        // headerOffset = сколько пикселей шапки ушло за верхний край (ограничено totalHeaderHeight).
+        // rowScrollY = offset скролла только по строкам данных (начинается с 0, когда шапка полностью видна).
+        //
+        // Пример при totalHeaderHeight = 100px:
+        //   args.y = 0   → headerOffset = 0,   rowScrollY = 0   (шапка полностью видна)
+        //   args.y = 50  → headerOffset = 50,  rowScrollY = 0   (шапка наполовину ускроллена)
+        //   args.y = 100 → headerOffset = 100, rowScrollY = 0   (шапка только что скрылась)
+        //   args.y = 200 → headerOffset = 100, rowScrollY = 100 (скролл по строкам данных)
+        const headerOffset = unstickyHeader === true ? Math.min(args.y, totalHeaderHeight) : 0;
+        headerOffsetRef.current = headerOffset;
+        if (unstickyHeader === true && headerOffset !== lastHeaderOffsetRef.current) {
+            setHeaderOffsetState(headerOffset);
+        }
+        const rowScrollY = unstickyHeader === true ? Math.max(0, args.y - totalHeaderHeight) : args.y;
+
         let ty = 0;
         let cellY = 0;
         let cellBottom = 0;
         if (typeof rowHeight === "number") {
             if (smoothScrollY) {
-                cellY = Math.floor(args.y / rowHeight);
-                ty = cellY * rowHeight - args.y;
+                cellY = Math.floor(rowScrollY / rowHeight);
+                ty = cellY * rowHeight - rowScrollY;
             } else {
-                cellY = Math.ceil(args.y / rowHeight);
+                cellY = Math.ceil(rowScrollY / rowHeight);
             }
             cellBottom = Math.ceil(args.height / rowHeight) + cellY;
             if (ty < 0) cellBottom++;
@@ -177,19 +211,19 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
             for (let row = 0; row < rows; row++) {
                 const rh = rowHeight(row);
                 const cy = y + (smoothScrollY ? 0 : rh / 2);
-                if (args.y >= y + rh) {
+                if (rowScrollY >= y + rh) {
                     y += rh;
                     cellY++;
                     cellBottom++;
-                } else if (args.y > cy) {
+                } else if (rowScrollY > cy) {
                     y += rh;
                     if (smoothScrollY) {
-                        ty += cy - args.y;
+                        ty += cy - rowScrollY;
                     } else {
                         cellY++;
                     }
                     cellBottom++;
-                } else if (args.y + args.height > rh / 2 + y) {
+                } else if (rowScrollY + args.height > rh / 2 + y) {
                     y += rh;
                     cellBottom++;
                 } else {
@@ -221,7 +255,8 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
             lastX.current !== tx ||
             lastY.current !== ty ||
             args.width !== lastSize.current?.[0] ||
-            args.height !== lastSize.current?.[1]
+            args.height !== lastSize.current?.[1] ||
+            lastHeaderOffsetRef.current !== headerOffset // unstickyHeader: переотправляем при изменении позиции скролла шапки
         ) {
             onVisibleRegionChanged?.(
                 {
@@ -234,14 +269,16 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
                 args.height,
                 args.paddingRight ?? 0,
                 tx,
-                ty
+                ty,
+                headerOffset
             );
             last.current = rect;
             lastX.current = tx;
             lastY.current = ty;
             lastSize.current = [args.width, args.height];
+            lastHeaderOffsetRef.current = headerOffset;
         }
-    }, [columns, rowHeight, rows, onVisibleRegionChanged, freezeColumns, smoothScrollX, smoothScrollY]);
+    }, [columns, rowHeight, rows, onVisibleRegionChanged, freezeColumns, smoothScrollX, smoothScrollY, unstickyHeader, headerHeight, groupHeights]);
 
     const onScrollUpdate = React.useCallback(
         (args: Rectangle & { paddingRight: number }) => {
@@ -345,6 +382,9 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
                 smoothScrollY={p.smoothScrollY}
                 resizeIndicator={p.resizeIndicator}
                 setScrollDir={p.setScrollDir}
+                unstickyHeader={p.unstickyHeader}
+                // headerOffset управляется React state (не ref), чтобы изменения вызывали ре-рендер и перерисовку canvas
+                headerOffset={headerOffsetState}
             />
         </InfiniteScroller>
     );

@@ -195,6 +195,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         damage,
         minimumCellWidth,
         resizeIndicator,
+        headerOffset,
     } = arg;
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
@@ -217,7 +218,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const totalGroupHeaderHeight = enableGroups ? getTotalGroupHeaderHeight(groupHeaderHeight, mappedColumns) : 0;
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
 
-    const overlayHeight = totalHeaderHeight + 1; // border
+    // === unstickyHeader: динамическое изменение размера overlay canvas ===
+    // Overlay canvas рисует шапку (групповые заголовки + заголовки колонок). Обычно его высота
+    // фиксирована: totalHeaderHeight + 1px (граница). Когда unstickyHeader включён,
+    // overlay canvas уменьшается по мере прокрутки шапки, потому что он непрозрачный
+    // (alpha: false) — если бы он оставался полноразмерным, его нижняя часть перекрывала бы
+    // основной canvas белым прямоугольником. Вместо этого мы физически уменьшаем overlay canvas
+    // и используем ctx.translate(0, -headerOffset) для сдвига отрисовки, чтобы видимая часть была на месте.
+    const visibleHeaderHeight = Math.max(0, totalHeaderHeight - headerOffset);
+    const overlayHeight = visibleHeaderHeight + (visibleHeaderHeight > 0 ? 1 : 0); // +1 for bottom border
     if (overlayCanvas.width !== width * dpr || overlayCanvas.height !== overlayHeight * dpr) {
         overlayCanvas.width = width * dpr;
         overlayCanvas.height = overlayHeight * dpr;
@@ -283,13 +292,29 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.scale(dpr, dpr);
     }
 
+    // unstickyHeader: сдвигаем контекст отрисовки overlay canvas вверх на headerOffset,
+    // чтобы содержимое шапки рисовалось в правильной позиции внутри уменьшенного canvas.
+    // Например, при headerOffset=50 и totalHeaderHeight=100 overlay canvas имеет высоту 51px,
+    // и мы сдвигаем на -50, чтобы были видны только нижние 50px шапки.
+    if (headerOffset > 0) {
+        overlayCtx.translate(0, -headerOffset);
+    }
+
     const effectiveCols = getEffectiveColumns(mappedColumns, cellXOffset, width, dragAndDropState, translateX);
 
     let drawRegions: Rectangle[] = [];
 
-    const mustDrawFocusOnHeader = drawFocus && selection.current?.cell[1] === cellYOffset && translateY === 0;
+    // === unstickyHeader: ключевые производные значения для отрисовки ячеек ===
+    // effectiveTotalHeaderHeight: видимая высота шапки с точки зрения canvas.
+    // На основном canvas ячейки обычно начинают рисоваться с y = totalHeaderHeight. Когда шапка
+    // уходит, ячейки должны сдвинуться вверх, заполняя освободившееся место — поэтому используем
+    // effectiveTotalHeaderHeight (уменьшается по мере роста headerOffset) как начальный Y для всех функций отрисовки ячеек.
+    // headerFullyScrolled: флаг-предохранитель — когда true, пропускаем всю отрисовку шапки (она за экраном).
+    const effectiveTotalHeaderHeight = totalHeaderHeight - headerOffset;
+    const headerFullyScrolled = headerOffset >= totalHeaderHeight;
+    const mustDrawFocusOnHeader = !headerFullyScrolled && drawFocus && selection.current?.cell[1] === cellYOffset && translateY === 0;
     let mustDrawHighlightRingsOnHeader = false;
-    if (highlightRegions !== undefined) {
+    if (!headerFullyScrolled && highlightRegions !== undefined) {
         for (const r of highlightRegions) {
             if (r.style !== "no-outline" && r.range.y === cellYOffset && translateY === 0) {
                 mustDrawHighlightRingsOnHeader = true;
@@ -298,6 +323,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         }
     }
     const drawHeaderTexture = () => {
+        if (headerFullyScrolled) return;
         drawGridHeaders(
             overlayCtx,
             effectiveCols,
@@ -342,9 +368,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             true
         );
 
+        // Рисуем нижнюю границу шапки. Используем totalHeaderHeight (не overlayHeight), потому что
+        // контекст overlay сдвинут на -headerOffset, и totalHeaderHeight соответствует
+        // правильной визуальной позиции — нижнему краю видимой области шапки.
         overlayCtx.beginPath();
-        overlayCtx.moveTo(0, overlayHeight - 0.5);
-        overlayCtx.lineTo(width, overlayHeight - 0.5);
+        overlayCtx.moveTo(0, totalHeaderHeight + 0.5);
+        overlayCtx.lineTo(width, totalHeaderHeight + 0.5);
         overlayCtx.strokeStyle = blend(
             theme.headerBottomBorderColor ?? theme.horizontalBorderColor ?? theme.borderColor,
             theme.bgHeader
@@ -441,7 +470,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 effectiveCols,
                 mappedColumns,
                 height,
-                totalHeaderHeight,
+                effectiveTotalHeaderHeight,
                 translateX,
                 translateY,
                 cellYOffset,
@@ -493,7 +522,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     effectiveCols,
                     mappedColumns,
                     theme,
-                    totalHeaderHeight,
+                    effectiveTotalHeaderHeight,
                     selection,
                     getRowHeight,
                     getCellContent,
@@ -564,7 +593,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             width,
             height,
             rows,
-            totalHeaderHeight,
+            effectiveTotalHeaderHeight,
             dpr,
             mappedColumns,
             effectiveCols,
@@ -583,7 +612,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             translateY,
             width,
             height,
-            totalHeaderHeight,
+            effectiveTotalHeaderHeight,
             effectiveCols,
             resizedCol
         );
@@ -632,7 +661,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
               effectiveCols,
               mappedColumns,
               theme,
-              totalHeaderHeight,
+              effectiveTotalHeaderHeight,
               selection,
               getRowHeight,
               getCellContent,
@@ -661,7 +690,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         effectiveCols,
         mappedColumns,
         height,
-        totalHeaderHeight,
+        effectiveTotalHeaderHeight,
         translateX,
         translateY,
         cellYOffset,
@@ -700,7 +729,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         mappedColumns,
         width,
         height,
-        totalHeaderHeight,
+        effectiveTotalHeaderHeight,
         translateX,
         translateY,
         cellYOffset,
@@ -725,7 +754,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         width,
         height,
         drawRegions,
-        totalHeaderHeight,
+        effectiveTotalHeaderHeight,
         getRowHeight,
         getRowThemeOverride,
         verticalBorder,
@@ -745,7 +774,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         drawRegions,
         spans,
         groupHeaderHeight,
-        totalHeaderHeight,
+        effectiveTotalHeaderHeight,
         getRowHeight,
         getRowThemeOverride,
         verticalBorder,
@@ -758,7 +787,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     focusRedraw?.();
 
     if (isResizing && resizeIndicator !== "none") {
-        walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+        walkColumns(effectiveCols, 0, translateX, 0, effectiveTotalHeaderHeight, (c, x) => {
             if (c.sourceIndex === resizeCol) {
                 drawColumnResizeOutline(
                     overlayCtx,
@@ -771,7 +800,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     drawColumnResizeOutline(
                         targetCtx,
                         x + c.width,
-                        totalHeaderHeight,
+                        effectiveTotalHeaderHeight,
                         height,
                         blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
                     );
@@ -791,7 +820,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const lastRowDrawn = getLastRow(
         effectiveCols,
         height,
-        totalHeaderHeight,
+        effectiveTotalHeaderHeight,
         translateX,
         translateY,
         cellYOffset,

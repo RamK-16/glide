@@ -311,6 +311,15 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      */
     readonly groupHeaderHeight?: number | number[];
 
+    /** Когда true, шапка (заголовки колонок и групповые заголовки) скроллится вместе с контентом грида,
+     * а не остаётся закреплённой вверху. Реализация работает через динамическое изменение размера
+     * overlay canvas шапки и корректировку позиций отрисовки ячеек на основном canvas при скролле.
+     *
+     * @defaultValue false
+     * @group Style
+     */
+    readonly unstickyHeader?: boolean;
+
     /**
      * The number of rows in the grid.
      * @group Data
@@ -905,6 +914,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         scrollToActiveCell = true,
         drawFocusRing: drawFocusRingIn = true,
         portalElementRef,
+        unstickyHeader = false,
     } = p;
 
     const drawFocusRing = drawFocusRingIn === "no-editor" ? overlay === undefined : drawFocusRingIn;
@@ -2659,6 +2669,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     );
 
     const currentCell = gridSelection?.current?.cell;
+
     const onVisibleRegionChangedImpl = React.useCallback(
         (
             region: Rectangle,
@@ -2666,7 +2677,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             clientHeight: number,
             rightElWidth: number,
             tx: number,
-            ty: number
+            ty: number,
+            _headerOffset: number
         ) => {
             hasJustScrolled.current = false;
             let selected = currentCell;
@@ -4391,6 +4403,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     getCellRenderer={getCellRenderer}
                     resizeIndicator={resizeIndicator}
                     setScrollDir={setScrollDir}
+                    unstickyHeader={unstickyHeader}
                 />
                 {renameGroupNode}
                 {overlay !== undefined && (

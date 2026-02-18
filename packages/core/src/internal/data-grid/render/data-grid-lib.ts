@@ -814,7 +814,10 @@ export function computeBounds(
     freezeColumns: number,
     freezeTrailingRows: number,
     mappedColumns: readonly MappedGridColumn[],
-    rowHeight: number | ((index: number) => number)
+    rowHeight: number | ((index: number) => number),
+    /** unstickyHeader: пиксели шапки, ушедшие за верхний край. Сдвигает bounds строк шапки вверх,
+     * чтобы getBounds() возвращал корректные экранные координаты для частично видимой шапки. */
+    headerOffset: number = 0
 ): Rectangle {
     const result: Rectangle = {
         x: 0,
@@ -847,7 +850,9 @@ export function computeBounds(
     result.width = mappedColumns[col].width + 1;
 
     if (row === -1) {
-        result.y = groupHeights;
+        // Строка заголовков колонок: позиция сдвинута на -headerOffset, чтобы при частичном
+        // скролле шапки getBounds возвращал корректную Y-координату на экране.
+        result.y = groupHeights - headerOffset;
         result.height = headerHeight;
     } else if (row <= -2) {
         // Multi-level group headers: -2 is top level, -3 is second level, etc.
@@ -858,7 +863,8 @@ export function computeBounds(
             yOffset += heights[i] ?? heights[0] ?? 0;
         }
         const levelHeight = heights[level] ?? heights[0] ?? 0;
-        result.y = yOffset;
+        // Та же коррекция headerOffset, что и для заголовков колонок — групповые заголовки скроллятся с контентом.
+        result.y = yOffset - headerOffset;
         result.height = levelHeight;
 
         let start = col;
