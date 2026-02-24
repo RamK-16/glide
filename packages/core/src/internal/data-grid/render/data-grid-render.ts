@@ -382,7 +382,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
         overlayCtx.stroke();
 
+        // unstickyHeader: overlay ctx уже имеет translate(0, -headerOffset) для отрисовки шапки.
+        // computeBounds тоже вычитает headerOffset из Y-координат. При рисовании rings/fillHandle
+        // на overlay получается двойное вычитание → ghost ring в неправильной позиции.
+        // Компенсируем: временно отменяем translate перед отрисовкой rings.
         if (mustDrawHighlightRingsOnHeader) {
+            if (headerOffset > 0) overlayCtx.save();
+            if (headerOffset > 0) overlayCtx.translate(0, headerOffset);
             drawHighlightRings(
                 overlayCtx,
                 width,
@@ -402,9 +408,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 theme,
                 headerOffset
             );
+            if (headerOffset > 0) overlayCtx.restore();
         }
 
         if (mustDrawFocusOnHeader) {
+            if (headerOffset > 0) overlayCtx.save();
+            if (headerOffset > 0) overlayCtx.translate(0, headerOffset);
             drawFillHandle(
                 overlayCtx,
                 width,
@@ -425,6 +434,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 rows,
                 headerOffset
             );
+            if (headerOffset > 0) overlayCtx.restore();
         }
     };
 

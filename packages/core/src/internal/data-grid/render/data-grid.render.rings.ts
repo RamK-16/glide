@@ -116,18 +116,6 @@ export function drawHighlightRings(
     const drawCb = () => {
         ctx.lineWidth = 1;
 
-        // unstickyHeader: не даём обводке залезать выше видимой шапки.
-        // При обычном sticky header overlay canvas полноразмерный и скрывает выступающие кольца.
-        // При unstickyHeader overlay canvas уменьшен — нужен явный clip.
-        const needsHeaderClip = headerOffset > 0;
-        if (needsHeaderClip) {
-            ctx.save();
-            ctx.beginPath();
-            const effectiveHeaderHeight = headerHeight + getTotalGroupHeaderHeight(groupHeaderHeight) - headerOffset;
-            ctx.rect(0, effectiveHeaderHeight, width, height - effectiveHeaderHeight);
-            ctx.clip();
-        }
-
         let dashed = false;
 
         for (const dr of drawRects) {
@@ -167,10 +155,6 @@ export function drawHighlightRings(
 
         if (dashed) {
             ctx.setLineDash([]);
-        }
-
-        if (needsHeaderClip) {
-            ctx.restore();
         }
     };
 
