@@ -227,9 +227,11 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // и используем ctx.translate(0, -headerOffset) для сдвига отрисовки, чтобы видимая часть была на месте.
     const visibleHeaderHeight = Math.max(0, totalHeaderHeight - headerOffset);
     const overlayHeight = visibleHeaderHeight + (visibleHeaderHeight > 0 ? 1 : 0); // +1 for bottom border
-    if (overlayCanvas.width !== width * dpr || overlayCanvas.height !== overlayHeight * dpr) {
-        overlayCanvas.width = width * dpr;
-        overlayCanvas.height = overlayHeight * dpr;
+    const overlayWidthPx = Math.round(width * dpr);
+    const overlayHeightPx = Math.round(overlayHeight * dpr);
+    if (overlayCanvas.width !== overlayWidthPx || overlayCanvas.height !== overlayHeightPx) {
+        overlayCanvas.width = overlayWidthPx;
+        overlayCanvas.height = overlayHeightPx;
 
         overlayCanvas.style.width = width + "px";
         overlayCanvas.style.height = overlayHeight + "px";

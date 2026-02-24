@@ -187,7 +187,7 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
         //   args.y = 50  → headerOffset = 50,  rowScrollY = 0   (шапка наполовину ускроллена)
         //   args.y = 100 → headerOffset = 100, rowScrollY = 0   (шапка только что скрылась)
         //   args.y = 200 → headerOffset = 100, rowScrollY = 100 (скролл по строкам данных)
-        const headerOffset = unstickyHeader === true ? Math.min(args.y, totalHeaderHeight) : 0;
+        const headerOffset = unstickyHeader === true ? Math.floor(Math.min(args.y, totalHeaderHeight)) : 0;
         headerOffsetRef.current = headerOffset;
         if (unstickyHeader === true && headerOffset !== lastHeaderOffsetRef.current) {
             setHeaderOffsetState(headerOffset);
