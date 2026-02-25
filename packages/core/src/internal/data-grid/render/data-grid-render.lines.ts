@@ -324,7 +324,7 @@ export function drawGridLines(
         if (tx >= minX && tx <= maxX && verticalBorder(index + 1)) {
             toDraw.push({
                 x1: tx,
-                y1: Math.max(getTotalGroupHeaderHeight(groupHeaderHeight), minY),
+                y1: Math.max(Math.min(getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols), totalHeaderHeight), minY),
                 x2: tx,
                 y2: Math.min(height, maxY),
                 color: vColor,
