@@ -20,6 +20,7 @@ import {
     roundedPoly,
     type MappedGridColumn,
 } from "./data-grid-lib.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
@@ -216,7 +217,7 @@ export function drawGroups(
         ctx.moveTo(0, currentY + 0.5);
         ctx.lineTo(width, currentY + 0.5);
         ctx.strokeStyle = theme.borderColor;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = getHairlineWidth();
         ctx.stroke();
     }
 }
@@ -325,7 +326,7 @@ function drawGroupHeaderInner(
         ctx.moveTo(x + 0.5, y + preventOverlaysOffset);
         ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = getHairlineWidth();
         ctx.stroke();
     }
 }
@@ -456,7 +457,7 @@ function drawGroupLevel(
                 ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
                 ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
                 ctx.strokeStyle = theme.borderColor;
-                ctx.lineWidth = 1;
+                ctx.lineWidth = getHairlineWidth();
                 ctx.stroke();
             }
         } else {
@@ -490,7 +491,7 @@ function drawGroupLevel(
     ctx.moveTo(finalX + 0.5, yOffset);
     ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
     ctx.strokeStyle = theme.borderColor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = getHairlineWidth();
     ctx.stroke();
 
     // Horizontal border at the bottom of the last level (level 0 is the bottommost)

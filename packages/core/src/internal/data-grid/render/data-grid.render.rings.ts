@@ -13,6 +13,7 @@ import { blend, withAlpha } from "../color-parser.js";
 import { hugRectToTarget, intersectRect, rectContains, splitRectIntoRegions } from "../../../common/math.js";
 import { getSpanBounds, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type Highlight } from "./data-grid-render.cells.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function drawHighlightRings(
     ctx: CanvasRenderingContext2D,
@@ -111,7 +112,9 @@ export function drawHighlightRings(
     });
 
     const drawCb = () => {
-        ctx.lineWidth = 1;
+        const previousLineWidth = ctx.lineWidth;
+
+        ctx.lineWidth = getHairlineWidth();
 
         let dashed = false;
 
@@ -153,6 +156,8 @@ export function drawHighlightRings(
         if (dashed) {
             ctx.setLineDash([]);
         }
+
+        ctx.lineWidth = previousLineWidth;
     };
 
     drawCb();

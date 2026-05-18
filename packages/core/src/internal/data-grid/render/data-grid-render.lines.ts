@@ -9,6 +9,7 @@ import { blendCache } from "../color-parser.js";
 import { intersectRect } from "../../../common/math.js";
 import { getSkipPoint, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type GetRowThemeCallback } from "./data-grid-render.cells.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function drawBlanks(
     ctx: CanvasRenderingContext2D,
@@ -124,6 +125,9 @@ export function overdrawStickyBoundaries(
     const hColor = theme.horizontalBorderColor ?? theme.borderColor;
     const vColor = theme.borderColor;
     const drawX = drawFreezeBorder ? getStickyWidth(effectiveCols) : 0;
+    const previousLineWidth = ctx.lineWidth;
+
+    ctx.lineWidth = getHairlineWidth();
 
     let vStroke: string | undefined;
     if (drawX !== 0) {
@@ -144,6 +148,8 @@ export function overdrawStickyBoundaries(
         ctx.strokeStyle = hStroke;
         ctx.stroke();
     }
+
+    ctx.lineWidth = previousLineWidth;
 }
 
 const getMinMaxXY = (drawRegions: Rectangle[] | undefined, width: number, height: number) => {
@@ -296,6 +302,10 @@ export function drawGridLines(
     theme: FullTheme,
     verticalOnly: boolean = false
 ) {
+    const previousLineWidth = ctx.lineWidth;
+
+    ctx.lineWidth = getHairlineWidth();
+
     if (spans !== undefined) {
         ctx.beginPath();
         ctx.save();
@@ -376,4 +386,6 @@ export function drawGridLines(
     if (spans !== undefined) {
         ctx.restore();
     }
+
+    ctx.lineWidth = previousLineWidth;
 }

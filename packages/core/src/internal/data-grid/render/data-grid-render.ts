@@ -2,8 +2,9 @@
 /* eslint-disable unicorn/no-for-loop */
 import { type Rectangle } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
-import { getEffectiveColumns, type MappedGridColumn, rectBottomRight } from "./data-grid-lib.js";
+import { getEffectiveColumns, type MappedGridColumn, rectBottomRight, computeBounds } from "./data-grid-lib.js";
 import { blend } from "../color-parser.js";
+import { intersectRect } from "../../../common/math.js";
 import { assert } from "../../../common/support.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
 import {
@@ -18,6 +19,7 @@ import { drawGridHeaders } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 // Future optimization opportunities
 // - Create a cache of a buffer used to render the full view of a partially displayed column so that when
@@ -137,6 +139,60 @@ function getLastRow(
             return true;
         }
     );
+    return result;
+}
+
+function getDamageDrawRegions(
+    damage: CellSet,
+    width: number,
+    height: number,
+    cellXOffset: number,
+    cellYOffset: number,
+    translateX: number,
+    translateY: number,
+    mappedColumns: readonly MappedGridColumn[],
+    freezeColumns: number,
+    groupHeaderHeight: number | number[],
+    totalHeaderHeight: number,
+    rowHeight: number | ((index: number) => number),
+    freezeTrailingRows: number,
+    rows: number
+): Rectangle[] {
+    const result: Rectangle[] = [];
+    const bodyHeight = height - totalHeaderHeight;
+
+    if (bodyHeight <= 0) return result;
+
+    for (const cell of damage.values()) {
+        if (cell[1] < 0) continue;
+
+        const rect = computeBounds(
+            cell[0],
+            cell[1],
+            width,
+            height,
+            groupHeaderHeight,
+            totalHeaderHeight,
+            cellXOffset,
+            cellYOffset,
+            translateX,
+            translateY,
+            rows,
+            freezeColumns,
+            freezeTrailingRows,
+            mappedColumns,
+            rowHeight
+        );
+
+        if (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            intersectRect(0, totalHeaderHeight, width, bodyHeight, rect.x, rect.y, rect.width, rect.height)
+        ) {
+            result.push(rect);
+        }
+    }
+
     return result;
 }
 
@@ -343,6 +399,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
 
         overlayCtx.beginPath();
+        overlayCtx.lineWidth = getHairlineWidth();
         overlayCtx.moveTo(0, overlayHeight - 0.5);
         overlayCtx.lineTo(width, overlayHeight - 0.5);
         overlayCtx.strokeStyle = blend(
@@ -435,77 +492,135 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             },
         ]);
 
-        const doDamage = (ctx: CanvasRenderingContext2D) => {
-            drawCells(
-                ctx,
-                effectiveCols,
-                mappedColumns,
+        if (damageInView) {
+            const damageDrawRegions = getDamageDrawRegions(
+                damage,
+                width,
                 height,
-                totalHeaderHeight,
+                cellXOffset,
+                cellYOffset,
                 translateX,
                 translateY,
-                cellYOffset,
-                rows,
-                getRowHeight,
-                getCellContent,
-                getGroupDetails,
-                getRowThemeOverride,
-                disabledRows,
-                isFocused,
-                drawFocus,
+                mappedColumns,
+                freezeColumns,
+                groupHeaderHeight,
+                totalHeaderHeight,
+                rowHeight,
                 freezeTrailingRows,
-                hasAppendRow,
-                drawRegions,
-                damage,
-                selection,
-                prelightCells,
-                highlightRegions,
-                imageLoader,
-                spriteManager,
-                hoverValues,
-                hoverInfo,
-                drawCellCallback,
-                hyperWrapping,
-                theme,
-                enqueue,
-                renderStateProvider,
-                getCellRenderer,
-                overrideCursor,
-                minimumCellWidth
+                rows
             );
 
-            const selectionCurrent = selection.current;
+            const doDamage = (ctx: CanvasRenderingContext2D) => {
+                const spans = drawCells(
+                    ctx,
+                    effectiveCols,
+                    mappedColumns,
+                    height,
+                    totalHeaderHeight,
+                    translateX,
+                    translateY,
+                    cellYOffset,
+                    rows,
+                    getRowHeight,
+                    getCellContent,
+                    getGroupDetails,
+                    getRowThemeOverride,
+                    disabledRows,
+                    isFocused,
+                    drawFocus,
+                    freezeTrailingRows,
+                    hasAppendRow,
+                    drawRegions,
+                    damage,
+                    selection,
+                    prelightCells,
+                    highlightRegions,
+                    imageLoader,
+                    spriteManager,
+                    hoverValues,
+                    hoverInfo,
+                    drawCellCallback,
+                    hyperWrapping,
+                    theme,
+                    enqueue,
+                    renderStateProvider,
+                    getCellRenderer,
+                    overrideCursor,
+                    minimumCellWidth
+                );
 
-            if (
-                fillHandle !== false &&
-                fillHandle !== undefined &&
-                drawFocus &&
-                selectionCurrent !== undefined &&
-                damage.has(rectBottomRight(selectionCurrent.range))
-            ) {
-                drawFillHandle(
+                if (damageDrawRegions.length > 0) {
+                    drawGridLines(
+                        ctx,
+                        effectiveCols,
+                        cellYOffset,
+                        translateX,
+                        translateY,
+                        width,
+                        height,
+                        damageDrawRegions,
+                        spans,
+                        groupHeaderHeight,
+                        totalHeaderHeight,
+                        getRowHeight,
+                        getRowThemeOverride,
+                        verticalBorder,
+                        freezeTrailingRows,
+                        rows,
+                        theme
+                    );
+                }
+
+                drawHighlightRings(
                     ctx,
                     width,
                     height,
+                    cellXOffset,
                     cellYOffset,
                     translateX,
                     translateY,
-                    effectiveCols,
                     mappedColumns,
-                    theme,
-                    totalHeaderHeight,
-                    selection,
-                    getRowHeight,
-                    getCellContent,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
                     freezeTrailingRows,
-                    hasAppendRow,
-                    fillHandle,
-                    rows
+                    rows,
+                    highlightRegions,
+                    theme
                 );
-            }
-        };
 
-        if (damageInView) {
+                const selectionCurrent = selection.current;
+
+                if (
+                    fillHandle !== false &&
+                    fillHandle !== undefined &&
+                    drawFocus &&
+                    selectionCurrent !== undefined &&
+                    damage.has(rectBottomRight(selectionCurrent.range))
+                ) {
+                    drawFillHandle(
+                        ctx,
+                        width,
+                        height,
+                        cellYOffset,
+                        translateX,
+                        translateY,
+                        effectiveCols,
+                        mappedColumns,
+                        theme,
+                        totalHeaderHeight,
+                        selection,
+                        getRowHeight,
+                        getCellContent,
+                        freezeTrailingRows,
+                        hasAppendRow,
+                        fillHandle,
+                        rows
+                    );
+                }
+            };
+
             doDamage(targetCtx);
             if (mainCtx !== null) {
                 mainCtx.save();
