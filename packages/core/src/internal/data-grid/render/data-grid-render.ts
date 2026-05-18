@@ -142,6 +142,8 @@ function getLastRow(
     return result;
 }
 
+// Damage redraw перерисовывает только отдельные ячейки. Собираем их видимые bounds,
+// чтобы восстановить grid lines вокруг затронутой области, а не проходить весь canvas.
 function getDamageDrawRegions(
     damage: CellSet,
     width: number,
@@ -550,6 +552,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 );
 
                 if (damageDrawRegions.length > 0) {
+                    // drawCells заливает фон ячеек и может перекрыть старые линии.
+                    // Поэтому после damage redraw возвращаем grid lines, а highlight/fill handle рисуем выше.
                     drawGridLines(
                         ctx,
                         effectiveCols,
