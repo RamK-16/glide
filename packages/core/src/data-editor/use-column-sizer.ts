@@ -14,6 +14,13 @@ import {
 } from "../internal/data-grid/data-grid-types.js";
 const defaultSize = 150;
 
+function clampSizedColumn(c: SizedGridColumn): SizedGridColumn {
+    let w = c.width;
+    if (c.minWidth !== undefined && w < c.minWidth) w = c.minWidth;
+    if (c.maxWidth !== undefined && w > c.maxWidth) w = c.maxWidth;
+    return w === c.width ? c : { ...c, width: w };
+}
+
 function measureCell(
     ctx: CanvasRenderingContext2D,
     cell: GridCell,
@@ -169,12 +176,15 @@ export function useColumnSizer(
     return React.useMemo(() => {
         const getRaw = () => {
             if (columns.every(isSizedGridColumn)) {
-                return columns;
+                // Сохраняем ссылочное равенство, если clamp ничего не изменил
+                const clamped = columns.map(clampSizedColumn);
+                const changed = clamped.some((c, i) => c !== columns[i]);
+                return changed ? clamped : columns;
             }
 
             if (ctx === null) {
                 return columns.map(c => {
-                    if (isSizedGridColumn(c)) return c;
+                    if (isSizedGridColumn(c)) return clampSizedColumn(c);
 
                     return {
                         ...c,
@@ -186,7 +196,7 @@ export function useColumnSizer(
             ctx.font = themeRef.current.baseFontFull;
 
             return columns.map((c, colIndex) => {
-                if (isSizedGridColumn(c)) return c;
+                if (isSizedGridColumn(c)) return clampSizedColumn(c);
 
                 if (memoMap.current[c.id] !== undefined) {
                     return {

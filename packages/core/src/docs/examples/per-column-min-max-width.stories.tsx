@@ -36,20 +36,19 @@ export default {
 
 const initialColumns: GridColumn[] = [
     {
-        title: "Фиксированная 200px",
-        width: 200,
+        title: "Clamp: width 50 → min 200",
+        width: 50,
         minWidth: 200,
-        maxWidth: 200,
+    },
+    {
+        title: "Clamp: width 500 → max 250",
+        width: 500,
+        maxWidth: 250,
     },
     {
         title: "Мин 150px",
         width: 180,
         minWidth: 150,
-    },
-    {
-        title: "Макс 250px",
-        width: 200,
-        maxWidth: 250,
     },
     {
         title: "Мин 100 / Макс 300",
