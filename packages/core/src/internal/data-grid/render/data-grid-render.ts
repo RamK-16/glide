@@ -401,6 +401,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
 
         overlayCtx.beginPath();
+        // Нижняя линия header рисуется отдельно от body grid, поэтому задаем толщину явно.
         overlayCtx.lineWidth = getHairlineWidth();
         overlayCtx.moveTo(0, overlayHeight - 0.5);
         overlayCtx.lineTo(width, overlayHeight - 0.5);
@@ -495,6 +496,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         ]);
 
         if (damageInView) {
+            // Если damage попал в viewport, считаем только видимые области для дорисовки линий.
             const damageDrawRegions = getDamageDrawRegions(
                 damage,
                 width,
@@ -513,6 +515,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             );
 
             const doDamage = (ctx: CanvasRenderingContext2D) => {
+                // Сохраняем spans, чтобы при возврате сетки не провести линии поверх объединенных ячеек.
                 const spans = drawCells(
                     ctx,
                     effectiveCols,
@@ -575,6 +578,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     );
                 }
 
+                // Рамки выделения возвращаем после сетки, чтобы активная ячейка оставалась сверху.
                 drawHighlightRings(
                     ctx,
                     width,
@@ -603,6 +607,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     selectionCurrent !== undefined &&
                     damage.has(rectBottomRight(selectionCurrent.range))
                 ) {
+                    // Fill handle рисуем последним: это маленький маркер автозаполнения в углу выделения.
                     drawFillHandle(
                         ctx,
                         width,

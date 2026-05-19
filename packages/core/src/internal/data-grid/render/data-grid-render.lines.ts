@@ -125,6 +125,7 @@ export function overdrawStickyBoundaries(
     const hColor = theme.horizontalBorderColor ?? theme.borderColor;
     const vColor = theme.borderColor;
     const drawX = drawFreezeBorder ? getStickyWidth(effectiveCols) : 0;
+    // Sticky/frozen границы рисуются отдельным проходом, поэтому им тоже нужна low-DPR толщина.
     const previousLineWidth = ctx.lineWidth;
 
     ctx.lineWidth = getHairlineWidth();
@@ -302,6 +303,7 @@ export function drawGridLines(
     theme: FullTheme,
     verticalOnly: boolean = false
 ) {
+    // Основная сетка body-ячеек: временно меняем толщину линии и возвращаем прежнюю.
     const previousLineWidth = ctx.lineWidth;
 
     ctx.lineWidth = getHairlineWidth();

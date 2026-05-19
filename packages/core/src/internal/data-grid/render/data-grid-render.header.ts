@@ -217,6 +217,7 @@ export function drawGroups(
         ctx.moveTo(0, currentY + 0.5);
         ctx.lineTo(width, currentY + 0.5);
         ctx.strokeStyle = theme.borderColor;
+        // Граница между уровнями group header тоже может пропадать при zoom 75%/50%.
         ctx.lineWidth = getHairlineWidth();
         ctx.stroke();
     }
@@ -326,6 +327,7 @@ function drawGroupHeaderInner(
         ctx.moveTo(x + 0.5, y + preventOverlaysOffset);
         ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
+        // Вертикальный разделитель групп рисуем той же устойчивой толщиной, что и body grid.
         ctx.lineWidth = getHairlineWidth();
         ctx.stroke();
     }
@@ -457,6 +459,7 @@ function drawGroupLevel(
                 ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
                 ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
                 ctx.strokeStyle = theme.borderColor;
+                // Fallback-граница нужна, если custom group header не вызвал дефолтную отрисовку.
                 ctx.lineWidth = getHairlineWidth();
                 ctx.stroke();
             }
@@ -491,6 +494,7 @@ function drawGroupLevel(
     ctx.moveTo(finalX + 0.5, yOffset);
     ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
     ctx.strokeStyle = theme.borderColor;
+    // Правая граница последней группы также была hairline и могла исчезать при low DPR.
     ctx.lineWidth = getHairlineWidth();
     ctx.stroke();
 

@@ -112,6 +112,7 @@ export function drawHighlightRings(
     });
 
     const drawCb = () => {
+        // Рамка активной ячейки/диапазона должна быть видима при том же low-DPR zoom, что и grid lines.
         const previousLineWidth = ctx.lineWidth;
 
         ctx.lineWidth = getHairlineWidth();

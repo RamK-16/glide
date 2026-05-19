@@ -13,6 +13,7 @@ describe("getHairlineWidth", () => {
         setDevicePixelRatio(1);
     });
 
+    // Фиксируем математику: при low DPR линия утолщается, при обычном/ретина DPR остается 1px.
     it.each([
         [0.5, 2],
         [0.75, 4 / 3],
