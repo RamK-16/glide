@@ -2,7 +2,7 @@
 /* eslint-disable unicorn/no-for-loop */
 import { type Rectangle } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
-import { getEffectiveColumns, type MappedGridColumn, rectBottomRight, computeBounds } from "./data-grid-lib.js";
+import { getEffectiveColumns, type MappedGridColumn, computeBounds } from "./data-grid-lib.js";
 import { blend } from "../color-parser.js";
 import { intersectRect } from "../../../common/math.js";
 import { assert } from "../../../common/support.js";
@@ -513,6 +513,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 freezeTrailingRows,
                 rows
             );
+            const shouldRedrawBody = damageDrawRegions.length > 0;
 
             const doDamage = (ctx: CanvasRenderingContext2D) => {
                 // Сохраняем spans, чтобы при возврате сетки не провести линии поверх объединенных ячеек.
@@ -576,27 +577,40 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                         rows,
                         theme
                     );
-                }
 
-                // Рамки выделения возвращаем после сетки, чтобы активная ячейка оставалась сверху.
-                drawHighlightRings(
-                    ctx,
-                    width,
-                    height,
-                    cellXOffset,
-                    cellYOffset,
-                    translateX,
-                    translateY,
-                    mappedColumns,
-                    freezeColumns,
-                    headerHeight,
-                    groupHeaderHeight,
-                    rowHeight,
-                    freezeTrailingRows,
-                    rows,
-                    highlightRegions,
-                    theme
-                );
+                    // Sticky/frozen границы тоже могли быть перекрыты поврежденными ячейками.
+                    overdrawStickyBoundaries(
+                        ctx,
+                        effectiveCols,
+                        width,
+                        height,
+                        freezeTrailingRows,
+                        rows,
+                        verticalBorder,
+                        getRowHeight,
+                        theme
+                    );
+
+                    // Рамки выделения возвращаем после сетки, чтобы активная ячейка оставалась сверху.
+                    drawHighlightRings(
+                        ctx,
+                        width,
+                        height,
+                        cellXOffset,
+                        cellYOffset,
+                        translateX,
+                        translateY,
+                        mappedColumns,
+                        freezeColumns,
+                        headerHeight,
+                        groupHeaderHeight,
+                        rowHeight,
+                        freezeTrailingRows,
+                        rows,
+                        highlightRegions,
+                        theme
+                    );
+                }
 
                 const selectionCurrent = selection.current;
 
@@ -604,8 +618,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     fillHandle !== false &&
                     fillHandle !== undefined &&
                     drawFocus &&
-                    selectionCurrent !== undefined &&
-                    damage.has(rectBottomRight(selectionCurrent.range))
+                    selectionCurrent !== undefined
                 ) {
                     // Fill handle рисуем последним: это маленький маркер автозаполнения в углу выделения.
                     drawFillHandle(
@@ -630,8 +643,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 }
             };
 
-            doDamage(targetCtx);
-            if (mainCtx !== null) {
+            if (shouldRedrawBody) {
+                doDamage(targetCtx);
+            }
+            if (shouldRedrawBody && mainCtx !== null) {
                 mainCtx.save();
                 mainCtx.scale(dpr, dpr);
                 mainCtx.textBaseline = "middle";
