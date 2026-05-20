@@ -75,6 +75,7 @@ export interface DrawGridArg {
     readonly hoverInfo: HoverInfo | undefined;
     readonly spriteManager: SpriteManager;
     readonly maxScaleFactor: number;
+    readonly enableLowDprHairlineFix: boolean;
     readonly touchMode: boolean;
     readonly renderStrategy: "single-buffer" | "double-buffer" | "direct";
     readonly enqueue: EnqueueCallback;

@@ -20,6 +20,7 @@ import {
     roundedPoly,
     type MappedGridColumn,
 } from "./data-grid-lib.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
@@ -45,7 +46,8 @@ export function drawGridHeaders(
     damage: CellSet | undefined,
     drawHeaderCallback: DrawHeaderCallback | undefined,
     drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined,
-    touchMode: boolean
+    touchMode: boolean,
+    enableLowDprHairlineFix: boolean
 ) {
     const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
@@ -157,7 +159,8 @@ export function drawGridHeaders(
             getGroupDetails,
             damage,
             selection,
-            drawGroupHeaderCallback
+            drawGroupHeaderCallback,
+            enableLowDprHairlineFix
         );
     }
 }
@@ -175,8 +178,9 @@ export function drawGroups(
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
-    selection?: GridSelection,
-    drawGroupHeaderCallback?: DrawGroupHeaderCallback
+    selection: GridSelection | undefined,
+    drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined,
+    enableLowDprHairlineFix: boolean
 ) {
     const levels = getGroupLevels(effectiveCols);
     if (levels === 0) return;
@@ -207,7 +211,8 @@ export function drawGroups(
             damage,
             levels,
             selection,
-            drawGroupHeaderCallback
+            drawGroupHeaderCallback,
+            enableLowDprHairlineFix
         );
         currentY += levelHeight;
 
@@ -216,8 +221,10 @@ export function drawGroups(
         ctx.moveTo(0, currentY + 0.5);
         ctx.lineTo(width, currentY + 0.5);
         ctx.strokeStyle = theme.borderColor;
-        ctx.lineWidth = 1;
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
         ctx.stroke();
+        ctx.lineWidth = previousLineWidth;
     }
 }
 
@@ -238,7 +245,8 @@ function drawGroupHeaderInner(
     group: GroupDetails,
     spriteManager: SpriteManager,
     hovered: HoverInfo | undefined,
-    verticalBorder: (col: number) => boolean
+    verticalBorder: (col: number) => boolean,
+    enableLowDprHairlineFix: boolean
 ) {
     const xPad = 8;
     const fillColor = isSelected
@@ -325,8 +333,10 @@ function drawGroupHeaderInner(
         ctx.moveTo(x + 0.5, y + preventOverlaysOffset);
         ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
-        ctx.lineWidth = 1;
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
         ctx.stroke();
+        ctx.lineWidth = previousLineWidth;
     }
 }
 
@@ -347,7 +357,8 @@ function drawGroupLevel(
     damage: CellSet | undefined,
     levels: number,
     selection?: GridSelection,
-    drawGroupHeaderCallback?: DrawGroupHeaderCallback
+    drawGroupHeaderCallback?: DrawGroupHeaderCallback,
+    enableLowDprHairlineFix: boolean = false
 ) {
     const [hCol, hRow] = hovered?.[0] ?? [];
     const hPosX = hovered?.[1]?.[0];
@@ -444,7 +455,8 @@ function drawGroupLevel(
                         group,
                         spriteManager,
                         hovered,
-                        verticalBorder
+                        verticalBorder,
+                        enableLowDprHairlineFix
                     );
                     wasUsedDefDraw = true;
                 }
@@ -456,8 +468,10 @@ function drawGroupLevel(
                 ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
                 ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
                 ctx.strokeStyle = theme.borderColor;
-                ctx.lineWidth = 1;
+                const previousLineWidth = ctx.lineWidth;
+                ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
                 ctx.stroke();
+                ctx.lineWidth = previousLineWidth;
             }
         } else {
             drawGroupHeaderInner(
@@ -477,7 +491,8 @@ function drawGroupLevel(
                 group,
                 spriteManager,
                 hovered,
-                verticalBorder
+                verticalBorder,
+                enableLowDprHairlineFix
             );
         }
 
@@ -490,8 +505,10 @@ function drawGroupLevel(
     ctx.moveTo(finalX + 0.5, yOffset);
     ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
     ctx.strokeStyle = theme.borderColor;
-    ctx.lineWidth = 1;
+    const previousLineWidth = ctx.lineWidth;
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
     ctx.stroke();
+    ctx.lineWidth = previousLineWidth;
 
     // Horizontal border at the bottom of the last level (level 0 is the bottommost)
     // This will be drawn in drawGroups function between levels

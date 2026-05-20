@@ -272,6 +272,10 @@ export interface DataGridProps {
               readonly hyperWrapping?: boolean;
               readonly renderStrategy?: "single-buffer" | "double-buffer" | "direct";
               /**
+               * Scales grid/header/sticky hairline strokes when browser zoom produces a devicePixelRatio below 1.
+               */
+              readonly enableLowDprHairlineFix?: boolean;
+              /**
                * Allows providing a custom event target for event listeners.
                * If not provided, the grid will use the window as the event target.
                */
@@ -849,6 +853,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             hasAppendRow,
             overrideCursor,
             maxScaleFactor: maxDPR,
+            enableLowDprHairlineFix: experimental?.enableLowDprHairlineFix === true,
             freezeTrailingRows,
             rows,
             drawFocus: drawFocusRing,
@@ -936,6 +941,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         scrolling,
         experimental?.hyperWrapping,
         experimental?.renderStrategy,
+        experimental?.enableLowDprHairlineFix,
         lastWasTouch,
         renderStateProvider,
         getCellRenderer,
