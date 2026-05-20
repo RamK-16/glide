@@ -430,6 +430,8 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             translateX={p.translateX}
             translateY={p.translateY}
             resizeIndicator={p.resizeIndicator}
+            unstickyHeader={p.unstickyHeader}
+            headerOffset={p.headerOffset}
             verticalBorder={p.verticalBorder}
             width={p.width}
             getCellContent={getMangledCellContent}

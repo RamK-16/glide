@@ -1,4 +1,4 @@
-import React, { useId } from "react";
+import React from "react";
 import { DataEditorAll as DataEditor } from "../../data-editor-all.js";
 import {
     BeautifulWrapper,
@@ -22,13 +22,15 @@ export default {
         (Story: React.ComponentType) => (
             <SimpleThemeWrapper>
                 <BeautifulWrapper
-                    title="Custom Group Header Drawing"
+                    title="Custom Group Header Drawing & Unsticky Header"
                     description={
                         <Description>
                             This example demonstrates custom rendering of group headers using the{" "}
                             <PropName>drawGroupHeader</PropName> prop. The callback receives information about the group
                             name, level, span, and other properties, allowing for complete customization of the group
-                            header appearance.
+                            header appearance. Также демонстрация пропа <PropName>unstickyHeader</PropName> — когда он{" "}
+                            <PropName>true</PropName>, вся шапка (групповые заголовки + заголовки колонок) скроллится
+                            вместе с контентом грида, а не остаётся закреплённой сверху.
                         </Description>
                     }>
                     <Story />
@@ -257,7 +259,7 @@ export const MinimalGroupHeader: React.VFC = () => {
 export const UnstickyHeader: React.VFC = () => {
     const { cols, getCellContent } = useMockDataGenerator(20, true, true);
 
-    // Create groups with different types
+    // Создаём группы разных типов для демонстрации
     const styledCols = cols.map((col, index) => {
         if (index < 5) {
             return { ...col, group: ["Revenue", "Q1"] };
@@ -273,15 +275,12 @@ export const UnstickyHeader: React.VFC = () => {
     const drawGroupHeader: DrawGroupHeaderCallback = React.useCallback(args => {
         const { ctx, groupName, level, rect, theme, isSelected, isHovered } = args;
 
-        // Call default drawing first
         ctx.save();
-        // draw();
 
-        // Then apply custom styling
         ctx.beginPath();
         ctx.rect(rect.x, rect.y, rect.width, rect.height);
 
-        // Different styling based on group name
+        // Разная стилизация в зависимости от имени группы
         let bgColor: string;
         let textColor: string;
 
@@ -292,18 +291,18 @@ export const UnstickyHeader: React.VFC = () => {
             bgColor = isSelected ? "#f44336" : isHovered ? "#e57373" : "#ffcdd2";
             textColor = isSelected ? "#ffffff" : "#c62828";
         } else {
-            // Quarter level
+            // Уровень кварталов
             bgColor = isSelected ? theme.accentColor : isHovered ? theme.bgHeaderHovered : theme.bgHeader;
             textColor = isSelected ? theme.textHeaderSelected : theme.textHeader;
         }
 
-        // Draw background behind existing content
+        // Фон за содержимым
         ctx.globalCompositeOperation = COMPOSITE_DESTINATION_OVER;
         ctx.fillStyle = bgColor;
         ctx.fill();
         ctx.globalCompositeOperation = COMPOSITE_SOURCE_OVER;
 
-        // Rounded corners for top level (draw as overlay)
+        // Скруглённые углы для верхнего уровня
         if (level === 0) {
             ctx.beginPath();
             const radius = 4;
@@ -320,7 +319,7 @@ export const UnstickyHeader: React.VFC = () => {
             ctx.globalCompositeOperation = COMPOSITE_SOURCE_OVER;
         }
 
-        // Custom text color (draw text on top)
+        // Кастомный цвет текста
         if (groupName !== "") {
             ctx.fillStyle = textColor;
             ctx.font = `bold ${13 + level}px ${theme.fontFamily}`;
@@ -331,44 +330,12 @@ export const UnstickyHeader: React.VFC = () => {
 
         ctx.restore();
     }, []);
-    const dataEditorClassName = "data-editor-" + useId();
-    const dataEditorSelector = `.${dataEditorClassName}`;
     const headerHeight = [32, 28, 40];
-    const headerHeightNum = headerHeight.reduce((acc, curr) => acc + curr, 0);
 
     return (
         <DataEditor
-            className={dataEditorClassName}
             height={1000}
-            ref={() => {
-                /** пример реализации незакрепленного шапки */
-                const dataEditorElement = document.querySelector(dataEditorSelector) as HTMLElement | undefined;
-                if (!dataEditorElement) return;
-
-                const scroller = dataEditorElement?.children?.[0]?.children?.[0]?.children?.[1] as
-                    | HTMLElement
-                    | undefined;
-
-                if (!scroller) return;
-
-                const scrollCb = () => {
-                    const y = scroller.scrollTop;
-
-                    const tableFirstInner = dataEditorElement?.children[0] as HTMLElement | undefined;
-                    const canvasTableWrapper = dataEditorElement?.children[0].children[0].children[0] as
-                        | HTMLCanvasElement
-                        | undefined;
-
-                    if (!tableFirstInner || !canvasTableWrapper) return;
-                    const fixedY = y < headerHeightNum ? y : headerHeightNum;
-                    /** его высота удобна тем, что =100%; его высота влияет на высоту canvas элемента таблицы */
-                    tableFirstInner.style = `height: calc(100% + ${headerHeightNum}px`;
-                    canvasTableWrapper.style.transform = `translateY(-${fixedY}px)`;
-                };
-                scroller.addEventListener("scroll", scrollCb);
-
-                return () => scroller?.removeEventListener?.("scroll", scrollCb);
-            }}
+            unstickyHeader={true}
             {...defaultProps}
             getCellContent={getCellContent}
             columns={styledCols}
@@ -385,58 +352,3 @@ export const UnstickyHeader: React.VFC = () => {
     );
 };
 
-// Версия с последовательным скроллом (чтобы первые строки не заезжали под шапку - на будущее, версия сырая)
-// () => {
-//     /** пример реализации незакрепленного шапки */
-//     const dataEditorElement = document.querySelector(dataEditorSelector) as HTMLElement | undefined;
-//     if (!dataEditorElement) return;
-
-//     const scroller = dataEditorElement?.children?.[0]?.children?.[0]?.children?.[1] as
-//         | HTMLElement
-//         | undefined;
-
-//     if (!scroller) return;
-
-//     let y = 0;
-//     let accumulatedScroll = 0;
-
-//     const tableFirstInner = dataEditorElement?.children[0] as HTMLElement | undefined;
-//     const canvasTableWrapper = dataEditorElement?.children[0].children[0].children[0] as
-//         | HTMLCanvasElement
-//         | undefined;
-
-//     const scrollCb = () => {
-//         y = scroller.scrollTop;
-
-//         if (!tableFirstInner || !canvasTableWrapper) return;
-//         const fixedY = y < headerHeightNum ? y : headerHeightNum;
-//         const accessedToScroll = accumulatedScroll > headerHeightNum;
-
-//         if (!accessedToScroll) {
-//             scroller.scrollTop = 0;
-//         }
-//     };
-//     scroller.addEventListener("scroll", scrollCb);
-
-//     const wheelCb = (e: WheelEvent) => {
-//         const d = 3;
-//         if (e.wheelDeltaY > 0) {
-//             accumulatedScroll = accumulatedScroll - d < 0 ? 0 : accumulatedScroll - d;
-//         } else {
-//             accumulatedScroll += d;
-//         }
-
-//         const fixedAccessedScroll =
-//             accumulatedScroll < headerHeightNum ? accumulatedScroll : headerHeightNum;
-//         /** его высота удобна тем, что =100%; его высота влияет на высоту canvas элемента таблицы */
-//         tableFirstInner.style = `height: calc(100% + ${headerHeightNum}px`;
-//         canvasTableWrapper.style.transform = `translateY(-${fixedAccessedScroll}px)`;
-//         console.log("WheelEvent", accumulatedScroll);
-//     };
-//     scroller.addEventListener("wheel", wheelCb);
-
-//     return () => {
-//         scroller?.removeEventListener?.("scroll", scrollCb);
-//         scroller?.removeEventListener?.("wheel", wheelCb);
-//     };
-// }

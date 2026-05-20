@@ -82,4 +82,7 @@ export interface DrawGridArg {
     readonly getCellRenderer: GetCellRendererCallback;
     readonly minimumCellWidth: number;
     readonly resizeIndicator: "full" | "header" | "none";
+    /** unstickyHeader: количество пикселей шапки, ушедших за верхний край (0..totalHeaderHeight).
+     * Используется в drawGrid для динамического изменения размера overlay canvas и сдвига отрисовки ячеек вверх. */
+    readonly headerOffset: number;
 }

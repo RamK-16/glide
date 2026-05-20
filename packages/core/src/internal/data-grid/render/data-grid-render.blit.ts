@@ -250,7 +250,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.dragAndDropState !== last.dragAndDropState ||
         current.prelightCells !== last.prelightCells ||
         current.touchMode !== last.touchMode ||
-        current.maxScaleFactor !== last.maxScaleFactor
+        current.maxScaleFactor !== last.maxScaleFactor ||
+        current.headerOffset !== last.headerOffset // unstickyHeader: изменение headerOffset значит шапка сдвинулась — инвалидируем blit
     ) {
         return false;
     }
