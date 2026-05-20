@@ -185,7 +185,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         hoverInfo,
         spriteManager,
         maxScaleFactor,
-        enableLowDprHairlineFix,
+        enableLowDprHairline,
         hasAppendRow,
         touchMode,
         enqueue,
@@ -321,7 +321,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             drawHeaderCallback,
             drawGroupHeaderCallback,
             touchMode,
-            enableLowDprHairlineFix
+            enableLowDprHairline
         );
 
         drawGridLines(
@@ -343,7 +343,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             rows,
             theme,
             true,
-            enableLowDprHairlineFix
+            enableLowDprHairline
         );
 
         overlayCtx.beginPath();
@@ -354,7 +354,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             theme.bgHeader
         );
         const previousLineWidth = overlayCtx.lineWidth;
-        overlayCtx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+        overlayCtx.lineWidth = getHairlineWidth(enableLowDprHairline);
         overlayCtx.stroke();
         overlayCtx.lineWidth = previousLineWidth;
 
@@ -606,7 +606,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         verticalBorder,
         getRowHeight,
         theme,
-        enableLowDprHairlineFix
+        enableLowDprHairline
     );
 
     const highlightRedraw = drawHighlightRings(
@@ -761,7 +761,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         rows,
         theme,
         false,
-        enableLowDprHairlineFix
+        enableLowDprHairline
     );
 
     highlightRedraw?.();

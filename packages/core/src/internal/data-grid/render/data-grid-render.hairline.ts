@@ -1,5 +1,5 @@
-export function getHairlineWidth(enableLowDprHairlineFix: boolean): number {
-    if (!enableLowDprHairlineFix) {
+export function getHairlineWidth(enableLowDprHairline: boolean): number {
+    if (!enableLowDprHairline) {
         return 1;
     }
 

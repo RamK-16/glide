@@ -47,7 +47,7 @@ export function drawGridHeaders(
     drawHeaderCallback: DrawHeaderCallback | undefined,
     drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined,
     touchMode: boolean,
-    enableLowDprHairlineFix: boolean
+    enableLowDprHairline: boolean
 ) {
     const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
@@ -160,7 +160,7 @@ export function drawGridHeaders(
             damage,
             selection,
             drawGroupHeaderCallback,
-            enableLowDprHairlineFix
+            enableLowDprHairline
         );
     }
 }
@@ -180,7 +180,7 @@ export function drawGroups(
     damage: CellSet | undefined,
     selection: GridSelection | undefined,
     drawGroupHeaderCallback: DrawGroupHeaderCallback | undefined,
-    enableLowDprHairlineFix: boolean
+    enableLowDprHairline: boolean
 ) {
     const levels = getGroupLevels(effectiveCols);
     if (levels === 0) return;
@@ -212,7 +212,7 @@ export function drawGroups(
             levels,
             selection,
             drawGroupHeaderCallback,
-            enableLowDprHairlineFix
+            enableLowDprHairline
         );
         currentY += levelHeight;
 
@@ -222,7 +222,7 @@ export function drawGroups(
         ctx.lineTo(width, currentY + 0.5);
         ctx.strokeStyle = theme.borderColor;
         const previousLineWidth = ctx.lineWidth;
-        ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
         ctx.stroke();
         ctx.lineWidth = previousLineWidth;
     }
@@ -246,7 +246,7 @@ function drawGroupHeaderInner(
     spriteManager: SpriteManager,
     hovered: HoverInfo | undefined,
     verticalBorder: (col: number) => boolean,
-    enableLowDprHairlineFix: boolean
+    enableLowDprHairline: boolean
 ) {
     const xPad = 8;
     const fillColor = isSelected
@@ -334,7 +334,7 @@ function drawGroupHeaderInner(
         ctx.lineTo(x + 0.5, y + height);
         ctx.strokeStyle = theme.borderColor;
         const previousLineWidth = ctx.lineWidth;
-        ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
         ctx.stroke();
         ctx.lineWidth = previousLineWidth;
     }
@@ -358,7 +358,7 @@ function drawGroupLevel(
     levels: number,
     selection?: GridSelection,
     drawGroupHeaderCallback?: DrawGroupHeaderCallback,
-    enableLowDprHairlineFix: boolean = false
+    enableLowDprHairline: boolean = false
 ) {
     const [hCol, hRow] = hovered?.[0] ?? [];
     const hPosX = hovered?.[1]?.[0];
@@ -456,7 +456,7 @@ function drawGroupLevel(
                         spriteManager,
                         hovered,
                         verticalBorder,
-                        enableLowDprHairlineFix
+                        enableLowDprHairline
                     );
                     wasUsedDefDraw = true;
                 }
@@ -469,7 +469,7 @@ function drawGroupLevel(
                 ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
                 ctx.strokeStyle = theme.borderColor;
                 const previousLineWidth = ctx.lineWidth;
-                ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+                ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
                 ctx.stroke();
                 ctx.lineWidth = previousLineWidth;
             }
@@ -492,7 +492,7 @@ function drawGroupLevel(
                 spriteManager,
                 hovered,
                 verticalBorder,
-                enableLowDprHairlineFix
+                enableLowDprHairline
             );
         }
 
@@ -506,7 +506,7 @@ function drawGroupLevel(
     ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
     ctx.strokeStyle = theme.borderColor;
     const previousLineWidth = ctx.lineWidth;
-    ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
     ctx.stroke();
     ctx.lineWidth = previousLineWidth;
 

@@ -115,7 +115,7 @@ export function overdrawStickyBoundaries(
     verticalBorder: (col: number) => boolean,
     getRowHeight: (row: number) => number,
     theme: FullTheme,
-    enableLowDprHairlineFix: boolean = false
+    enableLowDprHairline: boolean = false
 ) {
     let drawFreezeBorder = false;
     for (const c of effectiveCols) {
@@ -128,7 +128,7 @@ export function overdrawStickyBoundaries(
     const drawX = drawFreezeBorder ? getStickyWidth(effectiveCols) : 0;
     const previousLineWidth = ctx.lineWidth;
 
-    ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
     let vStroke: string | undefined;
     if (drawX !== 0) {
@@ -302,11 +302,11 @@ export function drawGridLines(
     rows: number,
     theme: FullTheme,
     verticalOnly: boolean = false,
-    enableLowDprHairlineFix: boolean = false
+    enableLowDprHairline: boolean = false
 ) {
     const previousLineWidth = ctx.lineWidth;
 
-    ctx.lineWidth = getHairlineWidth(enableLowDprHairlineFix);
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
     if (spans !== undefined) {
         ctx.beginPath();
