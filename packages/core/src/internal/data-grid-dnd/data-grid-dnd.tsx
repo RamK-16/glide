@@ -83,7 +83,9 @@ export interface DataGridDndProps extends Props {
 // Wtf does this function do? If you remember in the future come back and add a comment
 // -- Future-Past Jason
 function offsetColumnSize(column: InnerGridColumn, width: number, min: number, max: number): number {
-    return clamp(Math.round(width - (column.growOffset ?? 0)), Math.ceil(min), Math.floor(max));
+    const effectiveMin = column.minWidth ?? min;
+    const effectiveMax = column.maxWidth ?? max;
+    return clamp(Math.round(width - (column.growOffset ?? 0)), Math.ceil(effectiveMin), Math.floor(effectiveMax));
 }
 
 const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {

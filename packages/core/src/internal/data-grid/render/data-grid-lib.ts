@@ -42,6 +42,8 @@ export function useMappedColumns(
                     title: c.title,
                     trailingRowOptions: c.trailingRowOptions,
                     width: c.width,
+                    minWidth: c.minWidth,
+                    maxWidth: c.maxWidth,
                     growOffset: c.growOffset,
                     rowMarker: c.rowMarker,
                     rowMarkerChecked: c.rowMarkerChecked,

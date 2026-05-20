@@ -174,6 +174,8 @@ export interface BaseGridColumn {
     readonly grow?: number;
     readonly style?: "normal" | "highlight";
     readonly themeOverride?: Partial<Theme>;
+    readonly minWidth?: number;
+    readonly maxWidth?: number;
     readonly trailingRowOptions?: {
         readonly hint?: string;
         readonly addIcon?: string;
