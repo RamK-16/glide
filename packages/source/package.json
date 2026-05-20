@@ -1,6 +1,6 @@
 {
     "name": "@glideappsfinal/glide-data-grid-source",
-    "version": "6.0.12",
+    "version": "6.0.14",
     "description": "Useful data source hooks for Glide Data Grid",
     "sideEffects": false,
     "type": "module",
