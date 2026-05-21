@@ -18,6 +18,7 @@ import { drawGridHeaders } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 // Future optimization opportunities
 // - Create a cache of a buffer used to render the full view of a partially displayed column so that when
@@ -184,6 +185,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         hoverInfo,
         spriteManager,
         maxScaleFactor,
+        enableLowDprHairline,
         hasAppendRow,
         touchMode,
         enqueue,
@@ -318,7 +320,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             damage,
             drawHeaderCallback,
             drawGroupHeaderCallback,
-            touchMode
+            touchMode,
+            enableLowDprHairline
         );
 
         drawGridLines(
@@ -339,7 +342,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             freezeTrailingRows,
             rows,
             theme,
-            true
+            true,
+            enableLowDprHairline
         );
 
         overlayCtx.beginPath();
@@ -349,7 +353,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             theme.headerBottomBorderColor ?? theme.horizontalBorderColor ?? theme.borderColor,
             theme.bgHeader
         );
+        const previousLineWidth = overlayCtx.lineWidth;
+        // Header bottom border рисуется вручную отдельно от drawGridLines.
+        // Применяем тот же hairline width, чтобы граница шапки не отличалась от остальной сетки при DPR < 1.
+        overlayCtx.lineWidth = getHairlineWidth(enableLowDprHairline);
         overlayCtx.stroke();
+        overlayCtx.lineWidth = previousLineWidth;
 
         if (mustDrawHighlightRingsOnHeader) {
             drawHighlightRings(
@@ -598,7 +607,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         rows,
         verticalBorder,
         getRowHeight,
-        theme
+        theme,
+        enableLowDprHairline
     );
 
     const highlightRedraw = drawHighlightRings(
@@ -751,7 +761,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         verticalBorder,
         freezeTrailingRows,
         rows,
-        theme
+        theme,
+        false,
+        enableLowDprHairline
     );
 
     highlightRedraw?.();

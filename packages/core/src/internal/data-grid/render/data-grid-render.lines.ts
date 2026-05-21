@@ -9,6 +9,7 @@ import { blendCache } from "../color-parser.js";
 import { intersectRect } from "../../../common/math.js";
 import { getSkipPoint, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type GetRowThemeCallback } from "./data-grid-render.cells.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function drawBlanks(
     ctx: CanvasRenderingContext2D,
@@ -113,7 +114,8 @@ export function overdrawStickyBoundaries(
     rows: number,
     verticalBorder: (col: number) => boolean,
     getRowHeight: (row: number) => number,
-    theme: FullTheme
+    theme: FullTheme,
+    enableLowDprHairline: boolean = false
 ) {
     let drawFreezeBorder = false;
     for (const c of effectiveCols) {
@@ -124,6 +126,11 @@ export function overdrawStickyBoundaries(
     const hColor = theme.horizontalBorderColor ?? theme.borderColor;
     const vColor = theme.borderColor;
     const drawX = drawFreezeBorder ? getStickyWidth(effectiveCols) : 0;
+    const previousLineWidth = ctx.lineWidth;
+
+    // Sticky/frozen boundaries дорисовываются отдельным overlay-проходом поверх ячеек.
+    // На DPR < 1 используем hairline width, чтобы эти границы не становились тоньше физического пикселя.
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
     let vStroke: string | undefined;
     if (drawX !== 0) {
@@ -144,6 +151,8 @@ export function overdrawStickyBoundaries(
         ctx.strokeStyle = hStroke;
         ctx.stroke();
     }
+
+    ctx.lineWidth = previousLineWidth;
 }
 
 const getMinMaxXY = (drawRegions: Rectangle[] | undefined, width: number, height: number) => {
@@ -294,8 +303,15 @@ export function drawGridLines(
     freezeTrailingRows: number,
     rows: number,
     theme: FullTheme,
-    verticalOnly: boolean = false
+    verticalOnly: boolean = false,
+    enableLowDprHairline: boolean = false
 ) {
+    const previousLineWidth = ctx.lineWidth;
+
+    // drawGridLines рисует основные вертикальные и горизонтальные линии сетки.
+    // Low-DPR hairline делает их стабильными при zoom ниже 100%, не меняя геометрию самих ячеек.
+    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+
     if (spans !== undefined) {
         ctx.beginPath();
         ctx.save();
@@ -376,4 +392,6 @@ export function drawGridLines(
     if (spans !== undefined) {
         ctx.restore();
     }
+
+    ctx.lineWidth = previousLineWidth;
 }

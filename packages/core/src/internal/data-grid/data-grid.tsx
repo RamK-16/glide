@@ -272,6 +272,11 @@ export interface DataGridProps {
               readonly hyperWrapping?: boolean;
               readonly renderStrategy?: "single-buffer" | "double-buffer" | "direct";
               /**
+               * Включает компенсацию тонких canvas-линий при browser zoom ниже 100%, когда devicePixelRatio меньше 1.
+               * Влияет только на grid/header/sticky hairline borders и не меняет highlight/fill handle/damage redraw.
+               */
+              readonly enableLowDprHairline?: boolean;
+              /**
                * Allows providing a custom event target for event listeners.
                * If not provided, the grid will use the window as the event target.
                */
@@ -849,6 +854,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             hasAppendRow,
             overrideCursor,
             maxScaleFactor: maxDPR,
+            enableLowDprHairline: experimental?.enableLowDprHairline === true,
             freezeTrailingRows,
             rows,
             drawFocus: drawFocusRing,
@@ -936,6 +942,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         scrolling,
         experimental?.hyperWrapping,
         experimental?.renderStrategy,
+        experimental?.enableLowDprHairline,
         lastWasTouch,
         renderStateProvider,
         getCellRenderer,
