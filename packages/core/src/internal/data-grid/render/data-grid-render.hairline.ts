@@ -1,3 +1,7 @@
+/**
+ * Возвращает ширину hairline-штриха для canvas renderer-а.
+ * При DPR < 1 увеличивает lineWidth до одного физического пикселя, чтобы линии сетки не исчезали на малом browser zoom.
+ */
 export function getHairlineWidth(enableLowDprHairline: boolean): number {
     if (!enableLowDprHairline) {
         return 1;

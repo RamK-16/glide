@@ -354,6 +354,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             theme.bgHeader
         );
         const previousLineWidth = overlayCtx.lineWidth;
+        // Header bottom border рисуется вручную отдельно от drawGridLines.
+        // Применяем тот же hairline width, чтобы граница шапки не отличалась от остальной сетки при DPR < 1.
         overlayCtx.lineWidth = getHairlineWidth(enableLowDprHairline);
         overlayCtx.stroke();
         overlayCtx.lineWidth = previousLineWidth;

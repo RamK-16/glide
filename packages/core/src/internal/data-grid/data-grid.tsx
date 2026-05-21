@@ -272,7 +272,8 @@ export interface DataGridProps {
               readonly hyperWrapping?: boolean;
               readonly renderStrategy?: "single-buffer" | "double-buffer" | "direct";
               /**
-               * Scales grid/header/sticky hairline strokes when browser zoom produces a devicePixelRatio below 1.
+               * Включает компенсацию тонких canvas-линий при browser zoom ниже 100%, когда devicePixelRatio меньше 1.
+               * Влияет только на grid/header/sticky hairline borders и не меняет highlight/fill handle/damage redraw.
                */
               readonly enableLowDprHairline?: boolean;
               /**

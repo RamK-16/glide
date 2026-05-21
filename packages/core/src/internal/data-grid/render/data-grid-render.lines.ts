@@ -128,6 +128,8 @@ export function overdrawStickyBoundaries(
     const drawX = drawFreezeBorder ? getStickyWidth(effectiveCols) : 0;
     const previousLineWidth = ctx.lineWidth;
 
+    // Sticky/frozen boundaries дорисовываются отдельным overlay-проходом поверх ячеек.
+    // На DPR < 1 используем hairline width, чтобы эти границы не становились тоньше физического пикселя.
     ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
     let vStroke: string | undefined;
@@ -306,6 +308,8 @@ export function drawGridLines(
 ) {
     const previousLineWidth = ctx.lineWidth;
 
+    // drawGridLines рисует основные вертикальные и горизонтальные линии сетки.
+    // Low-DPR hairline делает их стабильными при zoom ниже 100%, не меняя геометрию самих ячеек.
     ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
     if (spans !== undefined) {
