@@ -44,6 +44,7 @@ export function useMappedColumns(
                     width: c.width,
                     minWidth: c.minWidth,
                     maxWidth: c.maxWidth,
+                    maxAutoWidth: c.maxAutoWidth,
                     growOffset: c.growOffset,
                     rowMarker: c.rowMarker,
                     rowMarkerChecked: c.rowMarkerChecked,
