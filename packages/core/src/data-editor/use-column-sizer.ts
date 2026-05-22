@@ -74,7 +74,8 @@ export function measureColumn(
     max = Math.max(max, ctx.measureText(c.title).width + theme.cellHorizontalPadding * 2 + (c.icon === undefined ? 0 : 28));
     ctx.font = currentFont;
     const effectiveMin = c.minWidth ?? minColumnWidth;
-    const effectiveMax = c.maxWidth ?? maxColumnWidth;
+    const rawAutoMax = c.maxAutoWidth ?? maxColumnWidth;
+    const effectiveMax = c.maxWidth !== undefined ? Math.min(rawAutoMax, c.maxWidth) : rawAutoMax;
     const final = Math.max(Math.ceil(effectiveMin), Math.min(Math.floor(effectiveMax), Math.ceil(max)));
 
     return {
