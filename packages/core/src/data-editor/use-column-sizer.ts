@@ -242,19 +242,59 @@ export function useColumnSizer(
         }
         if (totalWidth < clientWidth && distribute.length > 0) {
             const writeable = [...result];
-            const extra = clientWidth - totalWidth;
-            let remaining = extra;
-            for (let di = 0; di < distribute.length; di++) {
-                const i = distribute[di];
-                const weighted = (result[i].grow ?? 0) / totalGrow;
-                const toAdd =
-                    di === distribute.length - 1 ? remaining : Math.min(remaining, Math.floor(extra * weighted));
-                writeable[i] = {
-                    ...result[i],
-                    growOffset: toAdd,
-                    width: result[i].width + toAdd,
-                };
-                remaining -= toAdd;
+            let remaining = clientWidth - totalWidth;
+            let activeIndices = [...distribute];
+            let activeGrow = totalGrow;
+
+            while (remaining > 0 && activeIndices.length > 0) {
+                const nextActive: number[] = [];
+                let nextGrow = 0;
+                let distributed = 0;
+
+                for (let di = 0; di < activeIndices.length; di++) {
+                    const i = activeIndices[di];
+                    const col = writeable[i];
+                    const weighted = (col.grow ?? 0) / activeGrow;
+                    const raw = di === activeIndices.length - 1
+                        ? remaining - distributed
+                        : Math.min(remaining - distributed, Math.floor(remaining * weighted));
+
+                    const baseWidth = result[i].width;
+                    const currentGrowOffset = (col.growOffset ?? 0);
+                    const currentWidth = baseWidth + currentGrowOffset;
+
+                    const growCap = col.maxAutoWidth ?? maxColumnWidth;
+                    const hardCap = col.maxWidth;
+                    let cap = growCap;
+                    if (hardCap !== undefined) cap = Math.min(cap, hardCap);
+
+                    const maxGrow = Math.max(0, cap - currentWidth);
+                    const toAdd = Math.min(raw, maxGrow);
+
+                    if (toAdd > 0) {
+                        writeable[i] = {
+                            ...col,
+                            growOffset: currentGrowOffset + toAdd,
+                            width: currentWidth + toAdd,
+                        };
+                    }
+
+                    distributed += toAdd;
+
+                    if (toAdd < raw && maxGrow <= 0) {
+                        // capped — not participating in next round
+                    } else if (toAdd < raw) {
+                        // partially capped
+                    } else {
+                        nextActive.push(i);
+                        nextGrow += col.grow ?? 0;
+                    }
+                }
+
+                remaining -= distributed;
+                if (distributed === 0) break;
+                activeIndices = nextActive;
+                activeGrow = nextGrow;
             }
             result = writeable;
         }
