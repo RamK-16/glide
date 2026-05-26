@@ -1,4 +1,7 @@
 /* eslint-disable sonarjs/no-identical-functions */
+/* eslint-disable sonarjs/no-duplicate-string */
+/* eslint-disable unicorn/prefer-code-point */
+/* eslint-disable react/no-unescaped-entities */
 import * as React from "react";
 
 import { useState, useCallback } from "storybook/preview-api";
