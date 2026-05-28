@@ -79,9 +79,25 @@ export interface DataGridDndProps extends Props {
     readonly setScrollDir: (dir: GridMouseEventArgs["scrollEdge"] | undefined) => void;
 }
 
-// Dear Past Jason,
-// Wtf does this function do? If you remember in the future come back and add a comment
-// -- Future-Past Jason
+// Вычисляет новую ширину колонки при ресайзе (drag).
+//
+// width — сырая drag-ширина (event.clientX - resizeColStartX), т.е. расстояние
+//         от левого края колонки до текущей позиции мыши.
+//
+// growOffset — сколько пикселей добавил grow поверх базовой ширины.
+//   Вычитается, потому что drag-ширина = визуальная ширина (base + growOffset),
+//   а onColumnResize должен получить базовую ширину (без grow).
+//   Пример: колонка 400px (base=80, growOffset=320), drag до 395px:
+//     width=395, growOffset=320 → return clamp(75, min, max) → base=75
+//
+//   ВАЖНО: при "Grow Once" (use-column-sizer.ts) growOffset обнуляется после
+//   первого рендера, т.к. grow-ширина запекается в базовую width.
+//   В этом режиме: width=395, growOffset=0 → return clamp(395, min, max).
+//
+// effectiveMax — использует column.maxWidth (жёсткий), а НЕ maxAutoWidth (мягкий).
+//   maxAutoWidth ограничивает только grow и auto-sizing, а maxWidth — и ресайз тоже.
+//   Если колонка через grow получила ширину > maxWidth (из-за maxAutoWidth > maxWidth),
+//   при ресайзе она схлопнется до maxWidth.
 function offsetColumnSize(column: InnerGridColumn, width: number, min: number, max: number): number {
     const effectiveMin = column.minWidth ?? min;
     const effectiveMax = column.maxWidth ?? max;
@@ -314,8 +330,13 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             } else if (resizeCol !== undefined && resizeColStartX !== undefined && canvas) {
                 const rect = canvas.getBoundingClientRect();
                 const scale = rect.width / canvas.offsetWidth;
+                // newWidth — сырая drag-ширина (расстояние от левого края колонки до мыши)
                 const newWidth = (event.clientX - resizeColStartX) / scale;
                 const column = columns[resizeCol];
+                // ns — базовая ширина (без growOffset), 4-й аргумент — полная ширина (с growOffset)
+                // Потребитель (обёртка) обычно использует ns для обновления column.width,
+                // а 4-й аргумент — для информации (например, freeze-grow использует его
+                // чтобы узнать текущую визуальную ширину при заморозке grow)
                 const ns = offsetColumnSize(column, newWidth, minColumnWidth, maxColumnWidth);
                 onColumnResize?.(column, ns, resizeCol, ns + (column.growOffset ?? 0));
                 lastResizeWidthRef.current = newWidth;
