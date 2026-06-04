@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import React, { useId } from "react";
 import { DataEditorAll as DataEditor } from "../../data-editor-all.js";
 import {

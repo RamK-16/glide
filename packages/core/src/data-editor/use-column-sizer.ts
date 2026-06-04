@@ -106,6 +106,42 @@ export function useColumnSizer(
     getCellsForSelectionRef.current = getCellsForSelection;
     themeRef.current = theme;
 
+    // ═══════════════════════════════════════════════════════════════════
+    // "Grow Once" — grow-распределение работает только при первом рендере.
+    //
+    // Зачем: grow пересчитывается на каждом рендере (useMemo). При ресайзе
+    // колонки это вызывает "пружинящий" эффект — grow возвращает место обратно,
+    // блокируя сжатие. Решение: grow отрабатывает один раз, результат
+    // запекается, дальше таблица ведёт себя как будто grow нет.
+    //
+    // growAppliedRef — флаг "grow уже отработал", предотвращает повторный вход
+    //                  в блок grow-распределения.
+    // bakedWidthsRef — словарь id→width с запечёнными ширинами после grow.
+    //                  Используется в getRaw() для колонок без явного width
+    //                  на последующих рендерах (вместо auto-sizing).
+    // columnsSignatureRef — "подпись" текущего набора колонок (id через запятую).
+    //                  При изменении (добавление/удаление колонок) сбрасывает
+    //                  growApplied и baked — grow отработает заново.
+    //
+    // Связь с DnD (data-grid-dnd.tsx, offsetColumnSize):
+    //   При ресайзе DnD вычисляет: newSize = dragWidth - column.growOffset
+    //   Если growOffset > 0, newSize будет меньше визуальной ширины колонки,
+    //   что вызывает скачок. Поэтому после запекания мы обнуляем growOffset
+    //   у всех колонок — width уже содержит полную ширину, вычитать нечего.
+    // ═══════════════════════════════════════════════════════════════════
+    const growAppliedRef = React.useRef(false);
+    const bakedWidthsRef = React.useRef<Record<string, number>>({});
+    // Сброс "Grow Once" при структурном изменении колонок (добавление/удаление).
+    // Сравниваем по набору id. Ресайз колонки (изменение width) не сбрасывает,
+    // т.к. id остаются прежними.
+    const columnsSignatureRef = React.useRef<string>("");
+    const signature = columns.map(c => c.id ?? c.title).join(",");
+    if (signature !== columnsSignatureRef.current) {
+        columnsSignatureRef.current = signature;
+        growAppliedRef.current = false;
+        bakedWidthsRef.current = {};
+    }
+
     const [canvas, ctx] = React.useMemo(() => {
         if (typeof window === "undefined") return [null, null];
         const offscreen = document.createElement("canvas");
@@ -199,6 +235,19 @@ export function useColumnSizer(
             return columns.map((c, colIndex) => {
                 if (isSizedGridColumn(c)) return clampSizedColumn(c);
 
+                // Grow Once: если grow уже отработал — берём запечённую ширину.
+                // growOffset: 0 критичен — без него offsetColumnSize в DnD
+                // вычтет старый growOffset из drag-позиции и колонка "прыгнет".
+                // Пример: baked=400, growOffset был 320 → DnD: 395-320=75 → скачок.
+                // С growOffset=0: 395-0=395 → корректный ресайз.
+                if (growAppliedRef.current && c.id !== undefined && bakedWidthsRef.current[c.id] !== undefined) {
+                    return {
+                        ...c,
+                        width: bakedWidthsRef.current[c.id],
+                        growOffset: 0,
+                    };
+                }
+
                 if (memoMap.current[c.id] !== undefined) {
                     return {
                         ...c,
@@ -240,23 +289,96 @@ export function useColumnSizer(
                 distribute.push(i);
             }
         }
-        if (totalWidth < clientWidth && distribute.length > 0) {
+        
+        // ═══════════════════════════════════════════════════════════════
+        // Grow-распределение (итеративное, с потолками).
+        // Входим ТОЛЬКО если:
+        //   1. growAppliedRef = false (grow ещё не отработал — "Grow Once")
+        //   2. totalWidth < clientWidth (есть свободное место)
+        //   3. distribute.length > 0 (есть колонки с grow > 0)
+        //
+        // После первого распределения:
+        //   - запекаем финальные ширины в bakedWidthsRef
+        //   - обнуляем growOffset у всех колонок (см. комментарий выше про DnD)
+        //   - ставим growAppliedRef = true → блок больше не выполняется
+        //
+        // На последующих рендерах getRaw() возвращает baked-ширины для
+        // grow-колонок, totalWidth ≈ clientWidth, и даже без флага мы бы
+        // не зашли сюда (мало remaining). Флаг — дополнительная гарантия.
+        // ═══════════════════════════════════════════════════════════════
+        if (!growAppliedRef.current && totalWidth < clientWidth && distribute.length > 0) {
             const writeable = [...result];
-            const extra = clientWidth - totalWidth;
-            let remaining = extra;
-            for (let di = 0; di < distribute.length; di++) {
-                const i = distribute[di];
-                const weighted = (result[i].grow ?? 0) / totalGrow;
-                const toAdd =
-                    di === distribute.length - 1 ? remaining : Math.min(remaining, Math.floor(extra * weighted));
-                writeable[i] = {
-                    ...result[i],
-                    growOffset: toAdd,
-                    width: result[i].width + toAdd,
-                };
-                remaining -= toAdd;
+            let remaining = clientWidth - totalWidth;
+            let activeIndices = [...distribute];
+            let activeGrow = totalGrow;
+
+            while (remaining > 0 && activeIndices.length > 0) {
+                const nextActive: number[] = [];
+                let nextGrow = 0;
+                let distributed = 0;
+
+                for (let di = 0; di < activeIndices.length; di++) {
+                    const i = activeIndices[di];
+                    const col = writeable[i];
+                    const weighted = (col.grow ?? 0) / activeGrow;
+                    const raw = di === activeIndices.length - 1
+                        ? remaining - distributed
+                        : Math.min(remaining - distributed, Math.floor(remaining * weighted));
+
+                    const baseWidth = result[i].width;
+                    const currentGrowOffset = (col.growOffset ?? 0);
+                    const currentWidth = baseWidth + currentGrowOffset;
+
+                    const growCap = col.maxAutoWidth ?? maxColumnWidth;
+                    const hardCap = col.maxWidth;
+                    let cap = growCap;
+                    if (hardCap !== undefined) cap = Math.min(cap, hardCap);
+
+                    const maxGrow = Math.max(0, cap - currentWidth);
+                    const toAdd = Math.min(raw, maxGrow);
+
+                    if (toAdd > 0) {
+                        writeable[i] = {
+                            ...col,
+                            growOffset: currentGrowOffset + toAdd,
+                            width: currentWidth + toAdd,
+                        };
+                    }
+
+                    distributed += toAdd;
+
+                    if (toAdd < raw && maxGrow <= 0) {
+                        // capped — not participating in next round
+                    } else if (toAdd < raw) {
+                        // partially capped
+                    } else {
+                        nextActive.push(i);
+                        nextGrow += col.grow ?? 0;
+                    }
+                }
+
+                remaining -= distributed;
+                if (distributed === 0) break;
+                activeIndices = nextActive;
+                activeGrow = nextGrow;
             }
-            result = writeable;
+            // Запекаем: сохраняем финальные ширины и обнуляем growOffset.
+            //
+            // growOffset обнуляется потому что ширина уже "полная" (base + grow).
+            // Если оставить growOffset, то offsetColumnSize в DnD (data-grid-dnd.tsx:88)
+            // вычтет его при ресайзе:
+            //   offsetColumnSize = clamp(dragWidth - growOffset, min, max)
+            // Это даст заниженную ширину → визуальный скачок колонки.
+            //
+            // С growOffset=0 формула становится: clamp(dragWidth, min, max) — корректно.
+            const baked: Record<string, number> = {};
+            const finalized = writeable.map(c => {
+                if (c.id !== undefined) baked[c.id] = c.width;
+                return c.growOffset !== undefined ? { ...c, growOffset: 0 } : c;
+            });
+            result = finalized;
+            growAppliedRef.current = true;
+            bakedWidthsRef.current = baked;
         }
         return {
             sizedColumns: result,
