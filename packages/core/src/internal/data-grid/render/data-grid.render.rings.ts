@@ -13,6 +13,7 @@ import { blend, withAlpha } from "../color-parser.js";
 import { hugRectToTarget, intersectRect, rectContains, splitRectIntoRegions } from "../../../common/math.js";
 import { getSpanBounds, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type Highlight } from "./data-grid-render.cells.js";
+import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function drawHighlightRings(
     ctx: CanvasRenderingContext2D,
@@ -30,7 +31,8 @@ export function drawHighlightRings(
     freezeTrailingRows: number,
     rows: number,
     allHighlightRegions: readonly Highlight[] | undefined,
-    theme: FullTheme
+    theme: FullTheme,
+    enableLowDprHairline: boolean = false
 ): (() => void) | undefined {
     const highlightRegions = allHighlightRegions?.filter(x => x.style !== "no-outline");
 
@@ -111,7 +113,7 @@ export function drawHighlightRings(
     });
 
     const drawCb = () => {
-        ctx.lineWidth = 1;
+        const solidLineWidth = getHairlineWidth(enableLowDprHairline);
 
         let dashed = false;
 
@@ -141,7 +143,17 @@ export function drawHighlightRings(
                             ? blend(blend(s.color, theme.borderColor), theme.bgCell)
                             : withAlpha(s.color, 1);
                     ctx.closePath();
-                    ctx.strokeRect(s.rect.x + 0.5, s.rect.y + 0.5, s.rect.width - 1, s.rect.height - 1);
+                    // Solid outline использует ту же hairline-ширину, что и grid lines: при DPR < 1 старый 1px stroke может терять стороны.
+                    // Inset считаем от lineWidth, потому что фиксированный 0.5 корректен только для обычной 1px линии.
+                    const lineWidth = s.style === "dashed" ? 1 : solidLineWidth;
+                    const inset = lineWidth / 2;
+                    ctx.lineWidth = lineWidth;
+                    ctx.strokeRect(
+                        s.rect.x + inset,
+                        s.rect.y + inset,
+                        Math.max(0, s.rect.width - lineWidth),
+                        Math.max(0, s.rect.height - lineWidth)
+                    );
                     if (needsClip) {
                         ctx.restore();
                         dashed = wasDashed;

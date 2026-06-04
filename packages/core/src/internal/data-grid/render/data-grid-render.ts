@@ -20,6 +20,12 @@ import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-rende
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
+function getDamageRepairPad(enableLowDprHairline: boolean): number {
+    // repairPad привязан к фактической hairline-ширине: damage clip приходит в точных bounds ячейки,
+    // а widened stroke при DPR < 1 может выступать за них и резаться на hover redraw.
+    return enableLowDprHairline ? Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5) : 0;
+}
+
 // Future optimization opportunities
 // - Create a cache of a buffer used to render the full view of a partially displayed column so that when
 //   scrolling horizontally you can simply blit the pre-drawn column instead of continually paying the draw
@@ -40,11 +46,13 @@ function clipHeaderDamage(
     translateX: number,
     translateY: number,
     cellYOffset: number,
-    damage: CellSet | undefined
+    damage: CellSet | undefined,
+    enableLowDprHairline: boolean
 ): void {
     if (damage === undefined || damage.size === 0) return;
 
     ctx.beginPath();
+    const repairPad = getDamageRepairPad(enableLowDprHairline);
 
     const levels = getGroupLevels(effectiveColumns);
     const heights = Array.isArray(groupHeaderHeight)
@@ -56,24 +64,17 @@ function clipHeaderDamage(
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
-        walkGroups(
-            effectiveColumns,
-            width,
-            translateX,
-            levelHeight,
-            level,
-            (span, _group, x, y, w, h) => {
-                const hasItemInSpan = damage.hasItemInRectangle({
-                    x: span[0],
-                    y: targetRow,
-                    width: span[1] - span[0] + 1,
-                    height: 1,
-                });
-                if (hasItemInSpan) {
-                    ctx.rect(x, y + currentY, w, h);
-                }
+        walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h) => {
+            const hasItemInSpan = damage.hasItemInRectangle({
+                x: span[0],
+                y: targetRow,
+                width: span[1] - span[0] + 1,
+                height: 1,
+            });
+            if (hasItemInSpan) {
+                ctx.rect(x - repairPad, y + currentY - repairPad, w + repairPad * 2, h + repairPad * 2);
             }
-        );
+        });
         currentY += levelHeight;
     }
 
@@ -92,11 +93,80 @@ function clipHeaderDamage(
                 const groupHeight = Array.isArray(groupHeaderHeight)
                     ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
                     : groupHeaderHeight;
-                ctx.rect(finalX, groupHeight, finalWidth, totalHeaderHeight - groupHeight);
+                ctx.rect(
+                    finalX - repairPad,
+                    groupHeight - repairPad,
+                    finalWidth + repairPad * 2,
+                    totalHeaderHeight - groupHeight + repairPad * 2
+                );
             }
         }
     );
     ctx.clip();
+}
+
+function getDamageDrawRegions(
+    effectiveColumns: readonly MappedGridColumn[],
+    height: number,
+    totalHeaderHeight: number,
+    translateX: number,
+    translateY: number,
+    cellYOffset: number,
+    rows: number,
+    getRowHeight: (row: number) => number,
+    freezeTrailingRows: number,
+    hasAppendRow: boolean,
+    damage: CellSet
+): Rectangle[] {
+    const result: Rectangle[] = [];
+    const cellIndex: [number, number] = [0, 0];
+
+    walkColumns(
+        effectiveColumns,
+        cellYOffset,
+        translateX,
+        translateY,
+        totalHeaderHeight,
+        (c, drawX, colDrawStartY, clipX, startRow) => {
+            const diff = Math.max(0, clipX - drawX);
+            const colDrawX = drawX + diff;
+            const colWidth = c.width - diff;
+            if (colWidth <= 0) return;
+
+            cellIndex[0] = c.sourceIndex;
+            walkRowsInCol(
+                startRow,
+                colDrawStartY,
+                height,
+                rows,
+                getRowHeight,
+                freezeTrailingRows,
+                hasAppendRow,
+                undefined,
+                (drawY, row, rh) => {
+                    if (row < 0) return;
+
+                    cellIndex[1] = row;
+                    if (damage.has(cellIndex)) {
+                        result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                    }
+                }
+            );
+        }
+    );
+
+    return result;
+}
+
+function expandDamageDrawRegions(drawRegions: readonly Rectangle[], repairPad: number): Rectangle[] {
+    if (repairPad <= 0) return [...drawRegions];
+
+    return drawRegions.map(r => ({
+        x: r.x - repairPad,
+        y: r.y - repairPad,
+        width: r.width + repairPad * 2,
+        height: r.height + repairPad * 2,
+    }));
 }
 
 function getLastRow(
@@ -377,7 +447,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 freezeTrailingRows,
                 rows,
                 highlightRegions,
-                theme
+                theme,
+                enableLowDprHairline
             );
         }
 
@@ -444,7 +515,205 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             },
         ]);
 
+        const cellDamageRegions =
+            enableLowDprHairline && damageInView
+                ? getDamageDrawRegions(
+                      effectiveCols,
+                      height,
+                      totalHeaderHeight,
+                      translateX,
+                      translateY,
+                      cellYOffset,
+                      rows,
+                      getRowHeight,
+                      freezeTrailingRows,
+                      hasAppendRow,
+                      damage
+                  )
+                : undefined;
+
         const doDamage = (ctx: CanvasRenderingContext2D) => {
+            if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+                const repairPad = getDamageRepairPad(enableLowDprHairline);
+                // cellDamageRegions остаются точной dirty-геометрией, а visualDamageRegions расширяют только область repair.
+                // Так мы дорисовываем соседние grid/highlight штрихи без отдельного hover-хака и без смены normal cell rendering path.
+                const visualDamageRegions = expandDamageDrawRegions(cellDamageRegions, repairPad);
+
+                ctx.save();
+                ctx.beginPath();
+                for (const r of visualDamageRegions) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+                ctx.clip();
+
+                ctx.fillStyle = theme.bgCell;
+                ctx.fill();
+                ctx.beginPath();
+
+                const highlightRedraw = drawHighlightRings(
+                    ctx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline
+                );
+
+                const focusRedraw = drawFocus
+                    ? drawFillHandle(
+                          ctx,
+                          width,
+                          height,
+                          cellYOffset,
+                          translateX,
+                          translateY,
+                          effectiveCols,
+                          mappedColumns,
+                          theme,
+                          totalHeaderHeight,
+                          selection,
+                          getRowHeight,
+                          getCellContent,
+                          freezeTrailingRows,
+                          hasAppendRow,
+                          fillHandle,
+                          rows
+                      )
+                    : undefined;
+
+                const spans = drawCells(
+                    ctx,
+                    effectiveCols,
+                    mappedColumns,
+                    height,
+                    totalHeaderHeight,
+                    translateX,
+                    translateY,
+                    cellYOffset,
+                    rows,
+                    getRowHeight,
+                    getCellContent,
+                    getGroupDetails,
+                    getRowThemeOverride,
+                    disabledRows,
+                    isFocused,
+                    drawFocus,
+                    freezeTrailingRows,
+                    hasAppendRow,
+                    visualDamageRegions,
+                    undefined,
+                    selection,
+                    prelightCells,
+                    highlightRegions,
+                    imageLoader,
+                    spriteManager,
+                    hoverValues,
+                    hoverInfo,
+                    drawCellCallback,
+                    hyperWrapping,
+                    theme,
+                    enqueue,
+                    renderStateProvider,
+                    getCellRenderer,
+                    overrideCursor,
+                    minimumCellWidth
+                );
+
+                drawBlanks(
+                    ctx,
+                    effectiveCols,
+                    mappedColumns,
+                    width,
+                    height,
+                    totalHeaderHeight,
+                    translateX,
+                    translateY,
+                    cellYOffset,
+                    rows,
+                    getRowHeight,
+                    getRowThemeOverride,
+                    selection.rows,
+                    disabledRows,
+                    freezeTrailingRows,
+                    hasAppendRow,
+                    visualDamageRegions,
+                    undefined,
+                    theme
+                );
+
+                drawExtraRowThemes(
+                    ctx,
+                    effectiveCols,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    width,
+                    height,
+                    visualDamageRegions,
+                    totalHeaderHeight,
+                    getRowHeight,
+                    getRowThemeOverride,
+                    verticalBorder,
+                    freezeTrailingRows,
+                    rows,
+                    theme
+                );
+
+                const lineRepairRegions =
+                    spans === undefined ? visualDamageRegions : [...visualDamageRegions, ...spans];
+
+                drawGridLines(
+                    ctx,
+                    effectiveCols,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    width,
+                    height,
+                    lineRepairRegions,
+                    spans,
+                    groupHeaderHeight,
+                    totalHeaderHeight,
+                    getRowHeight,
+                    getRowThemeOverride,
+                    verticalBorder,
+                    freezeTrailingRows,
+                    rows,
+                    theme,
+                    false,
+                    enableLowDprHairline
+                );
+
+                overdrawStickyBoundaries(
+                    ctx,
+                    effectiveCols,
+                    width,
+                    height,
+                    freezeTrailingRows,
+                    rows,
+                    verticalBorder,
+                    getRowHeight,
+                    theme,
+                    enableLowDprHairline
+                );
+
+                highlightRedraw?.();
+                focusRedraw?.();
+                ctx.restore();
+                return;
+            }
+
             drawCells(
                 ctx,
                 effectiveCols,
@@ -535,7 +804,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     translateX,
                     translateY,
                     cellYOffset,
-                    damage
+                    damage,
+                    enableLowDprHairline
                 );
                 drawHeaderTexture();
             }
@@ -627,7 +897,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         freezeTrailingRows,
         rows,
         highlightRegions,
-        theme
+        theme,
+        enableLowDprHairline
     );
 
     // the overdraw may have nuked out our focus ring right edge.

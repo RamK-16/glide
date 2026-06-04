@@ -114,6 +114,27 @@ const basicProps: DataGridProps = {
 };
 
 const dataGridCanvasId = "data-grid-canvas";
+const testHighlightColor = "#00f";
+const testSolidOutlineStyle = "solid-outline";
+const singleBufferRenderStrategy = "single-buffer";
+
+type MockCanvasContext = CanvasRenderingContext2D & {
+    __clearEvents: () => void;
+    __getEvents: () => readonly { type: string; props?: Record<string, number> }[];
+};
+
+function getDataGridCanvasContext(): MockCanvasContext {
+    const canvas = screen.getByTestId(dataGridCanvasId) as HTMLCanvasElement;
+    return canvas.getContext("2d") as MockCanvasContext;
+}
+
+function setDevicePixelRatio(devicePixelRatio: number) {
+    Object.defineProperty(window, "devicePixelRatio", {
+        configurable: true,
+        value: devicePixelRatio,
+    });
+}
+
 describe("data-grid", () => {
     beforeEach(() => {
         standardBeforeEach();
@@ -133,6 +154,7 @@ describe("data-grid", () => {
     });
 
     afterEach(() => {
+        setDevicePixelRatio(1);
         cleanup();
     });
 
@@ -365,6 +387,186 @@ describe("data-grid", () => {
         expect(spy).not.toBeCalled();
         ref.current?.damage([{ cell: [1, 1] }]);
         expect(spy).toBeCalled();
+    });
+
+    test("Low DPR damage keeps old redraw path when hairline is disabled", () => {
+        setDevicePixelRatio(0.5);
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: false }}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(ctx.__getEvents().some(e => e.type === "stroke")).toBe(false);
+        expect(
+            ctx.__getEvents().some(e => {
+                if (e.type !== "rect") return false;
+                const { x, y, width, height } = e.props ?? {};
+
+                return x === 148 && y === 66 && width === 164 && height === 36;
+            })
+        ).toBe(false);
+    });
+
+    test("Damage redraws grid lines when low DPR hairline is enabled", () => {
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: true }}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(ctx.__getEvents().some(e => e.type === "stroke")).toBe(true);
+    });
+
+    test("Double-buffer damage redraws grid lines when low DPR hairline is enabled", () => {
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: "double-buffer", enableLowDprHairline: true }}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(ctx.__getEvents().some(e => e.type === "stroke")).toBe(true);
+    });
+
+    test("Damage redraws highlight rings when low DPR hairline is enabled", () => {
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: true }}
+                highlightRegions={[
+                    {
+                        color: testHighlightColor,
+                        range: { x: 1, y: 1, width: 1, height: 1 },
+                        style: testSolidOutlineStyle,
+                    },
+                ]}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(ctx.__getEvents().some(e => e.type === "strokeRect")).toBe(true);
+    });
+
+    test("Low DPR solid highlight rings use hairline width and inset", () => {
+        setDevicePixelRatio(0.5);
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: true }}
+                highlightRegions={[
+                    {
+                        color: testHighlightColor,
+                        range: { x: 1, y: 1, width: 1, height: 1 },
+                        style: testSolidOutlineStyle,
+                    },
+                ]}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(ctx.__getEvents().some(e => e.type === "lineWidth" && e.props?.value === 2)).toBe(true);
+        expect(
+            ctx.__getEvents().some(e => {
+                if (e.type !== "strokeRect") return false;
+                const { x, y, width, height } = e.props ?? {};
+
+                return x === 151 && y === 69 && width === 159 && height === 31;
+            })
+        ).toBe(true);
+    });
+
+    test("Low DPR solid highlight rings keep old geometry when hairline is disabled", () => {
+        setDevicePixelRatio(0.5);
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: false }}
+                highlightRegions={[
+                    {
+                        color: testHighlightColor,
+                        range: { x: 1, y: 1, width: 1, height: 1 },
+                        style: testSolidOutlineStyle,
+                    },
+                ]}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+
+        expect(ctx.__getEvents().some(e => e.type === "lineWidth" && e.props?.value === 2)).toBe(false);
+        expect(
+            ctx.__getEvents().some(e => {
+                if (e.type !== "strokeRect") return false;
+                const { x, y, width, height } = e.props ?? {};
+
+                return x === 150.5 && y === 68.5 && width === 160 && height === 32;
+            })
+        ).toBe(true);
+    });
+
+    test("Low DPR damage uses expanded visual regions", () => {
+        setDevicePixelRatio(0.5);
+        const ref = React.createRef<DataGridRef>();
+
+        render(
+            <DataGrid
+                ref={ref}
+                {...basicProps}
+                experimental={{ renderStrategy: singleBufferRenderStrategy, enableLowDprHairline: true }}
+            />
+        );
+
+        const ctx = getDataGridCanvasContext();
+        ctx.__clearEvents();
+        ref.current?.damage([{ cell: [1, 1] }]);
+
+        expect(
+            ctx.__getEvents().some(e => {
+                if (e.type !== "rect") return false;
+                const { x, y, width, height } = e.props ?? {};
+
+                return x === 148 && y === 66 && width === 164 && height === 36;
+            })
+        ).toBe(true);
     });
 
     test("Out of bounds damage", () => {
