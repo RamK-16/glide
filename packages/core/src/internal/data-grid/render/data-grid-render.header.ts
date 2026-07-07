@@ -67,9 +67,14 @@ export function drawGridHeaders(
     walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x, _y, clipX) => {
         if (damage !== undefined && !damage.has([c.sourceIndex, -1])) return;
         const diff = Math.max(0, clipX - x);
+        // spanGroupHeader: колонка рисуется как одна слитная ячейка на всю высоту
+        // шапки (групповые строки + строка колонки), контент центрируется по ней.
+        const spanFull = enableGroups && c.spanGroupHeader === true;
+        const clipY = spanFull ? 0 : totalGroupHeaderHeight;
+        const drawH = spanFull ? totalHeaderHeight : headerHeight;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + diff, totalGroupHeaderHeight, c.width - diff, headerHeight);
+        ctx.rect(x + diff, clipY, c.width - diff, drawH);
         ctx.clip();
 
         const groupName = Array.isArray(c.group) ? (c.group[0] ?? "") : (c.group ?? "");
@@ -98,19 +103,19 @@ export function drawGridHeaders(
 
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
-        const y = enableGroups ? totalGroupHeaderHeight : 0;
+        const y = spanFull ? 0 : enableGroups ? totalGroupHeaderHeight : 0;
         const isFirstSelected = selected && selection.columns.first() === c.sourceIndex;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
             ctx.fillStyle = bgFillStyle;
-            ctx.fillRect(x + xOffset, y, c.width - xOffset, headerHeight);
+            ctx.fillRect(x + xOffset, y, c.width - xOffset, drawH);
             if (isFirstSelected) {
-                ctx.fillRect(x, y, 1, headerHeight);
+                ctx.fillRect(x, y, 1, drawH);
             }
         } else if (hasSelectedCell || hover > 0) {
             ctx.beginPath();
-            ctx.rect(x + xOffset, y, c.width - xOffset, headerHeight);
+            ctx.rect(x + xOffset, y, c.width - xOffset, drawH);
             if (hasSelectedCell) {
                 ctx.fillStyle = theme.bgHeaderHasFocus;
                 ctx.fill();
@@ -128,7 +133,7 @@ export function drawGridHeaders(
             x,
             y,
             c.width,
-            headerHeight,
+            drawH,
             c,
             selected,
             theme,
@@ -142,6 +147,20 @@ export function drawGridHeaders(
             touchMode
         );
         ctx.restore();
+
+        // Слитая колонка: вертикальная граница слева на всю высоту шапки — в групп-полосе
+        // обычный lines-рендерер вертикальных линий не рисует (y1 = totalGroupHeaderHeight),
+        // поэтому две соседние слитые колонки иначе бы «слиплись» сверху.
+        if (spanFull && x !== 0 && verticalBorder(c.sourceIndex)) {
+            ctx.beginPath();
+            ctx.moveTo(x + 0.5, 0);
+            ctx.lineTo(x + 0.5, totalHeaderHeight);
+            ctx.strokeStyle = outerTheme.borderColor;
+            const previousLineWidth = ctx.lineWidth;
+            ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+            ctx.stroke();
+            ctx.lineWidth = previousLineWidth;
+        }
     });
 
     if (enableGroups) {
@@ -163,6 +182,35 @@ export function drawGridHeaders(
             enableLowDprHairline
         );
     }
+}
+
+/**
+ * Разбивает горизонтальную линию [0, width] на отрезки, ВЫРЕЗАЯ переданные
+ * интервалы `gaps` (x-диапазоны слитых spanGroupHeader-колонок). Возвращает
+ * отрезки [x1, x2] для отрисовки — над слитыми колонками межуровневой линии нет,
+ * чтобы шапка читалась как единая ячейка (без шва).
+ *
+ * Чистая функция (без canvas) — вынесена для юнит-тестов: сегментация самая
+ * рискованная часть (скролл/sticky дают несортированные и наезжающие интервалы,
+ * а также интервалы вне [0, width]).
+ */
+export function segmentSpanGroupHeaderLine(
+    width: number,
+    gaps: readonly (readonly [number, number])[]
+): [number, number][] {
+    const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
+    const segments: [number, number][] = [];
+    let cursor = 0;
+    for (const [start, end] of sorted) {
+        if (start > cursor) {
+            segments.push([cursor, Math.min(start, width)]);
+        }
+        cursor = Math.max(cursor, end);
+    }
+    if (cursor < width) {
+        segments.push([cursor, width]);
+    }
+    return segments;
 }
 
 export function drawGroups(
@@ -191,6 +239,28 @@ export function drawGroups(
 
     let currentY = 0;
 
+    // x-диапазоны колонок со spanGroupHeader — над ними межуровневые горизонтальные
+    // линии не рисуем, чтобы слитая ячейка читалась как единая (без шва).
+    const spannedRanges: [number, number][] = [];
+    walkColumns(effectiveCols, 0, translateX, 0, 0, (c, x, _y, clipX) => {
+        if (c.spanGroupHeader === true) {
+            spannedRanges.push([Math.max(x, clipX), x + c.width]);
+        }
+    });
+
+    const strokeHBorderSegmented = (lineY: number) => {
+        ctx.strokeStyle = theme.borderColor;
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+        ctx.beginPath();
+        for (const [x1, x2] of segmentSpanGroupHeaderLine(width, spannedRanges)) {
+            ctx.moveTo(x1, lineY);
+            ctx.lineTo(x2, lineY);
+        }
+        ctx.stroke();
+        ctx.lineWidth = previousLineWidth;
+    };
+
     for (let level = 0; level < levels; level++) {
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
@@ -216,15 +286,8 @@ export function drawGroups(
         );
         currentY += levelHeight;
 
-        // Draw horizontal border between levels
-        ctx.beginPath();
-        ctx.moveTo(0, currentY + 0.5);
-        ctx.lineTo(width, currentY + 0.5);
-        ctx.strokeStyle = theme.borderColor;
-        const previousLineWidth = ctx.lineWidth;
-        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
-        ctx.stroke();
-        ctx.lineWidth = previousLineWidth;
+        // Draw horizontal border between levels — сегментами, минуя слитые колонки
+        strokeHBorderSegmented(currentY + 0.5);
     }
 }
 
@@ -383,6 +446,20 @@ function drawGroupLevel(
             })
         )
             return;
+        // Слитые колонки (spanGroupHeader) свою групп-ячейку не рисуют — над ними уже
+        // нарисован header на всю высоту (drawGridHeaders). Пропускаем span целиком,
+        // если он состоит только из таких колонок (finalX двигаем для правой границы).
+        let allSpanned = true;
+        for (let i = span[0]; i <= span[1]; i++) {
+            if (effectiveCols[i]?.spanGroupHeader !== true) {
+                allSpanned = false;
+                break;
+            }
+        }
+        if (allSpanned) {
+            finalX = x + w;
+            return;
+        }
         ctx.save();
         ctx.beginPath();
         ctx.rect(x, y + yOffset, w, h);

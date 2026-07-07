@@ -571,7 +571,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
             // -1: header or above
             // undefined: offbottom
-            const row = getRowIndexForY(
+            let row = getRowIndexForY(
                 y,
                 height,
                 enableGroups,
@@ -584,6 +584,20 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 freezeTrailingRows,
                 groupHeaderLevels
             );
+
+            // spanGroupHeader: слитая колонка — одна ячейка на всю высоту шапки.
+            // Любое попадание в её групповую зону (-2 и выше) трактуем как header (-1),
+            // чтобы hover/click/bounds работали по всей высоте, а не по отдельной полосе.
+            if (
+                enableGroups &&
+                row !== undefined &&
+                row <= -2 &&
+                col >= 0 &&
+                col < mappedColumns.length &&
+                mappedColumns[col].spanGroupHeader === true
+            ) {
+                row = -1;
+            }
 
             const shiftKey = ev?.shiftKey === true;
             const ctrlKey = ev?.ctrlKey === true;

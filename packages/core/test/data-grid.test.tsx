@@ -377,6 +377,91 @@ describe("data-grid", () => {
         );
     });
 
+    test("spanGroupHeader: hover on group band reports header, not group-header", () => {
+        const spy = vi.fn();
+        // Колонка A (index 0) — слитая (spanGroupHeader, без группы), остальные в группе "G".
+        const columns = basicProps.columns.map((c, i) =>
+            i === 0 ? { ...c, spanGroupHeader: true } : { ...c, group: "G" }
+        );
+
+        render(
+            <DataGrid
+                {...basicProps}
+                columns={columns}
+                enableGroups={true}
+                groupHeaderHeight={28}
+                onItemHovered={spy}
+            />
+        );
+
+        const el = screen.getByTestId(dataGridCanvasId);
+        // Верхняя (групповая) зона колонки A: x внутри 0..150, y внутри 0..28.
+        fireEvent.pointerMove(el, { clientX: 75, clientY: 14 });
+
+        // Без фикса тут был бы group-header; слитая колонка → header (-1).
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({
+                kind: "header",
+                location: [0, -1],
+            })
+        );
+    });
+
+    test("spanGroupHeader: hover on column band still reports header", () => {
+        const spy = vi.fn();
+        const columns = basicProps.columns.map((c, i) =>
+            i === 0 ? { ...c, spanGroupHeader: true } : { ...c, group: "G" }
+        );
+
+        render(
+            <DataGrid
+                {...basicProps}
+                columns={columns}
+                enableGroups={true}
+                groupHeaderHeight={28}
+                onItemHovered={spy}
+            />
+        );
+
+        const el = screen.getByTestId(dataGridCanvasId);
+        // Нижняя (колоночная) зона колонки A: y внутри 28..(28+36).
+        fireEvent.pointerMove(el, { clientX: 75, clientY: 28 + 18 });
+
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({
+                kind: "header",
+                location: [0, -1],
+            })
+        );
+    });
+
+    test("spanGroupHeader is ignored on a column that has its own group", () => {
+        const spy = vi.fn();
+        // Колонка A имеет И группу, И флаг — флаг должен гаситься (нормализация в useMappedColumns).
+        const columns = basicProps.columns.map(c => ({ ...c, group: "G", spanGroupHeader: true }));
+
+        render(
+            <DataGrid
+                {...basicProps}
+                columns={columns}
+                enableGroups={true}
+                groupHeaderHeight={28}
+                onItemHovered={spy}
+            />
+        );
+
+        const el = screen.getByTestId(dataGridCanvasId);
+        // Групповая зона колонки A: раз флаг погашен — это group-header, а не header.
+        fireEvent.pointerMove(el, { clientX: 75, clientY: 14 });
+
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({
+                kind: "group-header",
+                location: [0, -2],
+            })
+        );
+    });
+
     test("Simple damage", () => {
         const spy = vi.fn(basicProps.getCellContent);
         const ref = React.createRef<DataGridRef>();

@@ -28,6 +28,14 @@ export function useMappedColumns(
             columns.map(
                 (c, i): MappedGridColumn => ({
                     group: c.group,
+                    // Флаг слитной шапки имеет смысл только для колонки БЕЗ группы.
+                    // Нормализуем здесь (единый источник), чтобы render/bounds/hit-test/clip
+                    // видели согласованное значение и не рассинхронились на «группа + флаг».
+                    spanGroupHeader:
+                        c.spanGroupHeader === true &&
+                        (c.group === undefined ||
+                            c.group === "" ||
+                            (Array.isArray(c.group) && c.group.length === 0)),
                     grow: c.grow,
                     hasMenu: c.hasMenu,
                     icon: c.icon,
@@ -850,8 +858,14 @@ export function computeBounds(
     result.width = mappedColumns[col].width + 1;
 
     if (row === -1) {
-        result.y = groupHeights;
-        result.height = headerHeight;
+        if (mappedColumns[col].spanGroupHeader === true) {
+            // Слитая шапка: одна ячейка на всю высоту — bounds для hover/click/меню/damage.
+            result.y = 0;
+            result.height = totalHeaderHeight;
+        } else {
+            result.y = groupHeights;
+            result.height = headerHeight;
+        }
     } else if (row <= -2) {
         // Multi-level group headers: -2 is top level, -3 is second level, etc.
         const level = -2 - row;

@@ -166,6 +166,20 @@ export type Item = readonly [col: number, row: number];
 export interface BaseGridColumn {
     readonly title: string;
     readonly group?: string | string[];
+    /**
+     * When true, this column's header is drawn as a single merged cell spanning
+     * the full header height (all group-header rows + the column-header row),
+     * with content vertically centered and no divider lines across it.
+     *
+     * Intended for standalone columns sitting next to grouped columns: instead of
+     * an empty group cell on top and the title on the bottom row, the header reads
+     * as one tall cell (rowspan). Opt-in and additive — when omitted the column
+     * renders exactly as before.
+     *
+     * Has effect only while group headers are enabled AND the column has no group
+     * of its own (a grouped column ignores the flag). LTR layout is assumed.
+     */
+    readonly spanGroupHeader?: boolean;
     readonly icon?: GridColumnIcon | string;
     readonly overlayIcon?: GridColumnIcon | string;
     readonly menuIcon?: GridColumnMenuIcon | string;

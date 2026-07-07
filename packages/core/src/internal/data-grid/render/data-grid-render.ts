@@ -90,15 +90,26 @@ function clipHeaderDamage(
             const finalX = drawX + diff + 1;
             const finalWidth = c.width - diff - 1;
             if (damage.has([c.sourceIndex, -1])) {
-                const groupHeight = Array.isArray(groupHeaderHeight)
-                    ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
-                    : groupHeaderHeight;
-                ctx.rect(
-                    finalX - repairPad,
-                    groupHeight - repairPad,
-                    finalWidth + repairPad * 2,
-                    totalHeaderHeight - groupHeight + repairPad * 2
-                );
+                if (c.spanGroupHeader === true) {
+                    // Слитая шапка — одна ячейка на всю высоту: клипуем весь столбец шапки,
+                    // иначе hover/перерисовка режется по нижней полосе (headerHeight).
+                    ctx.rect(
+                        finalX - repairPad,
+                        0 - repairPad,
+                        finalWidth + repairPad * 2,
+                        totalHeaderHeight + repairPad * 2
+                    );
+                } else {
+                    const groupHeight = Array.isArray(groupHeaderHeight)
+                        ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+                        : groupHeaderHeight;
+                    ctx.rect(
+                        finalX - repairPad,
+                        groupHeight - repairPad,
+                        finalWidth + repairPad * 2,
+                        totalHeaderHeight - groupHeight + repairPad * 2
+                    );
+                }
             }
         }
     );
