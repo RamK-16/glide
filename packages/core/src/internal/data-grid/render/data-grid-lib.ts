@@ -13,6 +13,7 @@ import React from "react";
 import type { BaseDrawArgs, PrepResult } from "../../../cells/cell-types.js";
 import { split as splitText, clearCache } from "canvas-hypertxt";
 import type { FullyDefined } from "../../../common/support.js";
+import type { SpannedGroupRegionCols } from "./data-grid-render.walk.js";
 
 export interface MappedGridColumn extends FullyDefined<InnerGridColumn> {
     sourceIndex: number;
@@ -825,7 +826,8 @@ export function computeBounds(
     freezeColumns: number,
     freezeTrailingRows: number,
     mappedColumns: readonly MappedGridColumn[],
-    rowHeight: number | ((index: number) => number)
+    rowHeight: number | ((index: number) => number),
+    spannedGroupRegions?: readonly SpannedGroupRegionCols[]
 ): Rectangle {
     const result: Rectangle = {
         x: 0,
@@ -878,12 +880,25 @@ export function computeBounds(
         result.y = yOffset;
         result.height = levelHeight;
 
+        // Слитая группа (rowspan): bounds на всю слитую высоту — от верха региона до низа
+        // групп-шапки. x-диапазон расширяем на уровне ВЕРХА региона (spanLevel).
+        const region = spannedGroupRegions?.find(r => r.level <= level && r.startCol <= col && r.endCol >= col);
+        const spanLevel = region?.level ?? level;
+        if (region !== undefined) {
+            let yTop = 0;
+            for (let i = 0; i < region.level && i < heights.length; i++) {
+                yTop += heights[i] ?? heights[0] ?? 0;
+            }
+            result.y = yTop;
+            result.height = groupHeights - yTop;
+        }
+
         let start = col;
         const group = mappedColumns[col].group;
         const sticky = mappedColumns[col].sticky;
         while (
             start > 0 &&
-            isGroupEqual(mappedColumns[start - 1].group, group, level) &&
+            isGroupEqual(mappedColumns[start - 1].group, group, spanLevel) &&
             mappedColumns[start - 1].sticky === sticky
         ) {
             const c = mappedColumns[start - 1];
@@ -895,7 +910,7 @@ export function computeBounds(
         let end = col;
         while (
             end + 1 < mappedColumns.length &&
-            isGroupEqual(mappedColumns[end + 1].group, group, level) &&
+            isGroupEqual(mappedColumns[end + 1].group, group, spanLevel) &&
             mappedColumns[end + 1].sticky === sticky
         ) {
             const c = mappedColumns[end + 1];

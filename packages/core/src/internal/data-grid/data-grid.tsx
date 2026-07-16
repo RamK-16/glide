@@ -9,7 +9,12 @@ import {
     rectBottomRight,
     useMappedColumns,
 } from "./render/data-grid-lib.js";
-import { getGroupLevels, getTotalGroupHeaderHeight } from "./render/data-grid-render.walk.js";
+import {
+    findSpannedGroupRegion,
+    getGroupLevels,
+    getSpannedGroupRegions,
+    getTotalGroupHeaderHeight,
+} from "./render/data-grid-render.walk.js";
 import {
     GridCellKind,
     type Rectangle,
@@ -470,6 +475,15 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
     const mappedColumns = useMappedColumns(columns, freezeColumns);
     const groupHeaderLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
+    // Слитые группы (rowspan) — единый расчёт регионов для hit-test и bounds, чтобы они
+    // совпадали с рендером. Пусто, если групп нет или ни одна группа не помечена span.
+    const spannedGroupRegions = React.useMemo(
+        () =>
+            enableGroups
+                ? getSpannedGroupRegions(mappedColumns, groupHeaderLevels, name => getGroupDetails?.(name)?.span === true)
+                : [],
+        [enableGroups, mappedColumns, groupHeaderLevels, getGroupDetails]
+    );
     const totalGroupHeaderHeight = enableGroups ? getTotalGroupHeaderHeight(groupHeaderHeight, mappedColumns) : 0;
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     const stickyX = React.useMemo(
@@ -503,7 +517,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 freezeColumns,
                 freezeTrailingRows,
                 mappedColumns,
-                rowHeight
+                rowHeight,
+                spannedGroupRegions
             );
 
             if (scale !== 1) {
@@ -532,6 +547,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             freezeTrailingRows,
             mappedColumns,
             rowHeight,
+            spannedGroupRegions,
         ]
     );
 
@@ -585,18 +601,19 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 groupHeaderLevels
             );
 
-            // spanGroupHeader: слитая колонка — одна ячейка на всю высоту шапки.
-            // Любое попадание в её групповую зону (-2 и выше) трактуем как header (-1),
-            // чтобы hover/click/bounds работали по всей высоте, а не по отдельной полосе.
-            if (
-                enableGroups &&
-                row !== undefined &&
-                row <= -2 &&
-                col >= 0 &&
-                col < mappedColumns.length &&
-                mappedColumns[col].spanGroupHeader === true
-            ) {
-                row = -1;
+            // spanGroupHeader: слитая КОЛОНКА — одна ячейка на всю высоту шапки; любое
+            // попадание в её групповую зону трактуем как header (-1). Слитая ГРУППА —
+            // попадание в её нижние (пустые) групп-уровни трактуем как верхний уровень
+            // группы, чтобы hover/click/bounds работали по всей слитой высоте.
+            if (enableGroups && row !== undefined && row <= -2 && col >= 0 && col < mappedColumns.length) {
+                if (mappedColumns[col].spanGroupHeader === true) {
+                    row = -1;
+                } else {
+                    const region = findSpannedGroupRegion(spannedGroupRegions, col, -2 - row);
+                    if (region !== undefined) {
+                        row = -2 - region.level;
+                    }
+                }
             }
 
             const shiftKey = ev?.shiftKey === true;
@@ -769,6 +786,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             fillHandle,
             selection,
             totalHeaderHeight,
+            spannedGroupRegions,
         ]
     );
 

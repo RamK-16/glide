@@ -43,6 +43,16 @@ export interface GroupDetails {
     readonly name: string;
     readonly icon?: string;
     readonly overrideTheme?: Partial<Theme>;
+    /**
+     * When true, a shallow group (one that ends above the deepest group level)
+     * spans its empty lower group rows as one merged cell (rowspan), instead of
+     * leaving an empty band under the title. The merge stops above the column row.
+     *
+     * Opt-in and additive: omitted → renders exactly as before. Only applies when
+     * every column in the group has no deeper group (ragged spans render as-is).
+     * Overrides the grid-level `spanShallowGroups` prop for this group. LTR assumed.
+     */
+    readonly span?: boolean;
     readonly actions?: readonly {
         readonly title: string;
         readonly onClick: (e: GridMouseGroupHeaderEventArgs) => void;

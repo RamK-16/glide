@@ -22,7 +22,13 @@ import {
 } from "./data-grid-lib.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
-import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
+import {
+    walkColumns,
+    walkGroups,
+    getGroupLevels,
+    getSpannedGroupRegions,
+    getTotalGroupHeaderHeight,
+} from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
 import type { DragAndDropState, HoverInfo } from "./draw-grid-arg.js";
 
@@ -213,6 +219,21 @@ export function segmentSpanGroupHeaderLine(
     return segments;
 }
 
+/**
+ * Слитая (rowspan) групп-ячейка: помеченная `span` группа, «терминальная» на своём
+ * уровне (ни у одной её колонки нет более глубокой подгруппы), занимает свои пустые
+ * нижние групп-уровни как ОДНА ячейка высотой `mergedHeight` — от уровня `level` до
+ * последнего групп-уровня. Строку колонок НЕ покрывает.
+ */
+interface SpannedGroupRegion {
+    readonly level: number;
+    readonly startCol: number;
+    readonly endCol: number;
+    readonly x: number;
+    readonly w: number;
+    readonly mergedHeight: number;
+}
+
 export function drawGroups(
     ctx: CanvasRenderingContext2D,
     effectiveCols: readonly MappedGridColumn[],
@@ -248,12 +269,41 @@ export function drawGroups(
         }
     });
 
-    const strokeHBorderSegmented = (lineY: number) => {
+    // Слитые ГРУППЫ (rowspan): логические регионы берём из общего хелпера (единый
+    // источник с hit-test/bounds/clip), затем дополняем геометрией (x/w) и mergedHeight.
+    const logicalRegions = getSpannedGroupRegions(
+        effectiveCols,
+        levels,
+        groupName => getGroupDetails(groupName).span === true
+    );
+    const spannedGroupRegions: SpannedGroupRegion[] = [];
+    if (logicalRegions.length > 0) {
+        for (let level = 0; level < levels - 1; level++) {
+            walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, _groupName, x, _y, w) => {
+                if (!logicalRegions.some(r => r.level === level && r.startCol === span[0])) return;
+                let mergedHeight = 0;
+                for (let k = level; k < levels; k++) mergedHeight += heights[k] ?? heights[0] ?? 0;
+                spannedGroupRegions.push({ level, startCol: span[0], endCol: span[1], x, w, mergedHeight });
+            });
+        }
+    }
+
+    // Межуровневую линию режем над слитыми листьями (полная высота) и над слитыми
+    // группами — но у групп ТОЛЬКО внутренние линии (между групп-рядами). Нижнюю
+    // границу групп-шапки и строки колонок (последний уровень, level === levels-1)
+    // НЕ режем: у слитой группы должно быть дно.
+    const strokeHBorderSegmented = (lineY: number, level: number) => {
+        const gaps: [number, number][] = [...spannedRanges];
+        if (level < levels - 1) {
+            for (const r of spannedGroupRegions) {
+                if (r.level <= level) gaps.push([r.x, r.x + r.w]);
+            }
+        }
         ctx.strokeStyle = theme.borderColor;
         const previousLineWidth = ctx.lineWidth;
         ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
         ctx.beginPath();
-        for (const [x1, x2] of segmentSpanGroupHeaderLine(width, spannedRanges)) {
+        for (const [x1, x2] of segmentSpanGroupHeaderLine(width, gaps)) {
             ctx.moveTo(x1, lineY);
             ctx.lineTo(x2, lineY);
         }
@@ -280,14 +330,15 @@ export function drawGroups(
             getGroupDetails,
             damage,
             levels,
+            spannedGroupRegions,
             selection,
             drawGroupHeaderCallback,
             enableLowDprHairline
         );
         currentY += levelHeight;
 
-        // Draw horizontal border between levels — сегментами, минуя слитые колонки
-        strokeHBorderSegmented(currentY + 0.5);
+        // Draw horizontal border between levels — сегментами, минуя слитые колонки и группы
+        strokeHBorderSegmented(currentY + 0.5, level);
     }
 }
 
@@ -419,6 +470,7 @@ function drawGroupLevel(
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
     levels: number,
+    spannedGroupRegions: readonly SpannedGroupRegion[],
     selection?: GridSelection,
     drawGroupHeaderCallback?: DrawGroupHeaderCallback,
     enableLowDprHairline: boolean = false
@@ -460,9 +512,18 @@ function drawGroupLevel(
             finalX = x + w;
             return;
         }
+        // Колонки, покрытые слитой группой сверху (её merged-ячейка уже отрисована на
+        // верхнем уровне), свою пустую ячейку не рисуют — иначе перекрыли бы merged.
+        if (spannedGroupRegions.some(r => r.level < level && r.startCol <= span[0] && r.endCol >= span[1])) {
+            finalX = x + w;
+            return;
+        }
+        // Если группа стартует слитый регион на этом уровне — рисуем на всю его высоту.
+        const spanRegion = spannedGroupRegions.find(r => r.level === level && r.startCol === span[0]);
+        const cellH = spanRegion?.mergedHeight ?? h;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x, y + yOffset, w, h);
+        ctx.rect(x, y + yOffset, w, cellH);
         ctx.clip();
 
         const group = getGroupDetails(groupName);
@@ -486,7 +547,8 @@ function drawGroupLevel(
             const isFirstColumn = x === 0;
             const offsetForVisibleBorderX = isFirstColumn ? 0 : 1;
 
-            const isLastLevelGroupRow = level === levels - 1;
+            // Слитая группа достаёт до нижнего групп-уровня → трактуем как последний ряд.
+            const isLastLevelGroupRow = level === levels - 1 || spanRegion !== undefined;
             const offsetForVisibleBorderY = isLastLevelGroupRow ? 0 : 1;
 
             const headerInnerMapper = {
@@ -506,7 +568,7 @@ function drawGroupLevel(
                         x: x + offsetForVisibleBorderX,
                         y: y + yOffset,
                         width: w - offsetForVisibleBorderX,
-                        height: h - offsetForVisibleBorderY,
+                        height: cellH - offsetForVisibleBorderY,
                     },
                     isSelected,
                     isHovered,
@@ -520,7 +582,7 @@ function drawGroupLevel(
                         x,
                         headerInnerMapper.y,
                         w,
-                        h,
+                        cellH,
                         groupNameOverride ?? groupName,
                         level,
                         span,
@@ -543,7 +605,7 @@ function drawGroupLevel(
                 const preventOverlaysOffset = level === 0 ? 0 : 1; // prevent overlays of vert and horiz borders
                 ctx.beginPath();
                 ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
-                ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
+                ctx.lineTo(x + 0.5, headerInnerMapper.y + cellH);
                 ctx.strokeStyle = theme.borderColor;
                 const previousLineWidth = ctx.lineWidth;
                 ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
@@ -556,7 +618,7 @@ function drawGroupLevel(
                 x,
                 y + yOffset,
                 w,
-                h,
+                cellH,
                 groupName,
                 level,
                 span,

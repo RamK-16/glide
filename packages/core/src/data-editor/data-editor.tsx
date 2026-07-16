@@ -235,6 +235,14 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @group Events
      */
     readonly onGroupHeaderRenamed?: (groupName: string, newVal: string) => void;
+    /**
+     * Auto-merge (rowspan) the empty lower group rows of every shallow group — one that
+     * ends above the deepest group level — into a single tall cell, instead of leaving an
+     * empty band under the title. Per-group `getGroupDetails().span` overrides this (set it
+     * `false` to opt a group out). Additive: omitted → headers render exactly as before.
+     * @group Style
+     */
+    readonly spanShallowGroups?: boolean;
     /** Emitted when a cell is clicked.
      * @group Events
      */
@@ -852,6 +860,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         onHeaderMenuClick,
         onHeaderIndicatorClick,
         getGroupDetails,
+        spanShallowGroups,
         rowGrouping,
         onSearchClose: onSearchCloseIn,
         onItemHovered,
@@ -1406,12 +1415,16 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
 
     const mangledGetGroupDetails = React.useCallback<NonNullable<DataEditorProps["getGroupDetails"]>>(
         group => {
-            let result = getGroupDetails?.(group) ?? { name: group };
+            const base = getGroupDetails?.(group) ?? { name: group };
+            // Авто-режим: spanShallowGroups включает слияние для всех мелких групп, если у
+            // конкретной группы span не задан явно (span: false точечно отключает авто).
+            let result = { ...base, span: base.span ?? spanShallowGroups };
             if (onGroupHeaderRenamed !== undefined && group !== "") {
                 result = {
                     icon: result.icon,
                     name: result.name,
                     overrideTheme: result.overrideTheme,
+                    span: result.span,
                     actions: [
                         ...(result.actions ?? []),
                         {
@@ -1428,7 +1441,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             return result;
         },
-        [getGroupDetails, onGroupHeaderRenamed]
+        [getGroupDetails, onGroupHeaderRenamed, spanShallowGroups]
     );
 
     const setOverlaySimple = React.useCallback(
