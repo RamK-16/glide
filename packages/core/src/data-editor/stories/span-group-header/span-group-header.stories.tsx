@@ -1,3 +1,5 @@
+/* eslint-disable sonarjs/no-identical-functions */
+/* eslint-disable sonarjs/no-duplicate-string */
 /* eslint-disable react/no-unescaped-entities */
 import * as React from "react";
 
@@ -36,6 +38,9 @@ function SpanStoryShell({
     description,
     groupHeaderHeight = 34,
     freezeColumns,
+    getGroupDetails,
+    spanShallowGroups,
+    onGroupHeaderRenamed,
     width = 1500,
     height = 640,
 }: {
@@ -43,6 +48,9 @@ function SpanStoryShell({
     description: React.ReactNode;
     groupHeaderHeight?: number | number[];
     freezeColumns?: number;
+    getGroupDetails?: React.ComponentProps<typeof DataEditor>["getGroupDetails"];
+    spanShallowGroups?: boolean;
+    onGroupHeaderRenamed?: React.ComponentProps<typeof DataEditor>["onGroupHeaderRenamed"];
     width?: number;
     height?: number;
 }) {
@@ -83,6 +91,9 @@ function SpanStoryShell({
                 rowMarkers="both"
                 groupHeaderHeight={groupHeaderHeight}
                 freezeColumns={freezeColumns}
+                getGroupDetails={getGroupDetails}
+                spanShallowGroups={spanShallowGroups}
+                onGroupHeaderRenamed={onGroupHeaderRenamed}
             />
         </div>
     );
@@ -105,12 +116,16 @@ export function SGH_Basic() {
             cols={cols}
             description={
                 <>
-                    <b>Кейс из задачи: одиночные колонки рядом с группой</b>
+                    <b>ЛИСТОВАЯ фича (spanGroupHeader на колонке БЕЗ группы) — одиночные колонки рядом с группой</b>
                     {"\n"}
-                    Роль, Период, Продажи, Доплаты, Премии — spanGroupHeader: true. Группа "{KPI}" — обычная (3
-                    подколонки).{"\n"}
-                    ✅ Что увидеть: у одиночных НЕТ пустой полосы сверху; заголовок центрирован по всей высоте шапки;
-                    нет горизонтального шва посреди ячейки.
+                    Колонки: «Краткое название роли», «Период», «Продажи», «Доплаты», «Выплаты премий» —
+                    spanGroupHeader: true, у них НЕТ группы. «Индивидуальные / Коллективные / Оценка» — обычная группа "
+                    {KPI}" (spanGroupHeader к группам не применяется).{"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ (одна ячейка на всю высоту шапки, заголовок по центру, без пустой полосы сверху, без
+                    горизонтального шва): Роль, Период, Продажи, Доплаты, Выплаты премий.{"\n"}✅ НЕ слита (обычная
+                    группа): "{KPI}" — «{KPI}» в верхнем ряду, три подколонки снизу. Это ожидаемо: листовая фича группы
+                    НЕ трогает (для слияния группы см. SGH_GroupSpan).
                 </>
             }
         />
@@ -135,11 +150,15 @@ export function SGH_WithoutSpan_Before() {
             cols={cols}
             description={
                 <>
-                    <b>ДО доработки (без spanGroupHeader) — для сравнения с SGH_Basic</b>
+                    <b>ЭТАЛОН «КАК БЫЛО» (флаг spanGroupHeader НЕ задан нигде) — для сравнения с SGH_Basic</b>
                     {"\n"}
-                    Тот же набор колонок, флаг не задан.{"\n"}
-                    ❌ Что увидеть: у одиночных пустая ячейка сверху + заголовок ужат в нижнюю строку. Именно это и
-                    чиним.
+                    Тот же набор колонок, что в SGH_Basic, но НИ у одной колонки нет spanGroupHeader и ни у одной группы
+                    нет span. Намеренно ничего не сливается.{"\n"}
+                    {"\n"}
+                    ❌ Что видно (проблема, которую чиним): у одиночных «Краткое название роли», «Период», «Продажи»,
+                    «Доплаты», «Выплаты премий» — ПУСТАЯ ячейка сверху, заголовок ужат в нижний ряд. Группа "{KPI}" —
+                    обычная.{"\n"}
+                    Открой рядом SGH_Basic — там те же одиночные колонки уже слиты.
                 </>
             }
         />
@@ -163,11 +182,15 @@ export function SGH_MultiLevel() {
             groupHeaderHeight={[30, 28]}
             description={
                 <>
-                    <b>Многоуровневые группы (2 уровня): 2024 → Q1/Q2</b>
+                    <b>ЛИСТОВАЯ фича в ТРЁХрядной шапке (2 групп-ряда: 2024 → Q1/Q2)</b>
                     {"\n"}
-                    Слитные ID и Итого при высоте шапки в 3 ряда (2 групп-строки + строка колонки).{"\n"}
-                    ✅ Что увидеть: ID и Итого занимают ВСЕ 3 ряда одной ячейкой; ни одна межуровневая линия их не
-                    пересекает.
+                    Колонки: «ID» (слева) и «Итого» (справа) — spanGroupHeader: true, без группы. «Q1-A / Q1-B» — группа
+                    [2024, Q1]; «Q2-C / Q2-D» — группа [2024, Q2]. Высота шапки = 3 ряда (2 групп-ряда + ряд колонок).
+                    {"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ на ВСЕ 3 ряда одной ячейкой: ID и Итого — ни одна из двух межуровневых линий их не
+                    пересекает.{"\n"}✅ НЕ слиты (обычные двухуровневые группы): 2024 → Q1/Q2 — «2024» в 1-м ряду,
+                    «Q1»/«Q2» во 2-м, подколонки в 3-м.
                 </>
             }
         />
@@ -189,11 +212,13 @@ export function SGH_CustomHeader() {
             groupHeaderHeight={36}
             description={
                 <>
-                    <b>Кастомный контент шапки в слитой ячейке (иконка + меню)</b>
+                    <b>ЛИСТОВАЯ фича с кастомным контентом шапки (иконка + меню)</b>
                     {"\n"}
-                    Слитные Роль и Итог имеют icon и hasMenu.{"\n"}
-                    ✅ Что увидеть: иконка и «гамбургер»-меню центрированы по ВСЕЙ высоте слитой ячейки, а не прижаты к
-                    нижней полосе.
+                    Колонки: «Роль» и «Итог» — spanGroupHeader: true + icon + hasMenu (без группы). «Индивидуальные /
+                    Коллективные» — обычная группа "{KPI}".{"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ Роль и Итог: иконка и «гамбургер»-меню центрированы по ВСЕЙ высоте слитой ячейки, а не
+                    прижаты к нижней полосе.{"\n"}✅ НЕ слита группа "{KPI}" (обычная).
                 </>
             }
         />
@@ -217,11 +242,14 @@ export function SGH_EdgesAndMiddle() {
             cols={cols}
             description={
                 <>
-                    <b>Слитные слева / между группами / справа</b>
+                    <b>ЛИСТОВАЯ фича — слитые колонки слева / между группами / справа (сегментация линии)</b>
                     {"\n"}
-                    Проверка сегментации горизонтальной линии и вертикальных стыков с группами A и B.{"\n"}
-                    ✅ Что увидеть: межуровневая линия разрезана ровно по границам слитых колонок (над ними линии нет);
-                    вертикальные границы с группами целые.
+                    Колонки: «Лево-слит», «Центр-слит», «Право-слит» — spanGroupHeader: true (без группы). Между ними —
+                    обычные группы «Группа A» (A1/A2) и «Группа B» (B1/B2).{"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ 3 листовые колонки; межуровневая линия РАЗРЕЗАНА ровно по их границам (над слитой колонкой
+                    линии нет), вертикальные границы со стыками групп A/B — целые.{"\n"}✅ НЕ слиты группы A и B
+                    (обычные). Это стресс-тест краёв/середины и разреза линии.
                 </>
             }
         />
@@ -251,14 +279,136 @@ export function SGH_ScrollFrozen() {
             freezeColumns={1}
             description={
                 <>
-                    <b>Скролл + frozen: первая слитная колонка заморожена</b>
+                    <b>ЛИСТОВАЯ фича + frozen + горизонтальный скролл (рисковая геометрия translateX / sticky)</b>
                     {"\n"}
-                    Самый рисковый кейс — геометрия при translateX / sticky.{"\n"}
-                    ✅ Что увидеть при горизонтальной прокрутке: разрез линии и слитые ячейки НЕ «едут»; frozen «Роль»
-                    держит слитную шапку на всю высоту.
+                    Колонки: «Роль (frozen)», «Период», «Продажи», «Доплаты», «Премии», «Комментарий» — spanGroupHeader:
+                    true (лист). «Индивидуальные/Коллективные/Оценка» (группа "{KPI}") и «Q1-A/Q1-B» (группа [2024, Q1]) —
+                    ОБЫЧНЫЕ группы, span у них НЕ включён.{"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ листовые колонки на всю высоту; frozen «Роль» держит слитную шапку при прокрутке, разрез
+                    линии не «едет».{"\n"}⚠️ «{KPI}» НАМЕРЕННО НЕ слит (обычная группа) → под «{KPI}» видна пустая
+                    полоса. Это и есть «до» для ГРУППОВОЙ фичи. Слияние группы показано в SGH_GroupSpan (точечно) и
+                    SGH_ShallowAuto (авто).
                 </>
             }
         />
     );
 }
 SGH_ScrollFrozen.decorators = [];
+
+// 7. Слитая ГРУППА (rowspan): мелкая группа схлопывает свой пустой нижний ряд.
+export function SGH_GroupSpan() {
+    const cols: GridColumn[] = [
+        { title: "Роль", width: 180, spanGroupHeader: true },
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Q1-A", width: 130, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 130, group: ["2024", "Q1"] },
+        { title: "Q2-C", width: 130, group: ["2024", "Q2"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[30, 28]}
+            getGroupDetails={name => ({ name, span: name === KPI })}
+            description={
+                <>
+                    <b>ГРУППОВАЯ фича (rowspan группы) — ТОЧЕЧНО через getGroupDetails().span = true</b>
+                    {"\n"}
+                    Колонки: «Роль» — spanGroupHeader (лист). «Индивидуальные/Коллективные/Оценка» — ОДНОуровневая группа
+                    "{KPI}" (group: строка). «Q1-A/Q1-B» — [2024, Q1], «Q2-C» — [2024, Q2] (ДВУХуровневая). Шапка = 2
+                    групп-ряда. span:true задан ТОЛЬКО группе "{KPI}".{"\n"}
+                    {"\n"}
+                    ✅ СЛИТА группа "{KPI}": одноуровневая, поэтому её нижний групп-ряд (level 1) пустой — она занимает ОБА
+                    групп-ряда одной ячейкой по центру, без пустой полосы и шва; строку подколонок (Индивид/Коллект/Оценка)
+                    НЕ накрывает, дно есть.{"\n"}✅ НЕ слита «2024 → Q1/Q2» (двухуровневая, span не задан). «Роль» — лист,
+                    слит на всю высоту.{"\n"}🖱️ Наведи/кликни по слитой "{KPI}" — ведёт себя как одна ячейка на всю высоту.
+                </>
+            }
+        />
+    );
+}
+SGH_GroupSpan.decorators = [];
+
+// 8. Авто-режим: grid-проп spanShallowGroups сливает ВСЕ мелкие группы без разметки.
+export function SGH_ShallowAuto() {
+    const cols: GridColumn[] = [
+        { title: "Роль", width: 180, spanGroupHeader: true },
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "План", width: 130, group: "Продажи" },
+        { title: "Факт", width: 130, group: "Продажи" },
+        { title: "Q1-A", width: 130, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 130, group: ["2024", "Q1"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[30, 28]}
+            spanShallowGroups
+            description={
+                <>
+                    <b>ГРУППОВАЯ фича — АВТО-режим (grid-проп spanShallowGroups, БЕЗ ручной разметки)</b>
+                    {"\n"}
+                    На таблице стоит только spanShallowGroups. Колонки: «Роль» — лист. МЕЛКИЕ (одноуровневые) группы:
+                    "{KPI}" (Индивид/Коллект/Оценка) и «Продажи» (План/Факт). ГЛУБОКАЯ: [2024, Q1] (Q1-A/Q1-B). Шапка = 2
+                    групп-ряда.{"\n"}
+                    {"\n"}
+                    ✅ СЛИТЫ ОБЕ мелкие группы — "{KPI}" И «Продажи» — автоматически, без единого getGroupDetails.{"\n"}✅
+                    НЕ слита «2024 → Q1» (двухуровневая — не мелкая). «Роль» — лист, слит.{"\n"}
+                    Отличие от SGH_GroupSpan: там span включён руками у ОДНОЙ группы; здесь ВСЕ мелкие сливаются одним
+                    пропом (span:false у группы точечно отключил бы её из авто).
+                </>
+            }
+        />
+    );
+}
+SGH_ShallowAuto.decorators = [];
+
+// 9. Task IV на слитой группе: actions + rename + overrideTheme на merged-высоте.
+export function SGH_GroupActionsTheme() {
+    const cols: GridColumn[] = [
+        { title: "Роль", width: 160, spanGroupHeader: true },
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Q1-A", width: 130, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 130, group: ["2024", "Q1"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[30, 28]}
+            onGroupHeaderRenamed={() => undefined}
+            getGroupDetails={name =>
+                name === KPI
+                    ? {
+                          name,
+                          span: true,
+                          overrideTheme: { bgGroupHeader: "#eaf1ff" },
+                          actions: [
+                              { title: "Настройки", icon: GridColumnIcon.HeaderString, onClick: () => undefined },
+                          ],
+                      }
+                    : { name }
+            }
+            description={
+                <>
+                    <b>ГРУППОВАЯ фича — actions / rename / overrideTheme на СЛИТОЙ высоте (Task IV)</b>
+                    {"\n"}
+                    Колонки: «Роль» — лист. «Индивидуальные/Коллективные/Оценка» — группа "{KPI}" со span:true +
+                    overrideTheme (голубая заливка) + action-иконка. onGroupHeaderRenamed включён → при наведении
+                    добавляется пункт Rename. «Q1-A/Q1-B» — [2024, Q1] (обычная).{"\n"}
+                    {"\n"}
+                    ✅ Голубая заливка overrideTheme — на ВСЮ слитую высоту "{KPI}" (не только верхний ряд).{"\n"}✅ При
+                    наведении иконки actions/rename — по центру слитой ячейки (не прижаты к верхней полосе).{"\n"}✅ Клик
+                    по rename → инпут-оверлей по merged-прямоугольнику (на всю слитую высоту).{"\n"}✅ НЕ слита «2024 →
+                    Q1» (обычная).
+                </>
+            }
+        />
+    );
+}
+SGH_GroupActionsTheme.decorators = [];
