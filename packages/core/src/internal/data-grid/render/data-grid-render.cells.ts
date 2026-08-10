@@ -12,6 +12,7 @@ import {
     type DrawCellCallback,
     isInnerOnlyCell,
     type GridCell,
+    type SpanAlignment,
 } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
 import type { HoverValues } from "../animation-manager.js";
@@ -53,6 +54,8 @@ export interface GroupDetails {
      * Overrides the grid-level `spanShallowGroups` prop for this group. LTR assumed.
      */
     readonly span?: boolean;
+    /** Выравнивание заголовка группы в объединённой ячейке. Работает только для объединённых групп (`span`). */
+    readonly spanAlign?: SpanAlignment;
     readonly actions?: readonly {
         readonly title: string;
         readonly onClick: (e: GridMouseGroupHeaderEventArgs) => void;

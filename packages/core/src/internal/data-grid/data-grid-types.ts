@@ -163,6 +163,19 @@ export type CellArray = readonly (readonly GridCell[])[];
  */
 export type Item = readonly [col: number, row: number];
 
+/** Выравнивание текста по горизонтали. */
+export type SpanHorizontalAlignment = "left" | "center" | "right";
+/** Выравнивание текста по вертикали (полезно для высоких объединённых ячеек). */
+export type SpanVerticalAlignment = "top" | "center" | "bottom";
+/**
+ * Выравнивание текста в объединённой ячейке шапки.
+ * По умолчанию: обычная колонка — слева, объединённая группа — по центру; по вертикали — по центру.
+ */
+export interface SpanAlignment {
+    readonly horizontal?: SpanHorizontalAlignment;
+    readonly vertical?: SpanVerticalAlignment;
+}
+
 export interface BaseGridColumn {
     readonly title: string;
     readonly group?: string | string[];
@@ -180,6 +193,8 @@ export interface BaseGridColumn {
      * of its own (a grouped column ignores the flag). LTR layout is assumed.
      */
     readonly spanGroupHeader?: boolean;
+    /** Выравнивание заголовка в объединённой ячейке. Работает только со `spanGroupHeader: true`. */
+    readonly spanGroupHeaderAlign?: SpanAlignment;
     readonly icon?: GridColumnIcon | string;
     readonly overlayIcon?: GridColumnIcon | string;
     readonly menuIcon?: GridColumnMenuIcon | string;

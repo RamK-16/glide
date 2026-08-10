@@ -32,6 +32,7 @@ import {
     type FillHandleDirection,
     type EditListItem,
     type CellActivationBehavior,
+    type SpanAlignment,
 } from "../internal/data-grid/data-grid-types.js";
 import DataGridSearch, { type DataGridSearchProps } from "../internal/data-grid-search/data-grid-search.js";
 import { browserIsOSX } from "../common/browser-detect.js";
@@ -243,6 +244,12 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @group Style
      */
     readonly spanShallowGroups?: boolean;
+    /**
+     * Выравнивание текста в объединённых ячейках шапки по умолчанию.
+     * Можно переопределить на колонке (`spanGroupHeaderAlign`) или на группе (`getGroupDetails().spanAlign`).
+     * @group Style
+     */
+    readonly spanAlign?: SpanAlignment;
     /** Emitted when a cell is clicked.
      * @group Events
      */
@@ -861,6 +868,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         onHeaderIndicatorClick,
         getGroupDetails,
         spanShallowGroups,
+        spanAlign,
         rowGrouping,
         onSearchClose: onSearchCloseIn,
         onItemHovered,
@@ -1418,13 +1426,19 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const base = getGroupDetails?.(group) ?? { name: group };
             // Авто-режим: spanShallowGroups включает слияние для всех мелких групп, если у
             // конкретной группы span не задан явно (span: false точечно отключает авто).
-            let result = { ...base, span: base.span ?? spanShallowGroups };
+            let result = {
+                ...base,
+                span: base.span ?? spanShallowGroups,
+                // Значение группы важнее общего spanAlign.
+                spanAlign: base.spanAlign ?? spanAlign,
+            };
             if (onGroupHeaderRenamed !== undefined && group !== "") {
                 result = {
                     icon: result.icon,
                     name: result.name,
                     overrideTheme: result.overrideTheme,
                     span: result.span,
+                    spanAlign: result.spanAlign,
                     actions: [
                         ...(result.actions ?? []),
                         {
@@ -1441,7 +1455,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             return result;
         },
-        [getGroupDetails, onGroupHeaderRenamed, spanShallowGroups]
+        [getGroupDetails, onGroupHeaderRenamed, spanShallowGroups, spanAlign]
     );
 
     const setOverlaySimple = React.useCallback(
@@ -4352,6 +4366,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     drawCell={drawCell}
                     disabledRows={disabledRows}
                     freezeColumns={mangledFreezeColumns}
+                    spanAlign={spanAlign}
                     lockColumns={rowMarkerOffset}
                     firstColAccessible={rowMarkerOffset === 0}
                     getCellContent={getMangledCellContent}

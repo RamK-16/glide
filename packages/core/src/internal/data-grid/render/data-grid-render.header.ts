@@ -14,11 +14,14 @@ import {
 } from "../data-grid-types.js";
 import {
     drawMenuDots,
+    drawSpanAlignedText,
     getMeasuredTextCache,
     getMiddleCenterBias,
     measureTextCached,
+    resolveSpanAlignment,
     roundedPoly,
     type MappedGridColumn,
+    type ResolvedSpanAlignment,
 } from "./data-grid-lib.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
@@ -150,7 +153,9 @@ export function drawGridHeaders(
             hover,
             spriteManager,
             drawHeaderCallback,
-            touchMode
+            touchMode,
+            // Выравнивание считаем только для объединённой колонки (по умолчанию — слева).
+            spanFull ? resolveSpanAlignment(c.spanGroupHeaderAlign, "left") : undefined
         );
         ctx.restore();
 
@@ -360,7 +365,9 @@ function drawGroupHeaderInner(
     spriteManager: SpriteManager,
     hovered: HoverInfo | undefined,
     verticalBorder: (col: number) => boolean,
-    enableLowDprHairline: boolean
+    enableLowDprHairline: boolean,
+    // Есть только у объединённой группы — иначе рисуем как раньше.
+    spanAlign?: ResolvedSpanAlignment
 ) {
     const xPad = 8;
     const fillColor = isSelected
@@ -389,11 +396,28 @@ function drawGroupHeaderInner(
         }
         if (group?.name !== undefined && group.name !== "") {
             const latestGroupName = groupName ?? group.name;
-            ctx.fillText(
-                latestGroupName,
-                drawX + xPad,
-                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
-            );
+            const bias = getMiddleCenterBias(ctx, theme.headerFontFull);
+            // Для RTL-заголовка выравнивание пока не поддержано — рисуем как раньше.
+            const effAlign =
+                spanAlign !== undefined && direction(latestGroupName) !== "rtl" ? spanAlign : undefined;
+            if (effAlign === undefined) {
+                // Обычная группа (или RTL): как раньше — слева, по центру по высоте.
+                ctx.fillText(latestGroupName, drawX + xPad, y + height / 2 + bias);
+            } else {
+                // Объединённая группа: выравниваем текст в пределах ячейки (после иконки). Меню у групп нет.
+                const padX = theme.cellHorizontalPadding;
+                drawSpanAlignedText(
+                    ctx,
+                    latestGroupName,
+                    drawX + padX,
+                    x + width - padX,
+                    y,
+                    height,
+                    effAlign,
+                    bias,
+                    theme.cellVerticalPadding
+                );
+            }
         }
 
         if (group?.actions !== undefined && isHovered) {
@@ -529,6 +553,9 @@ function drawGroupLevel(
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
+        // Выравнивание считаем только для объединённой группы (по умолчанию — по центру).
+        const groupSpanAlign =
+            spanRegion !== undefined ? resolveSpanAlignment(group.spanAlign, "center") : undefined;
         // Check if all columns in this group span are selected
         let isSelected = false;
         if (selection !== undefined) {
@@ -595,7 +622,8 @@ function drawGroupLevel(
                         spriteManager,
                         hovered,
                         verticalBorder,
-                        enableLowDprHairline
+                        enableLowDprHairline,
+                        groupSpanAlign
                     );
                     wasUsedDefDraw = true;
                 }
@@ -631,7 +659,8 @@ function drawGroupLevel(
                 spriteManager,
                 hovered,
                 verticalBorder,
-                enableLowDprHairline
+                enableLowDprHairline,
+                groupSpanAlign
             );
         }
 
@@ -797,7 +826,9 @@ function drawHeaderInner(
     touchMode: boolean,
     isRtl: boolean,
     headerLayout: HeaderLayout,
-    headerNameOverride: string | undefined
+    headerNameOverride: string | undefined,
+    // Есть только у объединённой колонки — иначе рисуем как раньше.
+    spanAlign?: ResolvedSpanAlignment
 ) {
     if (c.rowMarker !== undefined && c.headerRowMarkerDisabled !== true) {
         const checked = c.rowMarkerChecked;
@@ -880,18 +911,41 @@ function drawHeaderInner(
         ctx.fillStyle = fillStyle;
     }
 
-    if (isRtl) {
-        ctx.textAlign = "right";
-    }
-    if (headerLayout.textBounds !== undefined) {
-        ctx.fillText(
+    if (spanAlign !== undefined && !isRtl && headerLayout.textBounds !== undefined) {
+        // Объединённая колонка: выравниваем заголовок. Слева — после иконки (textBounds.x),
+        // справа оставляем место под кнопку меню и иконку-индикатор. Для RTL — старый путь.
+        const padX = theme.cellHorizontalPadding;
+        const bias = getMiddleCenterBias(ctx, theme.headerFontFull);
+        const boxLeft = headerLayout.textBounds.x;
+        let boxRight = x + width - (c.hasMenu === true ? menuButtonSize : padX);
+        if (headerLayout.indicatorIconBounds !== undefined) {
+            boxRight = Math.min(boxRight, headerLayout.indicatorIconBounds.x - padX);
+        }
+        drawSpanAlignedText(
+            ctx,
             headerNameOverride ?? c.title,
-            isRtl ? headerLayout.textBounds.x + headerLayout.textBounds.width : headerLayout.textBounds.x,
-            y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            boxLeft,
+            boxRight,
+            y,
+            height,
+            spanAlign,
+            bias,
+            theme.cellVerticalPadding
         );
-    }
-    if (isRtl) {
-        ctx.textAlign = "left";
+    } else {
+        if (isRtl) {
+            ctx.textAlign = "right";
+        }
+        if (headerLayout.textBounds !== undefined) {
+            ctx.fillText(
+                headerNameOverride ?? c.title,
+                isRtl ? headerLayout.textBounds.x + headerLayout.textBounds.width : headerLayout.textBounds.x,
+                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            );
+        }
+        if (isRtl) {
+            ctx.textAlign = "left";
+        }
     }
 
     if (
@@ -995,7 +1049,9 @@ export function drawHeader(
     hoverAmount: number,
     spriteManager: SpriteManager,
     drawHeaderCallback: DrawHeaderCallback | undefined,
-    touchMode: boolean
+    touchMode: boolean,
+    // Выравнивание объединённой колонки (если она объединена).
+    spanAlign?: ResolvedSpanAlignment
 ) {
     const isRtl = direction(c.title) === "rtl";
     const headerLayout = computeHeaderLayout(ctx, c, x, y, width, height, theme, isRtl);
@@ -1035,7 +1091,8 @@ export function drawHeader(
                     touchMode,
                     isRtl,
                     headerLayout,
-                    headerNameOverride
+                    headerNameOverride,
+                    spanAlign
                 )
         );
     } else {
@@ -1056,7 +1113,8 @@ export function drawHeader(
             touchMode,
             isRtl,
             headerLayout,
-            undefined // headerNameOverride
+            undefined, // headerNameOverride
+            spanAlign
         );
     }
 }

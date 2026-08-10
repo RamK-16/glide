@@ -7,6 +7,7 @@ import {
     type InnerGridColumn,
     type Rectangle,
     type BaseGridCell,
+    type SpanAlignment,
 } from "../data-grid-types.js";
 import { direction } from "../../../common/utils.js";
 import React from "react";
@@ -20,9 +21,82 @@ export interface MappedGridColumn extends FullyDefined<InnerGridColumn> {
     sticky: boolean;
 }
 
+/** Выравнивание с уже подставленными значениями по умолчанию. */
+export interface ResolvedSpanAlignment {
+    readonly horizontal: "left" | "center" | "right";
+    readonly vertical: "top" | "center" | "bottom";
+}
+
+/**
+ * Подставляет значения по умолчанию, если выравнивание не задано.
+ * defaultHorizontal — обычно "left" для колонок и "center" для групп; по вертикали — "center".
+ */
+export function resolveSpanAlignment(
+    align: SpanAlignment | undefined,
+    defaultHorizontal: ResolvedSpanAlignment["horizontal"] = "left"
+): ResolvedSpanAlignment {
+    return {
+        horizontal: align?.horizontal ?? defaultHorizontal,
+        vertical: align?.vertical ?? "center",
+    };
+}
+
+/**
+ * Считает Y текста и baseline по вертикальному выравниванию внутри ячейки высотой height.
+ * middleBias — сдвиг для центрирования (из getMiddleCenterBias); padY — отступ сверху/снизу.
+ */
+export function getSpanTextY(
+    y: number,
+    height: number,
+    vertical: ResolvedSpanAlignment["vertical"],
+    middleBias: number,
+    padY: number
+): { y: number; baseline: CanvasTextBaseline } {
+    if (vertical === "top") return { y: y + padY, baseline: "top" };
+    if (vertical === "bottom") return { y: y + height - padY, baseline: "bottom" };
+    return { y: y + height / 2 + middleBias, baseline: "alphabetic" };
+}
+
+/**
+ * Рисует текст с выравниванием в объединённой ячейке — общий код для колонок и групп.
+ * По горизонтали держит текст в пределах [boxLeft, boxRight], по вертикали — через getSpanTextY.
+ * Сохраняет и возвращает обратно textAlign/textBaseline.
+ */
+export function drawSpanAlignedText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    boxLeft: number,
+    boxRight: number,
+    y: number,
+    height: number,
+    align: ResolvedSpanAlignment,
+    middleBias: number,
+    padY: number
+): void {
+    const right = Math.max(boxLeft, boxRight);
+    let textX = boxLeft;
+    let textAlign: CanvasTextAlign = "left";
+    if (align.horizontal === "center") {
+        textX = (boxLeft + right) / 2;
+        textAlign = "center";
+    } else if (align.horizontal === "right") {
+        textX = right;
+        textAlign = "right";
+    }
+    const placement = getSpanTextY(y, height, align.vertical, middleBias, padY);
+    const prevAlign = ctx.textAlign;
+    const prevBaseline = ctx.textBaseline;
+    ctx.textAlign = textAlign;
+    ctx.textBaseline = placement.baseline;
+    ctx.fillText(text, textX, placement.y);
+    ctx.textAlign = prevAlign;
+    ctx.textBaseline = prevBaseline;
+}
+
 export function useMappedColumns(
     columns: readonly InnerGridColumn[],
-    freezeColumns: number
+    freezeColumns: number,
+    spanAlign?: SpanAlignment
 ): readonly MappedGridColumn[] {
     return React.useMemo(
         () =>
@@ -37,6 +111,8 @@ export function useMappedColumns(
                         (c.group === undefined ||
                             c.group === "" ||
                             (Array.isArray(c.group) && c.group.length === 0)),
+                    // Значение колонки важнее общего spanAlign.
+                    spanGroupHeaderAlign: c.spanGroupHeaderAlign ?? spanAlign,
                     grow: c.grow,
                     hasMenu: c.hasMenu,
                     icon: c.icon,
@@ -62,7 +138,7 @@ export function useMappedColumns(
                     headerRowMarkerDisabled: c.headerRowMarkerDisabled,
                 })
             ),
-        [columns, freezeColumns]
+        [columns, freezeColumns, spanAlign]
     );
 }
 

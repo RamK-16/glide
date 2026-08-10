@@ -32,6 +32,7 @@ import {
     type DrawCellCallback,
     type FillHandle,
     DEFAULT_FILL_HANDLE,
+    type SpanAlignment,
 } from "./data-grid-types.js";
 import { CellSet } from "./cell-set.js";
 import { SpriteManager, type SpriteMap } from "./data-grid-sprites.js";
@@ -80,6 +81,8 @@ export interface DataGridProps {
     readonly accessibilityHeight: number;
 
     readonly freezeColumns: number;
+    /** Выравнивание текста в объединённых ячейках шапки по умолчанию. */
+    readonly spanAlign?: SpanAlignment;
     readonly freezeTrailingRows: number;
     readonly hasAppendRow: boolean;
     readonly firstColAccessible: boolean;
@@ -382,6 +385,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         isFocused,
         selection,
         freezeColumns,
+        spanAlign,
         onContextMenu,
         freezeTrailingRows,
         fixedShadowX = true,
@@ -473,7 +477,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         }, 200);
     }, [cellYOffset, cellXOffset, translateX, translateY, enableFirefoxRescaling, enableSafariRescaling]);
 
-    const mappedColumns = useMappedColumns(columns, freezeColumns);
+    const mappedColumns = useMappedColumns(columns, freezeColumns, spanAlign);
     const groupHeaderLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
     // Слитые группы (rowspan) — единый расчёт регионов для hit-test и bounds, чтобы они
     // совпадали с рендером. Пусто, если групп нет или ни одна группа не помечена span.

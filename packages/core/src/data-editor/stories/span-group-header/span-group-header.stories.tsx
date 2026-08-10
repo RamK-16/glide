@@ -40,6 +40,7 @@ function SpanStoryShell({
     freezeColumns,
     getGroupDetails,
     spanShallowGroups,
+    spanAlign,
     onGroupHeaderRenamed,
     width = 1500,
     height = 640,
@@ -50,6 +51,7 @@ function SpanStoryShell({
     freezeColumns?: number;
     getGroupDetails?: React.ComponentProps<typeof DataEditor>["getGroupDetails"];
     spanShallowGroups?: boolean;
+    spanAlign?: React.ComponentProps<typeof DataEditor>["spanAlign"];
     onGroupHeaderRenamed?: React.ComponentProps<typeof DataEditor>["onGroupHeaderRenamed"];
     width?: number;
     height?: number;
@@ -93,6 +95,7 @@ function SpanStoryShell({
                 freezeColumns={freezeColumns}
                 getGroupDetails={getGroupDetails}
                 spanShallowGroups={spanShallowGroups}
+                spanAlign={spanAlign}
                 onGroupHeaderRenamed={onGroupHeaderRenamed}
             />
         </div>
@@ -412,3 +415,127 @@ export function SGH_GroupActionsTheme() {
     );
 }
 SGH_GroupActionsTheme.decorators = [];
+
+// =====================================================
+// ВЫРАВНИВАНИЕ текста внутри слитой ячейки (spanGroupHeaderAlign / spanAlign).
+// Горизонталь: left | center | right; вертикаль: top | center | bottom.
+// Учитывает отступы темы и иконку заголовка.
+// =====================================================
+
+// A. ЛИСТ: разные комбинации выравнивания на колонках со spanGroupHeader.
+// Шапка двухуровневая (из-за группы «2024 → Q1») → слитые листья высокие, вертикаль видна.
+export function SGH_LeafAlign() {
+    const cols: GridColumn[] = [
+        {
+            title: "left·top",
+            width: 150,
+            spanGroupHeader: true,
+            spanGroupHeaderAlign: { horizontal: "left", vertical: "top" },
+        },
+        {
+            title: "center",
+            width: 150,
+            spanGroupHeader: true,
+            spanGroupHeaderAlign: { horizontal: "center", vertical: "center" },
+        },
+        {
+            title: "right·bottom",
+            width: 160,
+            spanGroupHeader: true,
+            spanGroupHeaderAlign: { horizontal: "right", vertical: "bottom" },
+        },
+        {
+            title: "center·top",
+            width: 150,
+            spanGroupHeader: true,
+            spanGroupHeaderAlign: { horizontal: "center", vertical: "top" },
+        },
+        { title: "Q1-A", width: 120, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 120, group: ["2024", "Q1"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[38, 38]}
+            description={
+                <>
+                    <b>ЛИСТ + выравнивание (spanGroupHeaderAlign)</b>
+                    {"\n"}
+                    Дефолт листа — left/center (обратная совместимость). Здесь заданы разные комбинации:{"\n"}«left·top»,
+                    «center» (center/center), «right·bottom», «center·top».{"\n"}
+                    {"\n"}✅ Текст встаёт по заданным осям, с учётом отступов темы и иконки;
+                    высота слитой ячейки = 2 групп-ряда + строка колонки.
+                </>
+            }
+        />
+    );
+}
+SGH_LeafAlign.decorators = [];
+
+// B. ГРУППА: слитая шапка группы, выравнивание через getGroupDetails().spanAlign.
+// Дефолт слитой группы — center (по договорённости). Здесь KPI задаёт center/top точечно.
+export function SGH_GroupAlign() {
+    const cols: GridColumn[] = [
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Q1-A", width: 120, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 120, group: ["2024", "Q1"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[40, 40]}
+            getGroupDetails={name =>
+                name === KPI
+                    ? { name, span: true, spanAlign: { horizontal: "center", vertical: "top" } }
+                    : { name }
+            }
+            description={
+                <>
+                    <b>ГРУППА + выравнивание (getGroupDetails().spanAlign)</b>
+                    {"\n"}«{KPI}» — одноуровневая группа, сливает пустой нижний ряд (span) и прижимает заголовок{" "}
+                    <b>center/top</b>. Дефолт для слитых групп — center; здесь дополнительно задан top по вертикали.{"\n"}
+                    {"\n"}✅ Заголовок группы по центру и сверху слитой (80px) ячейки. «2024 → Q1» — обычная
+                    двухуровневая, не сливается.
+                </>
+            }
+        />
+    );
+}
+SGH_GroupAlign.decorators = [];
+
+// C. GRID-ДЕФОЛТ: spanAlign на DataEditor задаёт выравнивание всем слитым сразу;
+// точечный spanAlign группы перекрывает grid-дефолт.
+export function SGH_AlignGridDefault() {
+    const cols: GridColumn[] = [
+        { title: "Роль", width: 180, spanGroupHeader: true },
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Q1-A", width: 120, group: ["2024", "Q1"] },
+        { title: "Q1-B", width: 120, group: ["2024", "Q1"] },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            groupHeaderHeight={[40, 40]}
+            spanShallowGroups
+            spanAlign={{ horizontal: "center", vertical: "center" }}
+            getGroupDetails={name =>
+                name === KPI ? { name, spanAlign: { horizontal: "center", vertical: "bottom" } } : { name }
+            }
+            description={
+                <>
+                    <b>GRID-ДЕФОЛТ (DataEditor spanAlign) + точечный override</b>
+                    {"\n"}
+                    Grid-дефолт: <b>center/center</b> для всех слитых (лист «Роль» + слитые группы через
+                    spanShallowGroups).{"\n"}
+                    Группа «{KPI}» точечно перекрывает вертикаль на <b>bottom</b> (getGroupDetails().spanAlign).{"\n"}
+                    {"\n"}✅ «Роль» (лист) — center/center; «{KPI}» — center/bottom; остальное — по grid-дефолту.
+                </>
+            }
+        />
+    );
+}
+SGH_AlignGridDefault.decorators = [];
