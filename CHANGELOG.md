@@ -1,3 +1,19 @@
+# [6.1.0](https://github.com/RamK-16/glide/compare/v6.0.19...v6.1.0) (2026-08-11)
+
+
+### Bug Fixes
+
+* **data-grid:** don't clip group-row of all-spanned header groups ([d64bd2d](https://github.com/RamK-16/glide/commit/d64bd2da5309134556d1b3441f0259084a16c835))
+* **data-grid:** draw spanGroupHeader left border only over group band ([6297b50](https://github.com/RamK-16/glide/commit/6297b508087cbcfc59e913b59127ec3af141858a))
+
+
+### Features
+
+* **data-grid:** grid-level spanGroupHeader default for leaf columns ([fb75abc](https://github.com/RamK-16/glide/commit/fb75abc83506c12615b4cac36398e9a1292c809b))
+* spanAlign — text alignment inside merged header cells (horizontal + vertical) ([11e8694](https://github.com/RamK-16/glide/commit/11e8694aee4850a92085852f84c937b595cc53ac))
+* spanGroupHeader — merged (rowspan) header cells for standalone columns ([733669f](https://github.com/RamK-16/glide/commit/733669faf6e0cc9956b68e86dc7490eb2725d2d2)), closes [#13](https://github.com/RamK-16/glide/issues/13)
+* spanShallowGroups — rowspan for shallow group headers ([75db49f](https://github.com/RamK-16/glide/commit/75db49f72a5206448bed57b777bb395d6cf60045))
+
 ## [6.0.19](https://github.com/RamK-16/glide/compare/v6.0.18...v6.0.19) (2026-08-11)
 
 
