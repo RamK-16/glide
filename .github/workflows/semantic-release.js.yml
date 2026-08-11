@@ -45,11 +45,13 @@ jobs:
               run: npm run build --workspaces
 
             - name: Install semantic-release plugins
-              # Намеренно НЕ ставим conventional-changelog-angular явно: semantic-release
-              # уже тащит рабочую 8.3.1 как вложенную зависимость commit-analyzer/
-              # release-notes-generator. Явный install кладёт несовместимую 9.x в корень
-              # node_modules и перекрывает собой рабочую вложенную копию (сломанный
-              # exports-map → "Cannot find module conventional-changelog-angular").
+              # conventional-changelog-angular ЗАПИНЕН на 8.3.1 намеренно: без версии
+              # npm ставит latest (9.x), у которой другая карта exports без "." —
+              # с ней падает generateNotes у release-notes-generator (MODULE_NOT_FOUND /
+              # ERR_PACKAGE_PATH_NOT_EXPORTED). А без явного упоминания пакета вообще —
+              # то, какая версия в итоге всплывёт в корень node_modules, недетерминированно
+              # (зависит от остального дерева зависимостей монорепо: локально всплывала
+              # рабочая 8.3.1, в CI — ломающая 9.3.0). Пин снимает эту неопределённость.
               run: |
                   npm install --no-save \
                       semantic-release \
@@ -57,7 +59,8 @@ jobs:
                       @semantic-release/exec \
                       @semantic-release/git \
                       @semantic-release/github \
-                      @semantic-release/npm
+                      @semantic-release/npm \
+                      conventional-changelog-angular@8.3.1
 
             - name: Release 🚀
               env:
