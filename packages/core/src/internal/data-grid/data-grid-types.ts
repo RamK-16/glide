@@ -180,17 +180,11 @@ export interface BaseGridColumn {
     readonly title: string;
     readonly group?: string | string[];
     /**
-     * When true, this column's header is drawn as a single merged cell spanning
-     * the full header height (all group-header rows + the column-header row),
-     * with content vertically centered and no divider lines across it.
-     *
-     * Intended for standalone columns sitting next to grouped columns: instead of
-     * an empty group cell on top and the title on the bottom row, the header reads
-     * as one tall cell (rowspan). Opt-in and additive — when omitted the column
-     * renders exactly as before.
-     *
-     * Has effect only while group headers are enabled AND the column has no group
-     * of its own (a grouped column ignores the flag). LTR layout is assumed.
+     * Рисует шапку этой колонки как одну объединённую ячейку на всю высоту шапки
+     * (все ряды групп + ряд колонки), без разделительных линий поперёк. Полезно для
+     * одиночных колонок рядом со сгруппированными: вместо пустой ячейки сверху и
+     * заголовка в нижнем ряду — одна высокая ячейка. Не задано → как раньше.
+     * Работает, только когда включены групповые шапки и у самой колонки нет группы.
      */
     readonly spanGroupHeader?: boolean;
     /** Выравнивание заголовка в объединённой ячейке. Работает только со `spanGroupHeader: true`. */

@@ -237,10 +237,10 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      */
     readonly onGroupHeaderRenamed?: (groupName: string, newVal: string) => void;
     /**
-     * Auto-merge (rowspan) the empty lower group rows of every shallow group — one that
-     * ends above the deepest group level — into a single tall cell, instead of leaving an
-     * empty band under the title. Per-group `getGroupDetails().span` overrides this (set it
-     * `false` to opt a group out). Additive: omitted → headers render exactly as before.
+     * Объединяет (rowspan) пустые нижние ряды у «мелких» групп — тех, что заканчиваются
+     * выше самого глубокого уровня групп, — в одну высокую ячейку вместо пустой полосы
+     * под заголовком. Точечно на группе можно переопределить через `getGroupDetails().span`
+     * (поставить `false`, чтобы отключить для конкретной группы). Не задано → как раньше.
      * @group Style
      */
     readonly spanShallowGroups?: boolean;
