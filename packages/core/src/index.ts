@@ -1,4 +1,3 @@
-// test: main storybook deploy no-accumulation check, deploy #1 marker
 export type { OverlayImageEditorProps } from "./internal/data-grid-overlay-editor/private/image-overlay-editor.js";
 export type { MarkdownDivProps } from "./internal/markdown-div/markdown-div.js";
 export type { SpriteMap, HeaderIcon, Sprite } from "./internal/data-grid/data-grid-sprites.js";
