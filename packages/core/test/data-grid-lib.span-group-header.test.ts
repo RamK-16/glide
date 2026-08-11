@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeBounds, type MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
+import { renderHook } from "@testing-library/react-hooks";
+import {
+    computeBounds,
+    useMappedColumns,
+    type MappedGridColumn,
+} from "../src/internal/data-grid/render/data-grid-lib.js";
+import type { InnerGridColumn } from "../src/internal/data-grid/data-grid-types.js";
 
 // Минимальный конструктор MappedGridColumn для теста геометрии bounds.
 function col(partial: Partial<MappedGridColumn>): MappedGridColumn {
@@ -53,5 +59,26 @@ describe("computeBounds — spanGroupHeader (bounds шапки на всю вы�
         const b = bounds(0, -1);
         expect(b.x).toBe(0);
         expect(b.width).toBe(150 + 1);
+    });
+});
+
+// Grid-дефолт spanGroupHeader (проп DataEditor) — нормализация в useMappedColumns.
+const inCol = (extra: Partial<InnerGridColumn>): InnerGridColumn =>
+    ({ title: "A", width: 100, ...extra }) as InnerGridColumn;
+
+describe("useMappedColumns — grid-дефолт spanGroupHeader", () => {
+    it("grid-дефолт true включает слияние у листовой колонки без группы", () => {
+        const { result } = renderHook(() => useMappedColumns([inCol({})], 0, undefined, true));
+        expect(result.current[0].spanGroupHeader).toBe(true);
+    });
+
+    it("spanGroupHeader: false на колонке отключает, несмотря на grid-дефолт true (точечный опт-аут)", () => {
+        const { result } = renderHook(() => useMappedColumns([inCol({ spanGroupHeader: false })], 0, undefined, true));
+        expect(result.current[0].spanGroupHeader).toBe(false);
+    });
+
+    it("колонка с группой не сливается даже при grid-дефолте true (проп не трогает группы)", () => {
+        const { result } = renderHook(() => useMappedColumns([inCol({ group: "G" })], 0, undefined, true));
+        expect(result.current[0].spanGroupHeader).toBe(false);
     });
 });

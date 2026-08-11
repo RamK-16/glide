@@ -83,6 +83,11 @@ export interface DataGridProps {
     readonly freezeColumns: number;
     /** Выравнивание текста в объединённых ячейках шапки по умолчанию. */
     readonly spanAlign?: SpanAlignment;
+    /**
+     * Grid-дефолт слитной шапки: включает `spanGroupHeader` у ВСЕХ листовых колонок (без
+     * группы) сразу. Колонка перекрывает точечно своим `spanGroupHeader: true/false`.
+     */
+    readonly spanGroupHeader?: boolean;
     readonly freezeTrailingRows: number;
     readonly hasAppendRow: boolean;
     readonly firstColAccessible: boolean;
@@ -386,6 +391,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         selection,
         freezeColumns,
         spanAlign,
+        spanGroupHeader,
         onContextMenu,
         freezeTrailingRows,
         fixedShadowX = true,
@@ -477,7 +483,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         }, 200);
     }, [cellYOffset, cellXOffset, translateX, translateY, enableFirefoxRescaling, enableSafariRescaling]);
 
-    const mappedColumns = useMappedColumns(columns, freezeColumns, spanAlign);
+    const mappedColumns = useMappedColumns(columns, freezeColumns, spanAlign, spanGroupHeader);
     const groupHeaderLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
     // Слитые группы (rowspan) — единый расчёт регионов для hit-test и bounds, чтобы они
     // совпадали с рендером. Пусто, если групп нет или ни одна группа не помечена span.

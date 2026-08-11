@@ -250,6 +250,13 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @group Style
      */
     readonly spanAlign?: SpanAlignment;
+    /**
+     * Grid-дефолт слитной шапки: включает `spanGroupHeader` у ВСЕХ листовых колонок (без
+     * группы) — не нужно ставить флаг на каждую. Точечно перекрывается на колонке
+     * (`spanGroupHeader: true/false`). Колонки с группой проп не трогает.
+     * @group Style
+     */
+    readonly spanGroupHeader?: boolean;
     /** Emitted when a cell is clicked.
      * @group Events
      */
@@ -869,6 +876,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         getGroupDetails,
         spanShallowGroups,
         spanAlign,
+        spanGroupHeader,
         rowGrouping,
         onSearchClose: onSearchCloseIn,
         onItemHovered,
@@ -4367,6 +4375,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     disabledRows={disabledRows}
                     freezeColumns={mangledFreezeColumns}
                     spanAlign={spanAlign}
+                    spanGroupHeader={spanGroupHeader}
                     lockColumns={rowMarkerOffset}
                     firstColAccessible={rowMarkerOffset === 0}
                     getCellContent={getMangledCellContent}

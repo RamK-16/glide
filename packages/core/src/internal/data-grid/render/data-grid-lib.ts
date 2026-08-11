@@ -96,18 +96,21 @@ export function drawSpanAlignedText(
 export function useMappedColumns(
     columns: readonly InnerGridColumn[],
     freezeColumns: number,
-    spanAlign?: SpanAlignment
+    spanAlign?: SpanAlignment,
+    spanGroupHeaderDefault?: boolean
 ): readonly MappedGridColumn[] {
     return React.useMemo(
         () =>
             columns.map(
                 (c, i): MappedGridColumn => ({
                     group: c.group,
-                    // Флаг слитной шапки имеет смысл только для колонки БЕЗ группы.
-                    // Нормализуем здесь (единый источник), чтобы render/bounds/hit-test/clip
-                    // видели согласованное значение и не рассинхронились на «группа + флаг».
+                    // Флаг слитной шапки имеет смысл только для колонки БЕЗ группы. Значение
+                    // самой колонки (true/false) важнее grid-дефолта spanGroupHeaderDefault; если
+                    // у колонки не задано — берём дефолт (проп DataEditor). Нормализуем здесь
+                    // (единый источник), чтобы render/bounds/hit-test/clip видели согласованное
+                    // значение и не рассинхронились на «группа + флаг».
                     spanGroupHeader:
-                        c.spanGroupHeader === true &&
+                        (c.spanGroupHeader ?? spanGroupHeaderDefault) === true &&
                         (c.group === undefined ||
                             c.group === "" ||
                             (Array.isArray(c.group) && c.group.length === 0)),
@@ -138,7 +141,7 @@ export function useMappedColumns(
                     headerRowMarkerDisabled: c.headerRowMarkerDisabled,
                 })
             ),
-        [columns, freezeColumns, spanAlign]
+        [columns, freezeColumns, spanAlign, spanGroupHeaderDefault]
     );
 }
 

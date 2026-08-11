@@ -41,6 +41,7 @@ function SpanStoryShell({
     getGroupDetails,
     spanShallowGroups,
     spanAlign,
+    spanGroupHeader,
     onGroupHeaderRenamed,
     width = 1500,
     height = 640,
@@ -52,6 +53,7 @@ function SpanStoryShell({
     getGroupDetails?: React.ComponentProps<typeof DataEditor>["getGroupDetails"];
     spanShallowGroups?: boolean;
     spanAlign?: React.ComponentProps<typeof DataEditor>["spanAlign"];
+    spanGroupHeader?: boolean;
     onGroupHeaderRenamed?: React.ComponentProps<typeof DataEditor>["onGroupHeaderRenamed"];
     width?: number;
     height?: number;
@@ -96,6 +98,7 @@ function SpanStoryShell({
                 getGroupDetails={getGroupDetails}
                 spanShallowGroups={spanShallowGroups}
                 spanAlign={spanAlign}
+                spanGroupHeader={spanGroupHeader}
                 onGroupHeaderRenamed={onGroupHeaderRenamed}
             />
         </div>
@@ -135,6 +138,39 @@ export function SGH_Basic() {
     );
 }
 SGH_Basic.decorators = [];
+
+// 1b. Тот же результат, что SGH_Basic, но через GRID-проп spanGroupHeader (без флага на колонках).
+export function SGH_LeafGridDefault() {
+    const cols: GridColumn[] = [
+        { title: "Краткое название роли", width: 200 }, // флага нет → grid-дефолт слил
+        { title: "Период", width: 150, spanGroupHeader: false }, // точечный опт-аут → НЕ слито
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Продажи", width: 150 }, // флага нет → grid-дефолт слил
+        { title: "Доплаты", width: 150 },
+        { title: "Выплаты премий", width: 160 },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            spanGroupHeader
+            description={
+                <>
+                    <b>ЛИСТОВАЯ фича через GRID-проп `spanGroupHeader` (без флага на каждой колонке)</b>
+                    {"\n"}
+                    На таблице стоит только `spanGroupHeader`. Он включает слияние у ВСЕХ листовых колонок (без
+                    группы) сразу: «Краткое название роли», «Продажи», «Доплаты», «Выплаты премий» — слиты автоматически.
+                    {"\n"}
+                    {"\n"}✅ Результат совпадает с SGH_Basic, но флаг не повторяется на колонках.{"\n"}✅ Точечный опт-аут:
+                    у «Период» стоит `spanGroupHeader: false` — эта колонка НЕ слита (значение колонки важнее grid-дефолта).
+                    {"\n"}✅ Группа "{KPI}" проп НЕ трогает (у её колонок есть group) — обычная группа с подколонками.
+                </>
+            }
+        />
+    );
+}
+SGH_LeafGridDefault.decorators = [];
 
 // 2. Тот же набор БЕЗ флага — как выглядит СЕЙЧАС (для сравнения до/после).
 export function SGH_WithoutSpan_Before() {
