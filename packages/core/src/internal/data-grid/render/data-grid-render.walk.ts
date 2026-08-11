@@ -322,3 +322,31 @@ export function getSpanBounds(
 
     return [frozenRect, contentRect];
 }
+
+/**
+ * Вертикальная геометрия объединённого по строкам блока (rowspan). Возвращает верх
+ * блока (`y`) и его полную высоту для диапазона `[startRow, endRow]`, отсчитывая от
+ * текущей рисуемой строки `currentRow` с её экранным верхом `currentDrawY`.
+ *
+ * `startRow` может быть выше вьюпорта (уехал при прокрутке) — тогда `y` уходит в минус,
+ * и это нормально: канва клипует. Именно это даёт scroll-safe поведение (вертикальный
+ * аналог того, как `getSpanBounds` переживает горизонтальный скролл). Чистая функция —
+ * вынесена для юнит-тестов геометрии.
+ */
+export function getRowSpanBounds(
+    spanRows: readonly [startRow: number, endRow: number],
+    currentRow: number,
+    currentDrawY: number,
+    getRowHeight: (row: number) => number
+): { y: number; height: number } {
+    const [startRow, endRow] = spanRows;
+    let y = currentDrawY;
+    for (let r = currentRow - 1; r >= startRow; r--) {
+        y -= getRowHeight(r);
+    }
+    let height = 0;
+    for (let r = startRow; r <= endRow; r++) {
+        height += getRowHeight(r);
+    }
+    return { y, height };
+}

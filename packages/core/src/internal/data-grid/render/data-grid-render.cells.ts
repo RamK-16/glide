@@ -33,7 +33,7 @@ import type { RenderStateProvider } from "../../../common/render-state-provider.
 import type { ImageWindowLoader } from "../image-window-loader-interface.js";
 import { intersectRect } from "../../../common/math.js";
 import type { GridMouseGroupHeaderEventArgs } from "../event-args.js";
-import { getSkipPoint, getSpanBounds, walkColumns, walkRowsInCol } from "./data-grid-render.walk.js";
+import { getRowSpanBounds, getSkipPoint, getSpanBounds, walkColumns, walkRowsInCol } from "./data-grid-render.walk.js";
 
 const loadingCell: InnerGridCell = {
     kind: GridCellKind.Loading,
@@ -232,36 +232,63 @@ export function drawCells(
 
                     let cellX = drawX;
                     let cellWidth = c.width;
+                    let cellY = drawY;
+                    let cellHeight = rh;
                     let drawingSpan = false;
                     let skipContents = false;
-                    if (cell.span !== undefined) {
-                        const [startCol, endCol] = cell.span;
-                        const spanKey = `${row},${startCol},${endCol},${c.sticky}`; //alloc
+                    if (cell.span !== undefined || cell.spanRows !== undefined) {
+                        // Прямоугольный блок: колонки из `span`, строки из `spanRows`. Ключ дедупа —
+                        // логический прямоугольник (не текущая ячейка), поэтому любая из покрытых ячеек
+                        // даёт один ключ: первая встреченная рисует блок, остальные скипаются.
+                        const [startCol, endCol] = cell.span ?? [c.sourceIndex, c.sourceIndex];
+                        const [spanStartRow, spanEndRow] = cell.spanRows ?? [row, row];
+                        const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky}`; //alloc
                         if (handledSpans === undefined) handledSpans = new Set();
                         if (!handledSpans.has(spanKey)) {
-                            const areas = getSpanBounds(cell.span, drawX, drawY, c.width, rh, c, allColumns);
-                            const area = c.sticky ? areas[0] : areas[1];
-                            if (!c.sticky && areas[0] !== undefined) {
-                                skipContents = true;
+                            // Горизонталь: colspan — через getSpanBounds (frozen/scrollable сплит),
+                            // иначе одиночная колонка. area === undefined → видимая часть colspan этой
+                            // колонки в другой freeze-области: как раньше, блок тут не рисуем.
+                            let hx = drawX;
+                            let hw = c.width;
+                            let horizontalOk = true;
+                            if (cell.span !== undefined) {
+                                const areas = getSpanBounds(cell.span, drawX, drawY, c.width, rh, c, allColumns);
+                                const area = c.sticky ? areas[0] : areas[1];
+                                if (!c.sticky && areas[0] !== undefined) {
+                                    skipContents = true;
+                                }
+                                if (area !== undefined) {
+                                    hx = area.x;
+                                    hw = area.width;
+                                } else {
+                                    horizontalOk = false;
+                                }
                             }
-                            if (area !== undefined) {
-                                cellX = area.x;
-                                cellWidth = area.width;
+                            if (horizontalOk) {
+                                // Вертикаль: rowspan — накопление высот строк блока; origin-строка может
+                                // быть выше вьюпорта → cellY уходит в минус (scroll-safe, канва клипует).
+                                if (cell.spanRows !== undefined) {
+                                    const v = getRowSpanBounds(cell.spanRows, row, drawY, getRowHeight);
+                                    cellY = v.y;
+                                    cellHeight = v.height;
+                                }
+                                cellX = hx;
+                                cellWidth = hw;
                                 handledSpans.add(spanKey);
                                 ctx.restore();
                                 prepResult = undefined;
                                 ctx.save();
                                 ctx.beginPath();
-                                const d = Math.max(0, clipX - area.x);
-                                ctx.rect(area.x + d, drawY, area.width - d, rh);
+                                const d = Math.max(0, clipX - cellX);
+                                ctx.rect(cellX + d, cellY, cellWidth - d, cellHeight);
                                 if (result === undefined) {
                                     result = [];
                                 }
                                 result.push({
-                                    x: area.x + d,
-                                    y: drawY,
-                                    width: area.width - d,
-                                    height: rh,
+                                    x: cellX + d,
+                                    y: cellY,
+                                    width: cellWidth - d,
+                                    height: cellHeight,
                                 });
                                 ctx.clip();
                                 drawingSpan = true;
@@ -347,15 +374,17 @@ export function drawCells(
                         // we want to clip each cell individually rather than form a super clip region. The reason for
                         // this is passing too many clip regions to the GPU at once can cause a performance hit. This
                         // allows us to damage a large number of cells at once without issue.
-                        const top = drawY + 1;
+                        // Для слитой ячейки cellY/cellHeight = весь блок (иначе drawY/rh = одна строка),
+                        // чтобы damage-перерисовка покрывала блок целиком, а не одну строку.
+                        const top = cellY + 1;
                         const bottom = isSticky
-                            ? top + rh - 1
-                            : Math.min(top + rh - 1, height - freezeTrailingRowsHeight);
+                            ? top + cellHeight - 1
+                            : Math.min(top + cellHeight - 1, height - freezeTrailingRowsHeight);
                         const h = bottom - top;
 
                         // however, not clipping at all is even better. We want to clip if we are the left most col
                         // or overlapping the bottom clip area.
-                        if (h !== rh - 1 || cellX + 1 <= clipX) {
+                        if (h !== cellHeight - 1 || cellX + 1 <= clipX) {
                             didDamageClip = true;
                             ctx.save();
                             ctx.beginPath();
@@ -380,12 +409,12 @@ export function drawCells(
                             // because technically the bottom right corner of the outline are on other cells.
                             ctx.fillRect(
                                 cellX + 1,
-                                drawY + 1,
+                                cellY + 1,
                                 cellWidth - (isLastColumn ? 2 : 1),
-                                rh - (isLastRow ? 2 : 1)
+                                cellHeight - (isLastRow ? 2 : 1)
                             );
                         } else {
-                            ctx.fillRect(cellX, drawY, cellWidth, rh);
+                            ctx.fillRect(cellX, cellY, cellWidth, cellHeight);
                         }
                     }
 
@@ -416,9 +445,9 @@ export function drawCells(
                             isLastColumn,
                             isLastRow,
                             cellX,
-                            drawY,
+                            cellY,
                             cellWidth,
-                            rh,
+                            cellHeight,
                             accentCount > 0,
                             theme,
                             fill ?? theme.bgCell,

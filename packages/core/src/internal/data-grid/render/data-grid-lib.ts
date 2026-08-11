@@ -682,7 +682,7 @@ function drawMultiLineText(
 
 /** @category Drawing */
 export function drawTextCell(
-    args: Pick<BaseDrawArgs, "rect" | "ctx" | "theme">,
+    args: Pick<BaseDrawArgs, "rect" | "ctx" | "theme"> & { readonly cell?: BaseGridCell },
     data: string,
     contentAlign?: BaseGridCell["contentAlign"],
     allowWrapping?: boolean,
@@ -711,6 +711,24 @@ export function drawTextCell(
     }
 
     if (data.length > 0) {
+        // Слитая ячейка (rowspan/colspan c явным spanAlign): выравниваем по 2 осям через
+        // общий примитив drawSpanAlignedText. Горизонталь по умолчанию — из contentAlign
+        // (иначе left), вертикаль — center. Чистый colspan без spanAlign идёт прежним путём.
+        const spanCell = args.cell;
+        if (
+            !allowWrapping &&
+            spanCell !== undefined &&
+            (spanCell.spanAlign !== undefined || spanCell.spanRows !== undefined)
+        ) {
+            const resolved = resolveSpanAlignment(spanCell.spanAlign, contentAlign ?? "left");
+            const boxLeft = x + theme.cellHorizontalPadding + 0.5;
+            const boxRight = x + w - (theme.cellHorizontalPadding + 0.5);
+            drawSpanAlignedText(ctx, data, boxLeft, boxRight, y, h, resolved, bias, theme.cellVerticalPadding);
+            if (isRtl) {
+                ctx.direction = "inherit";
+            }
+            return;
+        }
         let changed = false;
         if (contentAlign === "right") {
             // Use right alignment as default for RTL text
@@ -919,7 +937,7 @@ export function computeBounds(
         return result;
     }
 
-    const groupHeights = Array.isArray(groupHeaderHeight) 
+    const groupHeights = Array.isArray(groupHeaderHeight)
         ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
         : groupHeaderHeight;
     const headerHeight = totalHeaderHeight - groupHeights;
