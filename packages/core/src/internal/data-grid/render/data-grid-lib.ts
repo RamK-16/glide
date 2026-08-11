@@ -188,13 +188,20 @@ export function isGroupEqual(
 export function cellIsSelected(location: Item, cell: InnerGridCell, selection: GridSelection): boolean {
     if (selection.current === undefined) return false;
 
-    if (location[1] !== selection.current.cell[1]) return false;
+    const selCol = selection.current.cell[0];
+    const selRow = selection.current.cell[1];
+
+    // Строка: точное совпадение, либо (для rowspan) выбранная строка попадает в диапазон
+    // spanRows ячейки — тогда весь объединённый блок считается выделенным.
+    const rowMatch =
+        cell.spanRows === undefined ? location[1] === selRow : selRow >= cell.spanRows[0] && selRow <= cell.spanRows[1];
+    if (!rowMatch) return false;
 
     if (cell.span === undefined) {
-        return selection.current.cell[0] === location[0];
+        return selCol === location[0];
     }
 
-    return selection.current.cell[0] >= cell.span[0] && selection.current.cell[0] <= cell.span[1];
+    return selCol >= cell.span[0] && selCol <= cell.span[1];
 }
 
 export function itemIsInRect(location: Item, rect: Rectangle): boolean {
@@ -218,7 +225,18 @@ function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boo
     const endY = rect.y + rect.height - 1;
 
     const [cellCol, cellRow] = location;
-    if (cellRow < startY || cellRow > endY) return false;
+    // Строки: point-проверка, либо (для rowspan) перекрытие диапазона [spanStart,spanEnd]
+    // с [startY,endY] — зеркало логики диапазона колонок ниже.
+    if (cell.spanRows === undefined) {
+        if (cellRow < startY || cellRow > endY) return false;
+    } else {
+        const [rowSpanStart, rowSpanEnd] = cell.spanRows;
+        const rowOverlap =
+            (rowSpanStart >= startY && rowSpanStart <= endY) ||
+            (rowSpanEnd >= startY && rowSpanStart <= endY) ||
+            (rowSpanStart < startY && rowSpanEnd > endY);
+        if (!rowOverlap) return false;
+    }
 
     if (cell.span === undefined) {
         return cellCol >= startX && cellCol <= endX;

@@ -593,7 +593,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             }
 
             // -1 === off right edge
-            const col = getColumnIndexForX(x, effectiveCols, translateX);
+            let col = getColumnIndexForX(x, effectiveCols, translateX);
 
             // -1: header or above
             // undefined: offbottom
@@ -622,6 +622,20 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     const region = findSpannedGroupRegion(spannedGroupRegions, col, -2 - row);
                     if (region !== undefined) {
                         row = -2 - region.level;
+                    }
+                }
+            }
+
+            // Объединённая ячейка тела (rowspan/прямоугольник): попадание в любую точку блока
+            // трактуем как origin [startCol, startRow], чтобы клик/выделение/редактирование/hover
+            // работали по всему блоку. Гейт на spanRows — чистый нативный colspan (span без
+            // spanRows) НЕ трогаем, его поведение остаётся прежним.
+            if (row !== undefined && row >= 0 && col >= 0 && col < mappedColumns.length) {
+                const spanCell = getCellContent([col, row]);
+                if (spanCell.spanRows !== undefined) {
+                    row = spanCell.spanRows[0];
+                    if (spanCell.span !== undefined) {
+                        col = spanCell.span[0];
                     }
                 }
             }
@@ -793,6 +807,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             translateY,
             freezeTrailingRows,
             getBoundsForItem,
+            getCellContent,
             fillHandle,
             selection,
             totalHeaderHeight,
