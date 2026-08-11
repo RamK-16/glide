@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { getRowSpanBounds } from "../src/internal/data-grid/render/data-grid-render.walk.js";
 import { cellIsSelected } from "../src/internal/data-grid/render/data-grid-lib.js";
+import { expandSelection } from "../src/data-editor/data-editor-fns.js";
 import {
     CompactSelection,
     GridCellKind,
+    type GridCell,
     type GridSelection,
     type InnerGridCell,
+    type Rectangle,
 } from "../src/internal/data-grid/data-grid-types.js";
 
 // ── getRowSpanBounds: вертикальная геометрия объединённого по строкам блока ──────────
@@ -109,5 +112,54 @@ describe("cellIsSelected — rowspan (диапазон строк)", () => {
         const cell = textCell({ span: [1, 3] });
         expect(cellIsSelected([1, 5], cell, sel(2, 5))).toBe(true); // та же строка, col в span
         expect(cellIsSelected([1, 5], cell, sel(2, 6))).toBe(false); // другая строка
+    });
+});
+
+// ── expandSelection: расширение диапазона выделения по spanRows (rowspan) ─────────────
+
+// getCellsForSelection-мок: у колонки spanCol каждая ячейка несёт spanRows, остальные обычные.
+const makeGetCells = (spanCol: number, spanRows: [number, number]) =>
+    ((rect: Rectangle) => {
+        const out: GridCell[][] = [];
+        for (let y = rect.y; y < rect.y + rect.height; y++) {
+            const rowArr: GridCell[] = [];
+            for (let x = rect.x; x < rect.x + rect.width; x++) {
+                rowArr.push({
+                    kind: GridCellKind.Text,
+                    data: "",
+                    displayData: "",
+                    allowOverlay: false,
+                    ...(x === spanCol ? { spanRows } : {}),
+                } as GridCell);
+            }
+            out.push(rowArr);
+        }
+        return out;
+    }) as Parameters<typeof expandSelection>[1];
+
+function rangeSel(x: number, y: number, w: number, h: number): GridSelection {
+    return {
+        current: { cell: [x, y], range: { x, y, width: w, height: h }, rangeStack: [] },
+        columns: CompactSelection.empty(),
+        rows: CompactSelection.empty(),
+    };
+}
+
+describe("expandSelection — rowspan (расширение диапазона по строкам)", () => {
+    const ac = new AbortController();
+
+    it("диапазон на покрытой строке блока → растёт до всего spanRows", () => {
+        const res = expandSelection(rangeSel(2, 3, 1, 1), makeGetCells(2, [1, 4]), 0, "default", ac);
+        expect(res.current?.range).toEqual({ x: 2, y: 1, width: 1, height: 4 });
+    });
+
+    it("spanRangeBehavior = allowPartial → без расширения", () => {
+        const res = expandSelection(rangeSel(2, 3, 1, 1), makeGetCells(2, [1, 4]), 0, "allowPartial", ac);
+        expect(res.current?.range).toEqual({ x: 2, y: 3, width: 1, height: 1 });
+    });
+
+    it("под диапазоном нет spanRows → без изменений", () => {
+        const res = expandSelection(rangeSel(0, 0, 1, 1), makeGetCells(2, [1, 4]), 0, "default", ac);
+        expect(res.current?.range).toEqual({ x: 0, y: 0, width: 1, height: 1 });
     });
 });

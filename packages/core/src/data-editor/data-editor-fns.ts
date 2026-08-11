@@ -17,65 +17,52 @@ export function expandSelection(
         if (newVal?.current === undefined) break;
         const r: Rectangle = newVal.current?.range;
         const cells: (readonly GridCell[])[] = [];
+
+        const collect = (rect: Rectangle): boolean => {
+            const fetched = getCellsForSelection(rect, abortController.signal);
+            if (typeof fetched === "function") return false;
+            cells.push(...fetched);
+            return true;
+        };
+
         if (r.width > 2) {
-            const leftCells = getCellsForSelection(
-                {
-                    x: r.x,
-                    y: r.y,
-                    width: 1,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-
-            if (typeof leftCells === "function") {
-                return origVal;
+            // Боковые полосы — как раньше: colspan ловим по левому/правому столбцу.
+            if (!collect({ x: r.x, y: r.y, width: 1, height: r.height })) return origVal;
+            if (!collect({ x: r.x + r.width - 1, y: r.y, width: 1, height: r.height })) return origVal;
+            // Высокий диапазон — добираем верхнюю/нижнюю строки, чтобы поймать rowspan,
+            // пересекающий верхнюю/нижнюю границу (симметрично боковым полосам для colspan).
+            if (r.height > 2) {
+                if (!collect({ x: r.x, y: r.y, width: r.width, height: 1 })) return origVal;
+                if (!collect({ x: r.x, y: r.y + r.height - 1, width: r.width, height: 1 })) return origVal;
             }
-
-            cells.push(...leftCells);
-
-            const rightCells = getCellsForSelection(
-                {
-                    x: r.x + r.width - 1,
-                    y: r.y,
-                    width: 1,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-
-            if (typeof rightCells === "function") {
-                return origVal;
-            }
-
-            cells.push(...rightCells);
         } else {
-            const rCells = getCellsForSelection(
-                {
-                    x: r.x,
-                    y: r.y,
-                    width: r.width,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-            if (typeof rCells === "function") {
-                return origVal;
-            }
-            cells.push(...rCells);
+            // Узкий по ширине диапазон берём целиком — ловит и colspan, и rowspan.
+            if (!collect({ x: r.x, y: r.y, width: r.width, height: r.height })) return origVal;
         }
 
         let left = r.x - rowMarkerOffset;
         let right = r.x + r.width - 1 - rowMarkerOffset;
+        let top = r.y;
+        let bottom = r.y + r.height - 1;
         for (const row of cells) {
             for (const cell of row) {
-                if (cell.span === undefined) continue;
-                left = Math.min(cell.span[0], left);
-                right = Math.max(cell.span[1], right);
+                if (cell.span !== undefined) {
+                    left = Math.min(cell.span[0], left);
+                    right = Math.max(cell.span[1], right);
+                }
+                if (cell.spanRows !== undefined) {
+                    top = Math.min(cell.spanRows[0], top);
+                    bottom = Math.max(cell.spanRows[1], bottom);
+                }
             }
         }
 
-        if (left === r.x - rowMarkerOffset && right === r.x + r.width - 1 - rowMarkerOffset) {
+        if (
+            left === r.x - rowMarkerOffset &&
+            right === r.x + r.width - 1 - rowMarkerOffset &&
+            top === r.y &&
+            bottom === r.y + r.height - 1
+        ) {
             isFilled = true;
         } else {
             newVal = {
@@ -83,9 +70,9 @@ export function expandSelection(
                     cell: newVal.current.cell ?? [0, 0],
                     range: {
                         x: left + rowMarkerOffset,
-                        y: r.y,
+                        y: top,
                         width: right - left + 1,
-                        height: r.height,
+                        height: bottom - top + 1,
                     },
                     rangeStack: newVal.current.rangeStack,
                 },
