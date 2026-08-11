@@ -39,33 +39,29 @@ jobs:
                   git config user.email "github-actions[bot]@users.noreply.github.com"
 
             - name: Install 🔧
+              # semantic-release и все его плагины — настоящие devDependencies в
+              # package.json (не --no-save в отдельном шаге, как было раньше), поэтому
+              # ставятся тут же обычным install. Так надёжнее: см. NPM_CONFIG_WORKSPACES_UPDATE
+              # ниже — без "настоящих" зависимостей их всё равно сносило на следующем шаге.
               run: npm install
 
             - name: Build 🔨
               run: npm run build --workspaces
 
-            - name: Install semantic-release plugins
-              # conventional-changelog-angular ЗАПИНЕН на 8.3.1 намеренно: без версии
-              # npm ставит latest (9.x), у которой другая карта exports без "." —
-              # с ней падает generateNotes у release-notes-generator (MODULE_NOT_FOUND /
-              # ERR_PACKAGE_PATH_NOT_EXPORTED). А без явного упоминания пакета вообще —
-              # то, какая версия в итоге всплывёт в корень node_modules, недетерминированно
-              # (зависит от остального дерева зависимостей монорепо: локально всплывала
-              # рабочая 8.3.1, в CI — ломающая 9.3.0). Пин снимает эту неопределённость.
-              run: |
-                  npm install --no-save \
-                      semantic-release \
-                      @semantic-release/changelog \
-                      @semantic-release/exec \
-                      @semantic-release/git \
-                      @semantic-release/github \
-                      @semantic-release/npm \
-                      conventional-changelog-angular@8.3.1
-
             - name: Release 🚀
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  # @semantic-release/npm бампает версию в каждом pkgRoot через
+                  # `npm version ... --no-git-tag-version`, запуская его ИЗНУТРИ
+                  # packages/{core,cells,source}. Внутри npm workspaces это триггерит
+                  # неявный пересчёт всего node_modules (workspaces-update), который
+                  # считает наши devDependencies "лишними" для конкретно этого пакета
+                  # и удаляет их (видели "removed 390+ packages" в логе) — включая сам
+                  # semantic-release и conventional-changelog-angular, из-за чего падал
+                  # ВТОРОЙ вызов generateNotes (идёт уже после prepare). Отключаем эту
+                  # авто-реконсиляцию явно.
+                  NPM_CONFIG_WORKSPACES_UPDATE: "false"
               run: npx semantic-release
 
             - name: Rollback failed release ⏪
