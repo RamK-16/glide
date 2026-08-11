@@ -1,6 +1,9 @@
 {
     "name": "@glideappsfinal/glide-data-grid-cells",
     "version": "6.0.17",
+    "publishConfig": {
+        "access": "public"
+    },
     "description": "Extra cells for glide-data-grid",
     "sideEffects": [
         "**/*.css"

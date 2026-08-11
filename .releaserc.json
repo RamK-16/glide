@@ -27,6 +27,24 @@
             }
         ],
         [
+            "@semantic-release/npm",
+            {
+                "pkgRoot": "packages/core"
+            }
+        ],
+        [
+            "@semantic-release/npm",
+            {
+                "pkgRoot": "packages/cells"
+            }
+        ],
+        [
+            "@semantic-release/npm",
+            {
+                "pkgRoot": "packages/source"
+            }
+        ],
+        [
             "@semantic-release/git",
             {
                 "assets": [
