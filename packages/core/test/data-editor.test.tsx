@@ -1862,6 +1862,48 @@ describe("data-editor", () => {
         });
     });
 
+    test("Grid-level spanGroupHeader merges leaf headers through the wrapper chain", async () => {
+        // Регресс: grid-проп spanGroupHeader должен доехать всю цепочку обёрток
+        // DataEditor -> DataGridSearch -> ScrollingDataGrid -> DataGridDnd -> DataGrid
+        // (каждая передаёт пропсы ЯВНЫМ списком). Слитая листовая шапка => bounds на всю
+        // высоту шапки (y=0, height=totalHeaderHeight), а не только строка колонки.
+        vi.useFakeTimers();
+        const ref = React.createRef<DataEditorRef>();
+        render(
+            <DataEditor
+                {...basicProps}
+                ref={ref}
+                spanGroupHeader
+                rowMarkers="none"
+                headerHeight={36}
+                groupHeaderHeight={30}
+                columns={[
+                    { title: "Leaf", width: 100 },
+                    { title: "G1", width: 100, group: "G" },
+                    { title: "G2", width: 100, group: "G" },
+                ]}
+            />,
+            {
+                wrapper: Context,
+            }
+        );
+        prep(false);
+
+        act(() => {
+            vi.runAllTimers();
+        });
+
+        // Листовая колонка (без группы) слита grid-дефолтом на всю высоту шапки.
+        const leaf = ref.current?.getBounds(0, -1);
+        expect(leaf?.y).toBe(0);
+        expect(leaf?.height).toBe(66); // totalHeaderHeight = groupHeaderHeight(30) + headerHeight(36)
+
+        // Контроль: сгруппированная колонка НЕ слита — только строка колонки.
+        const grouped = ref.current?.getBounds(1, -1);
+        expect(grouped?.y).toBe(30); // groupHeights
+        expect(grouped?.height).toBe(36); // headerHeight
+    });
+
     test("Ref getBounds entire grid", async () => {
         const spy = vi.fn();
         vi.useFakeTimers();
