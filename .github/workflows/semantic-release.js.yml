@@ -23,7 +23,15 @@ jobs:
 
             - uses: actions/setup-node@v4
               with:
-                  node-version: 20.10.0
+                  # semantic-release сам по себе требует Node ^22.14 || >=24.10 — это только
+                  # версия для тулинга в этом job'е, на публикуемый пакет (Node 20.10.0 в
+                  # остальных воркфлоу) никак не влияет.
+                  node-version: "22"
+
+            - name: Configure git identity 👤
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
 
             - name: Install 🔧
               run: npm install
