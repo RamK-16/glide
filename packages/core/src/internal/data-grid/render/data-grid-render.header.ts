@@ -168,13 +168,18 @@ export function drawGridHeaders(
         );
         ctx.restore();
 
-        // Слитая колонка: вертикальная граница слева на всю высоту шапки — в групп-полосе
-        // обычный lines-рендерер вертикальных линий не рисует (y1 = totalGroupHeaderHeight),
-        // поэтому две соседние слитые колонки иначе бы «слиплись» сверху.
+        // Слитая колонка: вертикальная граница слева ТОЛЬКО по групп-полосе (0 →
+        // totalGroupHeaderHeight). Штатный lines-рендерер (drawGridLines) вертикали в
+        // групп-полосе не рисует (он стартует с y1 = totalGroupHeaderHeight), поэтому
+        // без этой линии две соседние слитые колонки «слиплись» бы сверху. А вот header-
+        // полосу drawGridLines уже закрывает сам — если тянуть эту линию на всю высоту,
+        // в нижней полосе граница красится ДВАЖДЫ, и т.к. borderColor полупрозрачный
+        // (alpha 0.16), нижняя половина разделителя выходит заметно жирнее верхней.
+        // Обе линии гейтятся одним verticalBorder(sourceIndex) — поведение консистентно.
         if (spanFull && x !== 0 && verticalBorder(c.sourceIndex)) {
             ctx.beginPath();
             ctx.moveTo(x + 0.5, 0);
-            ctx.lineTo(x + 0.5, totalHeaderHeight);
+            ctx.lineTo(x + 0.5, totalGroupHeaderHeight);
             ctx.strokeStyle = outerTheme.borderColor;
             const previousLineWidth = ctx.lineWidth;
             ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
