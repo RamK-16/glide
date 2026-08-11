@@ -32,10 +32,6 @@ jobs:
                   npm install
                   npm run build-storybook
 
-            - name: "Add .nojekyll 📄"
-              if: github.event.action != 'closed'
-              run: cd storybook-build && touch .nojekyll
-
             - name: Deploy / remove PR preview 🚀
               uses: rossjrw/pr-preview-action@v1
               with:
