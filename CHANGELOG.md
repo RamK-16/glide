@@ -1,3 +1,10 @@
+## [6.0.19](https://github.com/RamK-16/glide/compare/v6.0.18...v6.0.19) (2026-08-11)
+
+
+### Bug Fixes
+
+* stop depending on upstream @glideapps/glide-data-grid ([89faf06](https://github.com/RamK-16/glide/commit/89faf06160510ec43a3bc840d1a9fe01b7c530c2))
+
 ## [6.0.18](https://github.com/RamK-16/glide/compare/v6.0.17...v6.0.18) (2026-08-11)
 
 
