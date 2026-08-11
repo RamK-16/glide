@@ -61,6 +61,7 @@ export function drawGridHeaders(
     const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     if (totalHeaderHeight <= 0) return;
+    const levels = getGroupLevels(effectiveCols);
 
     ctx.fillStyle = outerTheme.bgHeader;
     ctx.fillRect(0, 0, width, totalHeaderHeight);
@@ -74,7 +75,15 @@ export function drawGridHeaders(
     // Assinging the context font too much can be expensive, it can be worth it to minimze this
     ctx.font = font;
     walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x, _y, clipX) => {
-        if (damage !== undefined && !damage.has([c.sourceIndex, -1])) return;
+        // Слитая колонка занимает и строку колонки (-1), и групп-ряды (-2…). Считаем её
+        // задетой, если задет ЛЮБОЙ её ряд, — иначе групп-полоса не перерисуется при hover.
+        if (damage !== undefined) {
+            const spannedCol = enableGroups && c.spanGroupHeader === true;
+            const touched = spannedCol
+                ? damage.hasItemInRectangle({ x: c.sourceIndex, y: -1 - levels, width: 1, height: levels + 1 })
+                : damage.has([c.sourceIndex, -1]);
+            if (!touched) return;
+        }
         const diff = Math.max(0, clipX - x);
         // spanGroupHeader: колонка рисуется как одна слитная ячейка на всю высоту
         // шапки (групповые строки + строка колонки), контент центрируется по ней.
@@ -525,6 +534,8 @@ function drawGroupLevel(
         // Слитые колонки (spanGroupHeader) свою групп-ячейку не рисуют — над ними уже
         // нарисован header на всю высоту (drawGridHeaders). Пропускаем span целиком,
         // если он состоит только из таких колонок (finalX двигаем для правой границы).
+        // ВАЖНО: ровно этот же allSpanned-скип обязан быть в clipHeaderDamage (групп-цикл),
+        // иначе клип затрёт групп-ряд слитой колонки, а перерисовать его будет некому.
         let allSpanned = true;
         for (let i = span[0]; i <= span[1]; i++) {
             if (effectiveCols[i]?.spanGroupHeader !== true) {

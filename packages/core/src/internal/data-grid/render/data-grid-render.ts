@@ -39,7 +39,8 @@ function getDamageRepairPad(enableLowDprHairline: boolean): number {
 //   structure which contains all operations to perform, then sort them all by "prep" requirement, then do
 //   all like operations at once.
 
-function clipHeaderDamage(
+// Экспортируется для регресс-теста инварианта allSpanned-скипа (см. комментарий в групп-цикле).
+export function clipHeaderDamage(
     ctx: CanvasRenderingContext2D,
     effectiveColumns: readonly MappedGridColumn[],
     width: number,
@@ -74,6 +75,22 @@ function clipHeaderDamage(
         if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
         walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h) => {
+            // ИНВАРИАНТ (держать в синхроне с drawGroupLevel): групп-спан из ОДНИХ слитых
+            // колонок (все spanGroupHeader) групп-ячейку НЕ рисует — drawGroupLevel пропускает
+            // его как `allSpanned`, а групп-ряд каждой такой колонки восстанавливает её
+            // собственная перерисовка на всю высоту (drawGridHeaders, spanFull). Значит клип
+            // здесь НЕЛЬЗЯ ставить: очистка фона шапки внутри клипа затёрла бы верхнюю полосу
+            // слитой ячейки, а перерисовать её будет некому (сосед задел лишь свой групп-ряд
+            // [n,-2] → damage слитой колонки нет → её пропускают → серое поверх текста, линия
+            // исчезает). Поэтому здесь ТОТ ЖЕ allSpanned-скип, что и в рендере.
+            let allSpanned = true;
+            for (let i = span[0]; i <= span[1]; i++) {
+                if (effectiveColumns[i]?.spanGroupHeader !== true) {
+                    allSpanned = false;
+                    break;
+                }
+            }
+            if (allSpanned) return;
             const hasItemInSpan = damage.hasItemInRectangle({
                 x: span[0],
                 y: targetRow,
@@ -106,8 +123,14 @@ function clipHeaderDamage(
 
             const finalX = drawX + diff + 1;
             const finalWidth = c.width - diff - 1;
-            if (damage.has([c.sourceIndex, -1])) {
-                if (c.spanGroupHeader === true) {
+            // Слитая колонка занимает и строку колонки (-1), и групп-ряды (-2…). Клипуем её на
+            // всю высоту, если задет ЛЮБОЙ её ряд, — иначе групп-полоса не перерисуется при hover.
+            const spannedCol = c.spanGroupHeader === true;
+            const touched = spannedCol
+                ? damage.hasItemInRectangle({ x: c.sourceIndex, y: -1 - levels, width: 1, height: levels + 1 })
+                : damage.has([c.sourceIndex, -1]);
+            if (touched) {
+                if (spannedCol) {
                     // Слитая шапка — одна ячейка на всю высоту: клипуем весь столбец шапки,
                     // иначе hover/перерисовка режется по нижней полосе (headerHeight).
                     ctx.rect(
