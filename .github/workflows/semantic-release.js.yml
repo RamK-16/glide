@@ -52,7 +52,8 @@ jobs:
                       @semantic-release/exec \
                       @semantic-release/git \
                       @semantic-release/github \
-                      @semantic-release/npm
+                      @semantic-release/npm \
+                      conventional-changelog-angular
 
             - name: Release 🚀
               env:
