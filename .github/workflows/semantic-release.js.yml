@@ -12,7 +12,12 @@ jobs:
         runs-on: ubuntu-latest
         # Не запускаем на коммите, который сам semantic-release запушил (chore(release): ...),
         # иначе бесконечный цикл. Не используем "[skip ci]" тут намеренно — эта метка
-        # глушит вообще все workflow'ы на пуш, включая срабатывание release.js.yml по тегу.
+        # глушит вообще все workflow'ы на пуш, включая node.js.yml/storybook.js.yml.
+        #
+        # Примечание: пуш из этой джобы делается через GITHUB_TOKEN, а такие пуши по
+        # правилам GitHub Actions в принципе не каскадируют в другие workflow (в т.ч.
+        # release.js.yml по тегу v*) — поэтому npm publish сделан прямо тут, через
+        # @semantic-release/npm, а не через отдельный tag-triggered воркфлоу.
         if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
         steps:
             - name: Checkout 🛎️
@@ -36,6 +41,9 @@ jobs:
             - name: Install 🔧
               run: npm install
 
+            - name: Build 🔨
+              run: npm run build --workspaces
+
             - name: Install semantic-release plugins
               run: |
                   npm install --no-save \
@@ -43,9 +51,11 @@ jobs:
                       @semantic-release/changelog \
                       @semantic-release/exec \
                       @semantic-release/git \
-                      @semantic-release/github
+                      @semantic-release/github \
+                      @semantic-release/npm
 
             - name: Release 🚀
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
               run: npx semantic-release
