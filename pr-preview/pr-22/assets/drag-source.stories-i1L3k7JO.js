@@ -1,0 +1,10 @@
+import{R as e}from"./iframe-BoD4WiH0.js";import{D as d}from"./data-editor-all-BUoE3Kxl.js";import{B as g,D as p,P as u,u as D,d as w}from"./utils-Dxta3Kks.js";import{S as C}from"./story-utils-CN4NCFbO.js";import"./preload-helper-C1FmrZbK.js";import"./image-window-loader-DL-R_KDF.js";import"./marked.esm-ChK04DKU.js";import"./scrolling-data-grid-De5pbQ3n.js";import"./index-D_kXk1yT.js";import"./useResizeDetector-D4pSLEaH.js";const x={title:"Glide-Data-Grid/DataEditor Demos",decorators:[t=>e.createElement(C,null,e.createElement(g,{title:"Drag source",description:e.createElement(e.Fragment,null,e.createElement(p,null,"Setting the ",e.createElement(u,null,"isDraggable")," prop can allow for more granular control over what is draggable in the grid via HTML drag and drop."))},e.createElement(t,null)))]},r=t=>{const{cols:i,getCellContent:c,onColumnResize:m}=D(200);return e.createElement(d,{...w,getCellContent:c,columns:i,rowMarkers:"both",rows:5e3,onRowMoved:(o,a)=>window.alert(`Moved row ${o} to ${a}`),onColumnMoved:(o,a)=>window.alert(`Moved col ${o} to ${a}`),onColumnResize:m,isDraggable:t.isDraggable,onDragStart:o=>{o.setData("text/plain","Drag data here!")}})};r.argTypes={isDraggable:{control:{type:"select"},options:[!0,!1,"cell","header"]}};r.args={isDraggable:!1};var n,l,s;r.parameters={...r.parameters,docs:{...(n=r.parameters)==null?void 0:n.docs,source:{originalSource:`p => {
+  const {
+    cols,
+    getCellContent,
+    onColumnResize
+  } = useMockDataGenerator(200);
+  return <DataEditor {...defaultProps} getCellContent={getCellContent} columns={cols} rowMarkers="both" rows={5000} onRowMoved={(s, e) => window.alert(\`Moved row \${s} to \${e}\`)} onColumnMoved={(s, e) => window.alert(\`Moved col \${s} to \${e}\`)} onColumnResize={onColumnResize} isDraggable={p.isDraggable} onDragStart={e => {
+    e.setData("text/plain", "Drag data here!");
+  }} />;
+}`,...(s=(l=r.parameters)==null?void 0:l.docs)==null?void 0:s.source}}};const z=["DragSource"];export{r as DragSource,z as __namedExportsOrder,x as default};
