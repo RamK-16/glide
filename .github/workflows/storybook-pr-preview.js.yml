@@ -1,0 +1,44 @@
+name: Storybook PR Preview
+on:
+    pull_request:
+        branches: ["main"]
+        paths: ["packages/core/**", "packages/cells/**", "packages/source/**"]
+        types: [opened, reopened, synchronize, closed]
+permissions:
+    contents: write
+    pull-requests: write
+concurrency:
+    group: pr-preview-storybook-${{ github.event.number }}
+    cancel-in-progress: true
+jobs:
+    preview:
+        # PR-превью только для веток этого репозитория, форки пропускаем
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout 🛎️
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v4
+              if: github.event.action != 'closed'
+              with:
+                  node-version: 20.10.0
+
+            - name: Install and Build 🔧
+              if: github.event.action != 'closed'
+              run: |
+                  npm install
+                  npm run build-storybook
+
+            - name: "Add .nojekyll 📄"
+              if: github.event.action != 'closed'
+              run: cd storybook-build && touch .nojekyll
+
+            - name: Deploy / remove PR preview 🚀
+              uses: rossjrw/pr-preview-action@v1
+              with:
+                  source-dir: ./storybook-build
+                  preview-branch: gh-pages
+                  umbrella-dir: pr-preview
