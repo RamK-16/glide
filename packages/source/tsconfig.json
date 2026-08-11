@@ -3,7 +3,7 @@
         "lib": ["dom", "ES6", "ES2017"],
         "baseUrl": ".",
         "paths": {
-            "@glideapps/glide-data-grid": ["../core/src/index.ts"]
+            "@glideappsfinal/glide-data-grid": ["../core/src/index.ts"]
         }
     },
     "extends": "../../tsconfig.json",
