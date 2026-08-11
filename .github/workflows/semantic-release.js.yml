@@ -45,6 +45,11 @@ jobs:
               run: npm run build --workspaces
 
             - name: Install semantic-release plugins
+              # Намеренно НЕ ставим conventional-changelog-angular явно: semantic-release
+              # уже тащит рабочую 8.3.1 как вложенную зависимость commit-analyzer/
+              # release-notes-generator. Явный install кладёт несовместимую 9.x в корень
+              # node_modules и перекрывает собой рабочую вложенную копию (сломанный
+              # exports-map → "Cannot find module conventional-changelog-angular").
               run: |
                   npm install --no-save \
                       semantic-release \
@@ -52,11 +57,22 @@ jobs:
                       @semantic-release/exec \
                       @semantic-release/git \
                       @semantic-release/github \
-                      @semantic-release/npm \
-                      conventional-changelog-angular
+                      @semantic-release/npm
 
             - name: Release 🚀
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
               run: npx semantic-release
+
+            - name: Rollback failed release ⏪
+              # failCmd в .releaserc.json не годится: semantic-release вызывает
+              # плагинный "fail"-шаг только для настоящих SemanticReleaseError
+              # (невалидный конфиг/ветка и т.п.), а НЕ для сырых runtime-ошибок вроде
+              # упавшего generateNotes — такие крашат процесс напрямую, минуя fail-хуки.
+              # Поэтому откат — на уровне самой job'ы: если "Release 🚀" упал уже
+              # после того, как @semantic-release/git закоммитил и запушил
+              # chore(release) в main, откатываем этот коммит (и тег, если он уже
+              # успел создаться), чтобы main не застревал в грязном состоянии.
+              if: failure()
+              run: ./rollback-release.sh
