@@ -1,0 +1,43 @@
+name: Semantic Release
+on:
+    push:
+        branches: ["main"]
+permissions:
+    contents: write
+concurrency:
+    group: semantic-release
+    cancel-in-progress: false
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        # Не запускаем на коммите, который сам semantic-release запушил (chore(release): ...),
+        # иначе бесконечный цикл. Не используем "[skip ci]" тут намеренно — эта метка
+        # глушит вообще все workflow'ы на пуш, включая срабатывание release.js.yml по тегу.
+        if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+        steps:
+            - name: Checkout 🛎️
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  persist-credentials: true
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20.10.0
+
+            - name: Install 🔧
+              run: npm install
+
+            - name: Install semantic-release plugins
+              run: |
+                  npm install --no-save \
+                      semantic-release \
+                      @semantic-release/changelog \
+                      @semantic-release/exec \
+                      @semantic-release/git \
+                      @semantic-release/github
+
+            - name: Release 🚀
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: npx semantic-release
