@@ -32,6 +32,7 @@ import {
     type FillHandleDirection,
     type EditListItem,
     type CellActivationBehavior,
+    type SpanAlignment,
 } from "../internal/data-grid/data-grid-types.js";
 import DataGridSearch, { type DataGridSearchProps } from "../internal/data-grid-search/data-grid-search.js";
 import { browserIsOSX } from "../common/browser-detect.js";
@@ -235,6 +236,27 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @group Events
      */
     readonly onGroupHeaderRenamed?: (groupName: string, newVal: string) => void;
+    /**
+     * Объединяет (rowspan) пустые нижние ряды у «мелких» групп — тех, что заканчиваются
+     * выше самого глубокого уровня групп, — в одну высокую ячейку вместо пустой полосы
+     * под заголовком. Точечно на группе можно переопределить через `getGroupDetails().span`
+     * (поставить `false`, чтобы отключить для конкретной группы). Не задано → как раньше.
+     * @group Style
+     */
+    readonly spanShallowGroups?: boolean;
+    /**
+     * Выравнивание текста в объединённых ячейках шапки по умолчанию.
+     * Можно переопределить на колонке (`spanGroupHeaderAlign`) или на группе (`getGroupDetails().spanAlign`).
+     * @group Style
+     */
+    readonly spanAlign?: SpanAlignment;
+    /**
+     * Grid-дефолт слитной шапки: включает `spanGroupHeader` у ВСЕХ листовых колонок (без
+     * группы) — не нужно ставить флаг на каждую. Точечно перекрывается на колонке
+     * (`spanGroupHeader: true/false`). Колонки с группой проп не трогает.
+     * @group Style
+     */
+    readonly spanGroupHeader?: boolean;
     /** Emitted when a cell is clicked.
      * @group Events
      */
@@ -852,6 +874,9 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         onHeaderMenuClick,
         onHeaderIndicatorClick,
         getGroupDetails,
+        spanShallowGroups,
+        spanAlign,
+        spanGroupHeader,
         rowGrouping,
         onSearchClose: onSearchCloseIn,
         onItemHovered,
@@ -1406,12 +1431,22 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
 
     const mangledGetGroupDetails = React.useCallback<NonNullable<DataEditorProps["getGroupDetails"]>>(
         group => {
-            let result = getGroupDetails?.(group) ?? { name: group };
+            const base = getGroupDetails?.(group) ?? { name: group };
+            // Авто-режим: spanShallowGroups включает слияние для всех мелких групп, если у
+            // конкретной группы span не задан явно (span: false точечно отключает авто).
+            let result = {
+                ...base,
+                span: base.span ?? spanShallowGroups,
+                // Значение группы важнее общего spanAlign.
+                spanAlign: base.spanAlign ?? spanAlign,
+            };
             if (onGroupHeaderRenamed !== undefined && group !== "") {
                 result = {
                     icon: result.icon,
                     name: result.name,
                     overrideTheme: result.overrideTheme,
+                    span: result.span,
+                    spanAlign: result.spanAlign,
                     actions: [
                         ...(result.actions ?? []),
                         {
@@ -1428,7 +1463,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             return result;
         },
-        [getGroupDetails, onGroupHeaderRenamed]
+        [getGroupDetails, onGroupHeaderRenamed, spanShallowGroups, spanAlign]
     );
 
     const setOverlaySimple = React.useCallback(
@@ -4339,6 +4374,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     drawCell={drawCell}
                     disabledRows={disabledRows}
                     freezeColumns={mangledFreezeColumns}
+                    spanAlign={spanAlign}
+                    spanGroupHeader={spanGroupHeader}
                     lockColumns={rowMarkerOffset}
                     firstColAccessible={rowMarkerOffset === 0}
                     getCellContent={getMangledCellContent}

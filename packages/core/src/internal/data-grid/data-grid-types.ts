@@ -163,9 +163,32 @@ export type CellArray = readonly (readonly GridCell[])[];
  */
 export type Item = readonly [col: number, row: number];
 
+/** Выравнивание текста по горизонтали. */
+export type SpanHorizontalAlignment = "left" | "center" | "right";
+/** Выравнивание текста по вертикали (полезно для высоких объединённых ячеек). */
+export type SpanVerticalAlignment = "top" | "center" | "bottom";
+/**
+ * Выравнивание текста в объединённой ячейке шапки.
+ * По умолчанию: обычная колонка — слева, объединённая группа — по центру; по вертикали — по центру.
+ */
+export interface SpanAlignment {
+    readonly horizontal?: SpanHorizontalAlignment;
+    readonly vertical?: SpanVerticalAlignment;
+}
+
 export interface BaseGridColumn {
     readonly title: string;
     readonly group?: string | string[];
+    /**
+     * Рисует шапку этой колонки как одну объединённую ячейку на всю высоту шапки
+     * (все ряды групп + ряд колонки), без разделительных линий поперёк. Полезно для
+     * одиночных колонок рядом со сгруппированными: вместо пустой ячейки сверху и
+     * заголовка в нижнем ряду — одна высокая ячейка. Не задано → как раньше.
+     * Работает, только когда включены групповые шапки и у самой колонки нет группы.
+     */
+    readonly spanGroupHeader?: boolean;
+    /** Выравнивание заголовка в объединённой ячейке. Работает только со `spanGroupHeader: true`. */
+    readonly spanGroupHeaderAlign?: SpanAlignment;
     readonly icon?: GridColumnIcon | string;
     readonly overlayIcon?: GridColumnIcon | string;
     readonly menuIcon?: GridColumnMenuIcon | string;

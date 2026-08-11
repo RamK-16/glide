@@ -186,6 +186,46 @@ export function walkGroups(
     }
 }
 
+export interface SpannedGroupRegionCols {
+    readonly level: number;
+    readonly startCol: number;
+    readonly endCol: number;
+}
+
+/**
+ * Логические (без геометрии) регионы слитых групп: помеченная `isGroupSpanned` группа,
+ * терминальная на своём уровне (ни у одной колонки нет группы глубже), сливает свои
+ * пустые нижние групп-уровни в одну ячейку (rowspan). Единый источник для
+ * render / hit-test / bounds / clip — чтобы они не рассинхронились (ragged-случаи не
+ * сливаем). Геометрию (x/w/height) каждый потребитель добавляет сам.
+ */
+export function getSpannedGroupRegions(
+    effectiveCols: readonly MappedGridColumn[],
+    levels: number,
+    isGroupSpanned: (groupName: string) => boolean
+): SpannedGroupRegionCols[] {
+    const regions: SpannedGroupRegionCols[] = [];
+    for (let level = 0; level < levels - 1; level++) {
+        walkGroups(effectiveCols, 0, 0, 0, level, (span, groupName) => {
+            if (groupName === "" || !isGroupSpanned(groupName)) return;
+            for (let i = span[0]; i <= span[1]; i++) {
+                if (getGroupAtLevel(effectiveCols[i]?.group, level + 1) !== "") return;
+            }
+            regions.push({ level, startCol: span[0], endCol: span[1] });
+        });
+    }
+    return regions;
+}
+
+/** Регион слитой группы, покрывающий колонку `col` на групп-уровне `level` (или ниже него). */
+export function findSpannedGroupRegion(
+    regions: readonly SpannedGroupRegionCols[],
+    col: number,
+    level: number
+): SpannedGroupRegionCols | undefined {
+    return regions.find(r => r.level <= level && r.startCol <= col && r.endCol >= col);
+}
+
 export function getSpanBounds(
     span: Item,
     cellX: number,

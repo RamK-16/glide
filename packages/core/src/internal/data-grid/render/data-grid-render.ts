@@ -11,9 +11,11 @@ import {
     walkGroups,
     walkRowsInCol,
     getGroupLevels,
+    getSpannedGroupRegions,
+    findSpannedGroupRegion,
     getTotalGroupHeaderHeight,
 } from "./data-grid-render.walk.js";
-import { drawCells } from "./data-grid-render.cells.js";
+import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
@@ -37,7 +39,8 @@ function getDamageRepairPad(enableLowDprHairline: boolean): number {
 //   structure which contains all operations to perform, then sort them all by "prep" requirement, then do
 //   all like operations at once.
 
-function clipHeaderDamage(
+// Экспортируется для регресс-теста инварианта allSpanned-скипа (см. комментарий в групп-цикле).
+export function clipHeaderDamage(
     ctx: CanvasRenderingContext2D,
     effectiveColumns: readonly MappedGridColumn[],
     width: number,
@@ -47,7 +50,8 @@ function clipHeaderDamage(
     translateY: number,
     cellYOffset: number,
     damage: CellSet | undefined,
-    enableLowDprHairline: boolean
+    enableLowDprHairline: boolean,
+    getGroupDetails: GroupDetailsCallback | undefined
 ): void {
     if (damage === undefined || damage.size === 0) return;
 
@@ -59,12 +63,34 @@ function clipHeaderDamage(
         ? groupHeaderHeight
         : Array.from({ length: levels }, () => groupHeaderHeight);
 
+    // Слитые группы (rowspan) — тот же расчёт регионов, что в рендере/hit-test/bounds.
+    const spannedRegions =
+        getGroupDetails !== undefined
+            ? getSpannedGroupRegions(effectiveColumns, levels, name => getGroupDetails(name).span === true)
+            : [];
+
     let currentY = 0;
     for (let level = 0; level < levels; level++) {
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
         walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h) => {
+            // ИНВАРИАНТ (держать в синхроне с drawGroupLevel): групп-спан из ОДНИХ слитых
+            // колонок (все spanGroupHeader) групп-ячейку НЕ рисует — drawGroupLevel пропускает
+            // его как `allSpanned`, а групп-ряд каждой такой колонки восстанавливает её
+            // собственная перерисовка на всю высоту (drawGridHeaders, spanFull). Значит клип
+            // здесь НЕЛЬЗЯ ставить: очистка фона шапки внутри клипа затёрла бы верхнюю полосу
+            // слитой ячейки, а перерисовать её будет некому (сосед задел лишь свой групп-ряд
+            // [n,-2] → damage слитой колонки нет → её пропускают → серое поверх текста, линия
+            // исчезает). Поэтому здесь ТОТ ЖЕ allSpanned-скип, что и в рендере.
+            let allSpanned = true;
+            for (let i = span[0]; i <= span[1]; i++) {
+                if (effectiveColumns[i]?.spanGroupHeader !== true) {
+                    allSpanned = false;
+                    break;
+                }
+            }
+            if (allSpanned) return;
             const hasItemInSpan = damage.hasItemInRectangle({
                 x: span[0],
                 y: targetRow,
@@ -72,7 +98,15 @@ function clipHeaderDamage(
                 height: 1,
             });
             if (hasItemInSpan) {
-                ctx.rect(x - repairPad, y + currentY - repairPad, w + repairPad * 2, h + repairPad * 2);
+                // Слитая группа: клипуем на всю слитую высоту, иначе hover-перерисовка
+                // режется по одному групп-ряду (тот же баг, что был у листовой шапки).
+                const region = findSpannedGroupRegion(spannedRegions, span[0], level);
+                let clipH = h;
+                if (region !== undefined && region.level === level) {
+                    clipH = 0;
+                    for (let k = level; k < levels; k++) clipH += heights[k] ?? heights[0] ?? 0;
+                }
+                ctx.rect(x - repairPad, y + currentY - repairPad, w + repairPad * 2, clipH + repairPad * 2);
             }
         });
         currentY += levelHeight;
@@ -89,16 +123,33 @@ function clipHeaderDamage(
 
             const finalX = drawX + diff + 1;
             const finalWidth = c.width - diff - 1;
-            if (damage.has([c.sourceIndex, -1])) {
-                const groupHeight = Array.isArray(groupHeaderHeight)
-                    ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
-                    : groupHeaderHeight;
-                ctx.rect(
-                    finalX - repairPad,
-                    groupHeight - repairPad,
-                    finalWidth + repairPad * 2,
-                    totalHeaderHeight - groupHeight + repairPad * 2
-                );
+            // Слитая колонка занимает и строку колонки (-1), и групп-ряды (-2…). Клипуем её на
+            // всю высоту, если задет ЛЮБОЙ её ряд, — иначе групп-полоса не перерисуется при hover.
+            const spannedCol = c.spanGroupHeader === true;
+            const touched = spannedCol
+                ? damage.hasItemInRectangle({ x: c.sourceIndex, y: -1 - levels, width: 1, height: levels + 1 })
+                : damage.has([c.sourceIndex, -1]);
+            if (touched) {
+                if (spannedCol) {
+                    // Слитая шапка — одна ячейка на всю высоту: клипуем весь столбец шапки,
+                    // иначе hover/перерисовка режется по нижней полосе (headerHeight).
+                    ctx.rect(
+                        finalX - repairPad,
+                        0 - repairPad,
+                        finalWidth + repairPad * 2,
+                        totalHeaderHeight + repairPad * 2
+                    );
+                } else {
+                    const groupHeight = Array.isArray(groupHeaderHeight)
+                        ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
+                        : groupHeaderHeight;
+                    ctx.rect(
+                        finalX - repairPad,
+                        groupHeight - repairPad,
+                        finalWidth + repairPad * 2,
+                        totalHeaderHeight - groupHeight + repairPad * 2
+                    );
+                }
             }
         }
     );
@@ -805,7 +856,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     translateY,
                     cellYOffset,
                     damage,
-                    enableLowDprHairline
+                    enableLowDprHairline,
+                    getGroupDetails
                 );
                 drawHeaderTexture();
             }

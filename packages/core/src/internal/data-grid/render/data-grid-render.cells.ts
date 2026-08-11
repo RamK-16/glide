@@ -12,6 +12,7 @@ import {
     type DrawCellCallback,
     isInnerOnlyCell,
     type GridCell,
+    type SpanAlignment,
 } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
 import type { HoverValues } from "../animation-manager.js";
@@ -43,6 +44,15 @@ export interface GroupDetails {
     readonly name: string;
     readonly icon?: string;
     readonly overrideTheme?: Partial<Theme>;
+    /**
+     * Объединяет (rowspan) пустые нижние ряды «мелкой» группы в одну ячейку вместо
+     * пустой полосы под заголовком; объединение доходит до ряда колонок, но его не включает.
+     * Работает, только если ни у одной колонки этой группы нет более глубокой подгруппы.
+     * Перекрывает общий проп `spanShallowGroups` для этой группы. Не задано → как раньше.
+     */
+    readonly span?: boolean;
+    /** Выравнивание заголовка группы в объединённой ячейке. Работает только для объединённых групп (`span`). */
+    readonly spanAlign?: SpanAlignment;
     readonly actions?: readonly {
         readonly title: string;
         readonly onClick: (e: GridMouseGroupHeaderEventArgs) => void;

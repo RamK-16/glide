@@ -14,15 +14,24 @@ import {
 } from "../data-grid-types.js";
 import {
     drawMenuDots,
+    drawSpanAlignedText,
     getMeasuredTextCache,
     getMiddleCenterBias,
     measureTextCached,
+    resolveSpanAlignment,
     roundedPoly,
     type MappedGridColumn,
+    type ResolvedSpanAlignment,
 } from "./data-grid-lib.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import type { GroupDetails, GroupDetailsCallback } from "./data-grid-render.cells.js";
-import { walkColumns, walkGroups, getGroupLevels, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
+import {
+    walkColumns,
+    walkGroups,
+    getGroupLevels,
+    getSpannedGroupRegions,
+    getTotalGroupHeaderHeight,
+} from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
 import type { DragAndDropState, HoverInfo } from "./draw-grid-arg.js";
 
@@ -52,6 +61,7 @@ export function drawGridHeaders(
     const totalGroupHeaderHeight = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     if (totalHeaderHeight <= 0) return;
+    const levels = getGroupLevels(effectiveCols);
 
     ctx.fillStyle = outerTheme.bgHeader;
     ctx.fillRect(0, 0, width, totalHeaderHeight);
@@ -65,11 +75,24 @@ export function drawGridHeaders(
     // Assinging the context font too much can be expensive, it can be worth it to minimze this
     ctx.font = font;
     walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x, _y, clipX) => {
-        if (damage !== undefined && !damage.has([c.sourceIndex, -1])) return;
+        // Слитая колонка занимает и строку колонки (-1), и групп-ряды (-2…). Считаем её
+        // задетой, если задет ЛЮБОЙ её ряд, — иначе групп-полоса не перерисуется при hover.
+        if (damage !== undefined) {
+            const spannedCol = enableGroups && c.spanGroupHeader === true;
+            const touched = spannedCol
+                ? damage.hasItemInRectangle({ x: c.sourceIndex, y: -1 - levels, width: 1, height: levels + 1 })
+                : damage.has([c.sourceIndex, -1]);
+            if (!touched) return;
+        }
         const diff = Math.max(0, clipX - x);
+        // spanGroupHeader: колонка рисуется как одна слитная ячейка на всю высоту
+        // шапки (групповые строки + строка колонки), контент центрируется по ней.
+        const spanFull = enableGroups && c.spanGroupHeader === true;
+        const clipY = spanFull ? 0 : totalGroupHeaderHeight;
+        const drawH = spanFull ? totalHeaderHeight : headerHeight;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + diff, totalGroupHeaderHeight, c.width - diff, headerHeight);
+        ctx.rect(x + diff, clipY, c.width - diff, drawH);
         ctx.clip();
 
         const groupName = Array.isArray(c.group) ? (c.group[0] ?? "") : (c.group ?? "");
@@ -98,19 +121,19 @@ export function drawGridHeaders(
 
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
-        const y = enableGroups ? totalGroupHeaderHeight : 0;
+        const y = spanFull ? 0 : enableGroups ? totalGroupHeaderHeight : 0;
         const isFirstSelected = selected && selection.columns.first() === c.sourceIndex;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
             ctx.fillStyle = bgFillStyle;
-            ctx.fillRect(x + xOffset, y, c.width - xOffset, headerHeight);
+            ctx.fillRect(x + xOffset, y, c.width - xOffset, drawH);
             if (isFirstSelected) {
-                ctx.fillRect(x, y, 1, headerHeight);
+                ctx.fillRect(x, y, 1, drawH);
             }
         } else if (hasSelectedCell || hover > 0) {
             ctx.beginPath();
-            ctx.rect(x + xOffset, y, c.width - xOffset, headerHeight);
+            ctx.rect(x + xOffset, y, c.width - xOffset, drawH);
             if (hasSelectedCell) {
                 ctx.fillStyle = theme.bgHeaderHasFocus;
                 ctx.fill();
@@ -128,7 +151,7 @@ export function drawGridHeaders(
             x,
             y,
             c.width,
-            headerHeight,
+            drawH,
             c,
             selected,
             theme,
@@ -139,9 +162,30 @@ export function drawGridHeaders(
             hover,
             spriteManager,
             drawHeaderCallback,
-            touchMode
+            touchMode,
+            // Выравнивание считаем только для объединённой колонки (по умолчанию — слева).
+            spanFull ? resolveSpanAlignment(c.spanGroupHeaderAlign, "left") : undefined
         );
         ctx.restore();
+
+        // Слитая колонка: вертикальная граница слева ТОЛЬКО по групп-полосе (0 →
+        // totalGroupHeaderHeight). Штатный lines-рендерер (drawGridLines) вертикали в
+        // групп-полосе не рисует (он стартует с y1 = totalGroupHeaderHeight), поэтому
+        // без этой линии две соседние слитые колонки «слиплись» бы сверху. А вот header-
+        // полосу drawGridLines уже закрывает сам — если тянуть эту линию на всю высоту,
+        // в нижней полосе граница красится ДВАЖДЫ, и т.к. borderColor полупрозрачный
+        // (alpha 0.16), нижняя половина разделителя выходит заметно жирнее верхней.
+        // Обе линии гейтятся одним verticalBorder(sourceIndex) — поведение консистентно.
+        if (spanFull && x !== 0 && verticalBorder(c.sourceIndex)) {
+            ctx.beginPath();
+            ctx.moveTo(x + 0.5, 0);
+            ctx.lineTo(x + 0.5, totalGroupHeaderHeight);
+            ctx.strokeStyle = outerTheme.borderColor;
+            const previousLineWidth = ctx.lineWidth;
+            ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+            ctx.stroke();
+            ctx.lineWidth = previousLineWidth;
+        }
     });
 
     if (enableGroups) {
@@ -163,6 +207,50 @@ export function drawGridHeaders(
             enableLowDprHairline
         );
     }
+}
+
+/**
+ * Разбивает горизонтальную линию [0, width] на отрезки, ВЫРЕЗАЯ переданные
+ * интервалы `gaps` (x-диапазоны слитых spanGroupHeader-колонок). Возвращает
+ * отрезки [x1, x2] для отрисовки — над слитыми колонками межуровневой линии нет,
+ * чтобы шапка читалась как единая ячейка (без шва).
+ *
+ * Чистая функция (без canvas) — вынесена для юнит-тестов: сегментация самая
+ * рискованная часть (скролл/sticky дают несортированные и наезжающие интервалы,
+ * а также интервалы вне [0, width]).
+ */
+export function segmentSpanGroupHeaderLine(
+    width: number,
+    gaps: readonly (readonly [number, number])[]
+): [number, number][] {
+    const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
+    const segments: [number, number][] = [];
+    let cursor = 0;
+    for (const [start, end] of sorted) {
+        if (start > cursor) {
+            segments.push([cursor, Math.min(start, width)]);
+        }
+        cursor = Math.max(cursor, end);
+    }
+    if (cursor < width) {
+        segments.push([cursor, width]);
+    }
+    return segments;
+}
+
+/**
+ * Слитая (rowspan) групп-ячейка: помеченная `span` группа, «терминальная» на своём
+ * уровне (ни у одной её колонки нет более глубокой подгруппы), занимает свои пустые
+ * нижние групп-уровни как ОДНА ячейка высотой `mergedHeight` — от уровня `level` до
+ * последнего групп-уровня. Строку колонок НЕ покрывает.
+ */
+interface SpannedGroupRegion {
+    readonly level: number;
+    readonly startCol: number;
+    readonly endCol: number;
+    readonly x: number;
+    readonly w: number;
+    readonly mergedHeight: number;
 }
 
 export function drawGroups(
@@ -191,6 +279,57 @@ export function drawGroups(
 
     let currentY = 0;
 
+    // x-диапазоны колонок со spanGroupHeader — над ними межуровневые горизонтальные
+    // линии не рисуем, чтобы слитая ячейка читалась как единая (без шва).
+    const spannedRanges: [number, number][] = [];
+    walkColumns(effectiveCols, 0, translateX, 0, 0, (c, x, _y, clipX) => {
+        if (c.spanGroupHeader === true) {
+            spannedRanges.push([Math.max(x, clipX), x + c.width]);
+        }
+    });
+
+    // Слитые ГРУППЫ (rowspan): логические регионы берём из общего хелпера (единый
+    // источник с hit-test/bounds/clip), затем дополняем геометрией (x/w) и mergedHeight.
+    const logicalRegions = getSpannedGroupRegions(
+        effectiveCols,
+        levels,
+        groupName => getGroupDetails(groupName).span === true
+    );
+    const spannedGroupRegions: SpannedGroupRegion[] = [];
+    if (logicalRegions.length > 0) {
+        for (let level = 0; level < levels - 1; level++) {
+            walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, _groupName, x, _y, w) => {
+                if (!logicalRegions.some(r => r.level === level && r.startCol === span[0])) return;
+                let mergedHeight = 0;
+                for (let k = level; k < levels; k++) mergedHeight += heights[k] ?? heights[0] ?? 0;
+                spannedGroupRegions.push({ level, startCol: span[0], endCol: span[1], x, w, mergedHeight });
+            });
+        }
+    }
+
+    // Межуровневую линию режем над слитыми листьями (полная высота) и над слитыми
+    // группами — но у групп ТОЛЬКО внутренние линии (между групп-рядами). Нижнюю
+    // границу групп-шапки и строки колонок (последний уровень, level === levels-1)
+    // НЕ режем: у слитой группы должно быть дно.
+    const strokeHBorderSegmented = (lineY: number, level: number) => {
+        const gaps: [number, number][] = [...spannedRanges];
+        if (level < levels - 1) {
+            for (const r of spannedGroupRegions) {
+                if (r.level <= level) gaps.push([r.x, r.x + r.w]);
+            }
+        }
+        ctx.strokeStyle = theme.borderColor;
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+        ctx.beginPath();
+        for (const [x1, x2] of segmentSpanGroupHeaderLine(width, gaps)) {
+            ctx.moveTo(x1, lineY);
+            ctx.lineTo(x2, lineY);
+        }
+        ctx.stroke();
+        ctx.lineWidth = previousLineWidth;
+    };
+
     for (let level = 0; level < levels; level++) {
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
@@ -210,21 +349,15 @@ export function drawGroups(
             getGroupDetails,
             damage,
             levels,
+            spannedGroupRegions,
             selection,
             drawGroupHeaderCallback,
             enableLowDprHairline
         );
         currentY += levelHeight;
 
-        // Draw horizontal border between levels
-        ctx.beginPath();
-        ctx.moveTo(0, currentY + 0.5);
-        ctx.lineTo(width, currentY + 0.5);
-        ctx.strokeStyle = theme.borderColor;
-        const previousLineWidth = ctx.lineWidth;
-        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
-        ctx.stroke();
-        ctx.lineWidth = previousLineWidth;
+        // Draw horizontal border between levels — сегментами, минуя слитые колонки и группы
+        strokeHBorderSegmented(currentY + 0.5, level);
     }
 }
 
@@ -246,7 +379,9 @@ function drawGroupHeaderInner(
     spriteManager: SpriteManager,
     hovered: HoverInfo | undefined,
     verticalBorder: (col: number) => boolean,
-    enableLowDprHairline: boolean
+    enableLowDprHairline: boolean,
+    // Есть только у объединённой группы — иначе рисуем как раньше.
+    spanAlign?: ResolvedSpanAlignment
 ) {
     const xPad = 8;
     const fillColor = isSelected
@@ -275,11 +410,28 @@ function drawGroupHeaderInner(
         }
         if (group?.name !== undefined && group.name !== "") {
             const latestGroupName = groupName ?? group.name;
-            ctx.fillText(
-                latestGroupName,
-                drawX + xPad,
-                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
-            );
+            const bias = getMiddleCenterBias(ctx, theme.headerFontFull);
+            // Для RTL-заголовка выравнивание пока не поддержано — рисуем как раньше.
+            const effAlign =
+                spanAlign !== undefined && direction(latestGroupName) !== "rtl" ? spanAlign : undefined;
+            if (effAlign === undefined) {
+                // Обычная группа (или RTL): как раньше — слева, по центру по высоте.
+                ctx.fillText(latestGroupName, drawX + xPad, y + height / 2 + bias);
+            } else {
+                // Объединённая группа: выравниваем текст в пределах ячейки (после иконки). Меню у групп нет.
+                const padX = theme.cellHorizontalPadding;
+                drawSpanAlignedText(
+                    ctx,
+                    latestGroupName,
+                    drawX + padX,
+                    x + width - padX,
+                    y,
+                    height,
+                    effAlign,
+                    bias,
+                    theme.cellVerticalPadding
+                );
+            }
         }
 
         if (group?.actions !== undefined && isHovered) {
@@ -356,6 +508,7 @@ function drawGroupLevel(
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
     levels: number,
+    spannedGroupRegions: readonly SpannedGroupRegion[],
     selection?: GridSelection,
     drawGroupHeaderCallback?: DrawGroupHeaderCallback,
     enableLowDprHairline: boolean = false
@@ -383,14 +536,42 @@ function drawGroupLevel(
             })
         )
             return;
+        // Слитые колонки (spanGroupHeader) свою групп-ячейку не рисуют — над ними уже
+        // нарисован header на всю высоту (drawGridHeaders). Пропускаем span целиком,
+        // если он состоит только из таких колонок (finalX двигаем для правой границы).
+        // ВАЖНО: ровно этот же allSpanned-скип обязан быть в clipHeaderDamage (групп-цикл),
+        // иначе клип затрёт групп-ряд слитой колонки, а перерисовать его будет некому.
+        let allSpanned = true;
+        for (let i = span[0]; i <= span[1]; i++) {
+            if (effectiveCols[i]?.spanGroupHeader !== true) {
+                allSpanned = false;
+                break;
+            }
+        }
+        if (allSpanned) {
+            finalX = x + w;
+            return;
+        }
+        // Колонки, покрытые слитой группой сверху (её merged-ячейка уже отрисована на
+        // верхнем уровне), свою пустую ячейку не рисуют — иначе перекрыли бы merged.
+        if (spannedGroupRegions.some(r => r.level < level && r.startCol <= span[0] && r.endCol >= span[1])) {
+            finalX = x + w;
+            return;
+        }
+        // Если группа стартует слитый регион на этом уровне — рисуем на всю его высоту.
+        const spanRegion = spannedGroupRegions.find(r => r.level === level && r.startCol === span[0]);
+        const cellH = spanRegion?.mergedHeight ?? h;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x, y + yOffset, w, h);
+        ctx.rect(x, y + yOffset, w, cellH);
         ctx.clip();
 
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
+        // Выравнивание считаем только для объединённой группы (по умолчанию — по центру).
+        const groupSpanAlign =
+            spanRegion !== undefined ? resolveSpanAlignment(group.spanAlign, "center") : undefined;
         // Check if all columns in this group span are selected
         let isSelected = false;
         if (selection !== undefined) {
@@ -409,7 +590,8 @@ function drawGroupLevel(
             const isFirstColumn = x === 0;
             const offsetForVisibleBorderX = isFirstColumn ? 0 : 1;
 
-            const isLastLevelGroupRow = level === levels - 1;
+            // Слитая группа достаёт до нижнего групп-уровня → трактуем как последний ряд.
+            const isLastLevelGroupRow = level === levels - 1 || spanRegion !== undefined;
             const offsetForVisibleBorderY = isLastLevelGroupRow ? 0 : 1;
 
             const headerInnerMapper = {
@@ -429,7 +611,7 @@ function drawGroupLevel(
                         x: x + offsetForVisibleBorderX,
                         y: y + yOffset,
                         width: w - offsetForVisibleBorderX,
-                        height: h - offsetForVisibleBorderY,
+                        height: cellH - offsetForVisibleBorderY,
                     },
                     isSelected,
                     isHovered,
@@ -443,7 +625,7 @@ function drawGroupLevel(
                         x,
                         headerInnerMapper.y,
                         w,
-                        h,
+                        cellH,
                         groupNameOverride ?? groupName,
                         level,
                         span,
@@ -456,7 +638,8 @@ function drawGroupLevel(
                         spriteManager,
                         hovered,
                         verticalBorder,
-                        enableLowDprHairline
+                        enableLowDprHairline,
+                        groupSpanAlign
                     );
                     wasUsedDefDraw = true;
                 }
@@ -466,7 +649,7 @@ function drawGroupLevel(
                 const preventOverlaysOffset = level === 0 ? 0 : 1; // prevent overlays of vert and horiz borders
                 ctx.beginPath();
                 ctx.moveTo(x + 0.5, headerInnerMapper.y + preventOverlaysOffset);
-                ctx.lineTo(x + 0.5, headerInnerMapper.y + h);
+                ctx.lineTo(x + 0.5, headerInnerMapper.y + cellH);
                 ctx.strokeStyle = theme.borderColor;
                 const previousLineWidth = ctx.lineWidth;
                 ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
@@ -479,7 +662,7 @@ function drawGroupLevel(
                 x,
                 y + yOffset,
                 w,
-                h,
+                cellH,
                 groupName,
                 level,
                 span,
@@ -492,7 +675,8 @@ function drawGroupLevel(
                 spriteManager,
                 hovered,
                 verticalBorder,
-                enableLowDprHairline
+                enableLowDprHairline,
+                groupSpanAlign
             );
         }
 
@@ -658,7 +842,9 @@ function drawHeaderInner(
     touchMode: boolean,
     isRtl: boolean,
     headerLayout: HeaderLayout,
-    headerNameOverride: string | undefined
+    headerNameOverride: string | undefined,
+    // Есть только у объединённой колонки — иначе рисуем как раньше.
+    spanAlign?: ResolvedSpanAlignment
 ) {
     if (c.rowMarker !== undefined && c.headerRowMarkerDisabled !== true) {
         const checked = c.rowMarkerChecked;
@@ -741,18 +927,41 @@ function drawHeaderInner(
         ctx.fillStyle = fillStyle;
     }
 
-    if (isRtl) {
-        ctx.textAlign = "right";
-    }
-    if (headerLayout.textBounds !== undefined) {
-        ctx.fillText(
+    if (spanAlign !== undefined && !isRtl && headerLayout.textBounds !== undefined) {
+        // Объединённая колонка: выравниваем заголовок. Слева — после иконки (textBounds.x),
+        // справа оставляем место под кнопку меню и иконку-индикатор. Для RTL — старый путь.
+        const padX = theme.cellHorizontalPadding;
+        const bias = getMiddleCenterBias(ctx, theme.headerFontFull);
+        const boxLeft = headerLayout.textBounds.x;
+        let boxRight = x + width - (c.hasMenu === true ? menuButtonSize : padX);
+        if (headerLayout.indicatorIconBounds !== undefined) {
+            boxRight = Math.min(boxRight, headerLayout.indicatorIconBounds.x - padX);
+        }
+        drawSpanAlignedText(
+            ctx,
             headerNameOverride ?? c.title,
-            isRtl ? headerLayout.textBounds.x + headerLayout.textBounds.width : headerLayout.textBounds.x,
-            y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            boxLeft,
+            boxRight,
+            y,
+            height,
+            spanAlign,
+            bias,
+            theme.cellVerticalPadding
         );
-    }
-    if (isRtl) {
-        ctx.textAlign = "left";
+    } else {
+        if (isRtl) {
+            ctx.textAlign = "right";
+        }
+        if (headerLayout.textBounds !== undefined) {
+            ctx.fillText(
+                headerNameOverride ?? c.title,
+                isRtl ? headerLayout.textBounds.x + headerLayout.textBounds.width : headerLayout.textBounds.x,
+                y + height / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+            );
+        }
+        if (isRtl) {
+            ctx.textAlign = "left";
+        }
     }
 
     if (
@@ -856,7 +1065,9 @@ export function drawHeader(
     hoverAmount: number,
     spriteManager: SpriteManager,
     drawHeaderCallback: DrawHeaderCallback | undefined,
-    touchMode: boolean
+    touchMode: boolean,
+    // Выравнивание объединённой колонки (если она объединена).
+    spanAlign?: ResolvedSpanAlignment
 ) {
     const isRtl = direction(c.title) === "rtl";
     const headerLayout = computeHeaderLayout(ctx, c, x, y, width, height, theme, isRtl);
@@ -896,7 +1107,8 @@ export function drawHeader(
                     touchMode,
                     isRtl,
                     headerLayout,
-                    headerNameOverride
+                    headerNameOverride,
+                    spanAlign
                 )
         );
     } else {
@@ -917,7 +1129,8 @@ export function drawHeader(
             touchMode,
             isRtl,
             headerLayout,
-            undefined // headerNameOverride
+            undefined, // headerNameOverride
+            spanAlign
         );
     }
 }
