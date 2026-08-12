@@ -383,7 +383,11 @@ function drawGroupHeaderInner(
     // Есть только у объединённой группы — иначе рисуем как раньше.
     spanAlign?: ResolvedSpanAlignment
 ) {
-    const xPad = 8;
+    // Горизонтальный отступ группового заголовка берём из темы — как у заголовков
+    // колонок (computeHeaderLayout) и как у слитой группы в ветке ниже. Иначе на
+    // размерах, где cellHorizontalPadding !== 8 (small=4 / big=16), группа
+    // рассинхронивается с колонками по левому отступу.
+    const xPad = theme.cellHorizontalPadding;
     const fillColor = isSelected
         ? (groupTheme.accentColor ?? theme.accentColor)
         : isHovered
@@ -405,8 +409,20 @@ function drawGroupHeaderInner(
     if (groupName !== "") {
         let drawX = x;
         if (group?.icon !== undefined) {
-            spriteManager.drawSprite(group.icon, "normal", ctx, drawX + xPad, y + (height - 20) / 2, 20, groupTheme);
-            drawX += 26;
+            // Размер иконки группы и сдвиг под текст берём из темы — как у заголовков
+            // колонок (computeHeaderLayout): иконка headerIconSize, сдвиг ceil(×1.3).
+            // Раньше были хардкоды 20 и 26 (= ceil(20 × 1.3)).
+            const headerIconSize = theme.headerIconSize;
+            spriteManager.drawSprite(
+                group.icon,
+                "normal",
+                ctx,
+                drawX + xPad,
+                y + (height - headerIconSize) / 2,
+                headerIconSize,
+                groupTheme
+            );
+            drawX += Math.ceil(headerIconSize * 1.3);
         }
         if (group?.name !== undefined && group.name !== "") {
             const latestGroupName = groupName ?? group.name;

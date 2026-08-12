@@ -12,6 +12,9 @@
 - Пост-релизные фиксы (ветка `fix/span-group-header-prop-forwarding`): forwarding grid-пропа через
   3 обёртки; смешанный «»-спан (слитая рядом с неслитой) — render/clip/hover + group-select.
   Детали — в docs, §8.
+- Отступы обычной групп-шапки из темы (ветка `fix/group-header-theme-padding`, glide 6.1.2):
+  `xPad = theme.cellHorizontalPadding`; иконка `theme.headerIconSize` + сдвиг `ceil(headerIconSize × 1.3)`
+  — как у колонок. Раньше хардкоды `8`/`20`/`26`. Детали — docs, §8.
 
 ---
 
@@ -22,8 +25,6 @@
   направления (иконка справа, зеркальные отступы) и `left/right` относительно письма.
 - **Один источник дефолта:** `spanAlign` с грида подставляется в ДВУХ местах (`useMappedColumns` для
   колонок, `mangledGetGroupDetails` для групп) — свести к одному (резолвить в рендере).
-- **Магические числа в `drawGroupHeaderInner`:** сдвиг иконки `26` и `xPad = 8` → отступы из темы
-  (`cellHorizontalPadding`).
 - **Больше вариантов:** при надобности `stretch`/`justify` — тип `SpanAlignment` объектный, расширяется
   без ломки API.
 
