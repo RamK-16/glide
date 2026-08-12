@@ -1311,14 +1311,29 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         }
 
         if (highlightFocusCol !== undefined && highlightFocusRow !== undefined) {
+            // Слитая ячейка (span/spanRows): focus-обводку рисуем на ВЕСЬ блок, а не по одной
+            // origin-ячейке. Identity выделения (current.cell) не трогаем — это чисто визуал
+            // рамки. span в ячейке — в data-пространстве, поэтому прибавляем rowMarkerOffset;
+            // spanRows — индексы строк (без офсета).
+            let fx = highlightFocusCol;
+            let fy = highlightFocusRow;
+            let fw = 1;
+            let fh = 1;
+            const focusDataCol = highlightFocusCol - rowMarkerOffset;
+            if (highlightFocusRow >= 0 && highlightFocusRow < rows && focusDataCol >= 0) {
+                const focusCell = getCellContent([focusDataCol, highlightFocusRow]);
+                if (focusCell.span !== undefined) {
+                    fx = focusCell.span[0] + rowMarkerOffset;
+                    fw = focusCell.span[1] - focusCell.span[0] + 1;
+                }
+                if (focusCell.spanRows !== undefined) {
+                    fy = focusCell.spanRows[0];
+                    fh = focusCell.spanRows[1] - focusCell.spanRows[0] + 1;
+                }
+            }
             regions.push({
                 color: mergedTheme.accentColor,
-                range: {
-                    x: highlightFocusCol,
-                    y: highlightFocusRow,
-                    width: 1,
-                    height: 1,
-                },
+                range: { x: fx, y: fy, width: fw, height: fh },
                 style: "solid-outline",
             });
         }
@@ -1333,6 +1348,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         mangledCols.length,
         mergedTheme.accentColor,
         rowMarkerOffset,
+        getCellContent,
+        rows,
     ]);
 
     const mangledColsRef = React.useRef(mangledCols);
