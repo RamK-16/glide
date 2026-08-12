@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { segmentSpanGroupHeaderLine } from "../src/internal/data-grid/render/data-grid-render.header.js";
 import { clipHeaderDamage } from "../src/internal/data-grid/render/data-grid-render.js";
 import { type MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
+import { walkGroups } from "../src/internal/data-grid/render/data-grid-render.walk.js";
 import { CellSet } from "../src/internal/data-grid/cell-set.js";
 
 describe("segmentSpanGroupHeaderLine — разрез межуровневой линии вокруг слитых колонок", () => {
@@ -165,5 +166,56 @@ describe("clipHeaderDamage — allSpanned-скип групп-ряда слит�
         const rects = captureClipRects(new CellSet([[2, -2]]));
         // Групп-ряд col2 (x ≈ 310..480, y в групп-полосе) должен клипаться, чтобы drawGroups его перерисовал.
         expect(clipCovers(rects, 390, 15)).toBe(true);
+    });
+});
+
+// Смешанный «»-спан (слитая рядом с НЕслитой) — корень бага в SGH_LeafGridDefault: пустая
+// групп-ячейка/ховер/клип ложились поверх слитой колонки. Разрыв спана в walkGroups —
+// единый источник для render/clip/hover; выделение чинится отдельно (скан по имени группы).
+function spansAt(cols: MappedGridColumn[], level = 0): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    walkGroups(cols, 1000, 0, SGH_GROUP_H, level, span => {
+        out.push([span[0], span[1]]);
+    });
+    return out;
+}
+
+describe("walkGroups — spanGroupHeader разрывает пустой групп-спан", () => {
+    it("слитая рядом с НЕслитой (обе без группы) → каждая своим спаном, группа отдельно", () => {
+        const cols: MappedGridColumn[] = [
+            sghCol({ sourceIndex: 0, spanGroupHeader: true }), // слита (grid-дефолт)
+            sghCol({ sourceIndex: 1, spanGroupHeader: false }), // опт-аут → НЕ слита
+            sghCol({ sourceIndex: 2, group: "G" }),
+            sghCol({ sourceIndex: 3, group: "G" }),
+        ];
+        // Без разрыва было бы [[0,1],[2,3]] → пустая групп-ячейка легла бы поверх слитой col0.
+        expect(spansAt(cols)).toEqual([
+            [0, 0],
+            [1, 1],
+            [2, 3],
+        ]);
+    });
+
+    it("две слитые подряд → каждая своим спаном (между собой тоже не сливаются)", () => {
+        const cols: MappedGridColumn[] = [
+            sghCol({ sourceIndex: 0, spanGroupHeader: true }),
+            sghCol({ sourceIndex: 1, spanGroupHeader: true }),
+        ];
+        expect(spansAt(cols)).toEqual([
+            [0, 0],
+            [1, 1],
+        ]);
+    });
+
+    it("соседние НЕслитые без группы по-прежнему сливаются (поведение не изменилось)", () => {
+        const cols: MappedGridColumn[] = [
+            sghCol({ sourceIndex: 0 }),
+            sghCol({ sourceIndex: 1 }),
+            sghCol({ sourceIndex: 2, group: "G" }),
+        ];
+        expect(spansAt(cols)).toEqual([
+            [0, 1],
+            [2, 2],
+        ]);
     });
 });

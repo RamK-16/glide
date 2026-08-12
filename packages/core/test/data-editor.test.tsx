@@ -1904,6 +1904,49 @@ describe("data-editor", () => {
         expect(grouped?.height).toBe(36); // headerHeight
     });
 
+    test("Group-header click: empty ('') group is a no-op; a real group next to a spanned leaf isn't grabbed", async () => {
+        // Смешанный случай SGH_LeafGridDefault: "Role" слита grid-дефолтом, "Period" — опт-аут
+        // (не слита), обе без группы. Проверяем selection-сторону фикса через реальный клик.
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        render(
+            <EventedDataEditor
+                {...basicProps}
+                columns={[
+                    { title: "Role", width: 200 }, // grid-дефолт spanGroupHeader (слита), без группы
+                    { title: "Period", width: 150, spanGroupHeader: false }, // опт-аут, НЕ слита, без группы
+                    { title: "K1", width: 150, group: "KPI" },
+                    { title: "K2", width: 150, group: "KPI" },
+                ]}
+                spanGroupHeader
+                rowMarkers="none"
+                onGridSelectionChange={spy}
+            />,
+            {
+                wrapper: Context,
+            }
+        );
+        prep();
+
+        const canvas = screen.getByTestId("data-grid-canvas");
+
+        // (1) Клик по пустой («») групп-ячейке над "Period" (x 200..350) — это НЕ группа:
+        // выделения не происходит, слитая "Role" в частности НЕ прихватывается
+        // (был баг: выделялась вся «»-полоса Role+Period).
+        sendClick(canvas, { clientX: 275, clientY: 16 });
+        expect(spy).not.toHaveBeenCalled();
+
+        // (2) Клик по реальной группе KPI (x 350..650), стоящей рядом со слитой "Role":
+        // выделяет KPI-подколонки [2,3], но НЕ захватывает "Role" (col 0).
+        sendClick(canvas, { clientX: 450, clientY: 16 });
+        expect(spy).toHaveBeenCalledTimes(1);
+        const sel = spy.mock.calls[0][0];
+        expect(sel.columns.hasIndex(0)).toBe(false); // "Role" не выделена
+        expect(sel.columns.hasIndex(2)).toBe(true); // KPI выделена
+        expect(sel.columns.hasIndex(3)).toBe(true);
+        expect(sel.current?.cell).toEqual([2, -2]);
+    });
+
     test("Ref getBounds entire grid", async () => {
         const spy = vi.fn();
         vi.useFakeTimers();
