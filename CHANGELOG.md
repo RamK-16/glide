@@ -1,3 +1,10 @@
+## [6.1.1](https://github.com/RamK-16/glide/compare/v6.1.0...v6.1.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **data-grid:** grid-level spanGroupHeader forwarding + mixed no-group span ([3167c2a](https://github.com/RamK-16/glide/commit/3167c2a6c8a42d6d028785b4ffa962e0f12245cd))
+
 # [6.1.0](https://github.com/RamK-16/glide/compare/v6.0.19...v6.1.0) (2026-08-11)
 
 
