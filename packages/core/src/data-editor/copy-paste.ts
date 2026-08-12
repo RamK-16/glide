@@ -114,8 +114,22 @@ function createBufferFromGridCells(
 ): CopyBuffer {
     const copyBuffer: CopyBuffer = cells.map((row, index) => {
         const mappedIndex = columnIndexes[index];
-        return row.map(cell => {
+        return row.map((cell, colIndex) => {
             if (cell.span !== undefined && cell.span[0] !== mappedIndex)
+                return {
+                    formatted: "",
+                    rawValue: "",
+                    format: "string",
+                };
+            // Покрытая (не верхняя) строка rowspan-блока: у ячейки строкой выше в этой же
+            // колонке тот же spanRows-диапазон → значение уже отдал origin, здесь пусто.
+            const above = cells[index - 1]?.[colIndex];
+            if (
+                cell.spanRows !== undefined &&
+                above?.spanRows !== undefined &&
+                above.spanRows[0] === cell.spanRows[0] &&
+                above.spanRows[1] === cell.spanRows[1]
+            )
                 return {
                     formatted: "",
                     rawValue: "",

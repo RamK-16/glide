@@ -235,7 +235,10 @@ export function drawFillHandle(
             ? getFreezeTrailingHeight(rows, freezeTrailingRows, getRowHeight) - 1
             : 0;
 
-    const fillHandleRow = fillHandleTarget[1];
+    // Для слитого по строкам блока хэндл рисуем под всем блоком: низ = spanRows[1],
+    // а не низ origin-строки (зеркало горизонтального растяжения по span ниже).
+    const targetRowSpan = cell.spanRows ?? [targetRow, targetRow];
+    const fillHandleRow = Math.max(fillHandleTarget[1], targetRowSpan[1]);
 
     let drawHandleCb: (() => void) | undefined = undefined;
 

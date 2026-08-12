@@ -388,6 +388,34 @@ test("handle cell span", () => {
     expect(result.textPlain).toBe(""); // It should be empty since span doesn't match
 });
 
+test("handle cell rowspan", () => {
+    // Слитый по строкам блок: обе ячейки несут одинаковый spanRows [0,1] и значение.
+    // origin (верхняя строка) отдаёт значение, покрытая (нижняя) — пусто.
+    const cells: GridCell[][] = [
+        [
+            {
+                kind: GridCellKind.Text,
+                data: "Merged",
+                displayData: "Merged",
+                spanRows: [0, 1],
+                allowOverlay: true,
+            },
+        ],
+        [
+            {
+                kind: GridCellKind.Text,
+                data: "Merged",
+                displayData: "Merged",
+                spanRows: [0, 1],
+                allowOverlay: true,
+            },
+        ],
+    ];
+    const columnIndexes = [0];
+    const result = getCopyBufferContents(cells, columnIndexes);
+    expect(result.textPlain).toBe("Merged\n");
+});
+
 test("escape string with tab character", () => {
     const cells: GridCell[][] = [
         [

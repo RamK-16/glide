@@ -2419,6 +2419,15 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 for (let y = 0; y < currentRange.height; y++) {
                     const cell: Item = [currentRange.x + x, currentRange.y + y];
                     if (itemIsInRect(cell, patternRange)) continue;
+                    // Не пишем в покрытые ячейки слитого блока — значение получит только origin
+                    // (когда цикл дойдёт до его координаты). Иначе запись летит в середину блока.
+                    const targetCell = getMangledCellContent(cell);
+                    if (
+                        (targetCell.span !== undefined && targetCell.span[0] !== cell[0]) ||
+                        (targetCell.spanRows !== undefined && targetCell.spanRows[0] !== cell[1])
+                    ) {
+                        continue;
+                    }
                     const patternCell = pattern[y % patternRange.height][x % patternRange.width];
                     if (isInnerOnlyCell(patternCell) || !isReadWriteCell(patternCell)) continue;
                     editItemList.push({
@@ -2435,7 +2444,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }))
             );
         },
-        [getCellsForSelection, mangledOnCellsEdited, onFillPattern, rowMarkerOffset]
+        [getCellsForSelection, getMangledCellContent, mangledOnCellsEdited, onFillPattern, rowMarkerOffset]
     );
 
     const fillRight = React.useCallback(() => {
@@ -3295,6 +3304,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             for (let x = r.x; x < r.x + r.width; x++) {
                 for (let y = r.y; y < r.y + r.height; y++) {
                     const cellValue = getCellContent([x - rowMarkerOffset, y]);
+                    // Покрытая ячейка слитого блока: очистку выполнит origin (если он в диапазоне),
+                    // здесь пропускаем — иначе onCellEdited летит в середину блока.
+                    if (
+                        (cellValue.span !== undefined && cellValue.span[0] !== x - rowMarkerOffset) ||
+                        (cellValue.spanRows !== undefined && cellValue.spanRows[0] !== y)
+                    ) {
+                        continue;
+                    }
                     if (!cellValue.allowOverlay && cellValue.kind !== GridCellKind.Boolean) continue;
                     let newVal: InnerGridCell | undefined = undefined;
                     if (cellValue.kind === GridCellKind.Custom) {
@@ -3414,9 +3431,12 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
 
             if (gridSelection.current === undefined) return false;
             let [col, row] = gridSelection.current.cell;
-            const [, startRow] = gridSelection.current.cell;
+            const [startCol, startRow] = gridSelection.current.cell;
             let freeMove = false;
             let cancelOnlyOnMove = false;
+            // Направление одиночного шага стрелкой ([dx, dy]); задаётся только клавишами
+            // перехода на соседнюю ячейку. Нужен для merged-aware навигации ниже.
+            let arrowStep: readonly [number, number] | undefined = undefined;
 
             if (isHotkey(keys.scrollToSelectedCell, event, details)) {
                 scrollToRef.current(col - rowMarkerOffset, row);
@@ -3479,24 +3499,32 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             } else if (!overlayOpen) {
                 if (isHotkey(keys.goDownCell, event, details)) {
                     row += 1;
+                    arrowStep = [0, 1];
                 } else if (isHotkey(keys.goUpCell, event, details)) {
                     row -= 1;
+                    arrowStep = [0, -1];
                 } else if (isHotkey(keys.goRightCell, event, details)) {
                     col += 1;
+                    arrowStep = [1, 0];
                 } else if (isHotkey(keys.goLeftCell, event, details)) {
                     col -= 1;
+                    arrowStep = [-1, 0];
                 } else if (isHotkey(keys.goDownCellRetainSelection, event, details)) {
                     row += 1;
                     freeMove = true;
+                    arrowStep = [0, 1];
                 } else if (isHotkey(keys.goUpCellRetainSelection, event, details)) {
                     row -= 1;
                     freeMove = true;
+                    arrowStep = [0, -1];
                 } else if (isHotkey(keys.goRightCellRetainSelection, event, details)) {
                     col += 1;
                     freeMove = true;
+                    arrowStep = [1, 0];
                 } else if (isHotkey(keys.goLeftCellRetainSelection, event, details)) {
                     col -= 1;
                     freeMove = true;
+                    arrowStep = [-1, 0];
                 } else if (isHotkey(keys.goToLastRow, event, details)) {
                     row = rows - 1;
                 } else if (isHotkey(keys.goToFirstRow, event, details)) {
@@ -3552,6 +3580,29 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             // #endregion
 
+            // Merged-aware стрелочная навигация: один шаг перепрыгивает весь слитый блок,
+            // а не идёт по его покрытым ячейкам. По оси движения берём дальнюю грань блока
+            // origin-ячейки (span — колонки, spanRows — строки) и шагаем за неё.
+            if (arrowStep !== undefined) {
+                const startCell = getMangledCellContent([startCol, startRow]);
+                const [blockLeft, blockRight] = startCell.span ?? [startCol, startCol];
+                const [blockTop, blockBottom] = startCell.spanRows ?? [startRow, startRow];
+                const [dx, dy] = arrowStep;
+                if (dy > 0) {
+                    row = blockBottom + 1;
+                    col = startCol;
+                } else if (dy < 0) {
+                    row = blockTop - 1;
+                    col = startCol;
+                } else if (dx > 0) {
+                    col = blockRight + 1;
+                    row = startRow;
+                } else {
+                    col = blockLeft - 1;
+                    row = startRow;
+                }
+            }
+
             const mustRestrictRow = rowGroupingNavBehavior !== undefined && rowGroupingNavBehavior !== "normal";
 
             if (mustRestrictRow && row !== startRow) {
@@ -3583,6 +3634,21 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }
             }
 
+            // Приземление нормализуем к origin блока-соседа (как это делает клик), чтобы
+            // фокус всегда стоял на origin и следующий шаг стрелкой был корректным.
+            if (arrowStep !== undefined) {
+                const inBounds =
+                    row >= 0 &&
+                    row < rows &&
+                    col >= rowMarkerOffset &&
+                    col <= columns.length - 1 + rowMarkerOffset;
+                if (inBounds) {
+                    const landed = getMangledCellContent([col, row]);
+                    if (landed.span !== undefined) col = landed.span[0];
+                    if (landed.spanRows !== undefined) row = landed.spanRows[0];
+                }
+            }
+
             const moved = updateSelectedCell(col, row, false, freeMove);
 
             const didMatch = details.didMatch;
@@ -3604,6 +3670,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             rowMarkerOffset,
             mapper,
             rows,
+            columns.length,
+            getMangledCellContent,
             updateSelectedCell,
             setGridSelection,
             onSelectionCleared,
@@ -3873,6 +3941,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                             if (writeCol >= mangledCols.length) continue;
                             if (writeRow >= mangledRows) continue;
                             const cellData = getMangledCellContent(index);
+                            // Покрытая ячейка слитого блока: пишем только в origin, покрытые
+                            // координаты пропускаем — иначе вставка попадёт в середину блока.
+                            if (
+                                (cellData.span !== undefined && cellData.span[0] !== writeCol) ||
+                                (cellData.spanRows !== undefined && cellData.spanRows[0] !== writeRow)
+                            ) {
+                                continue;
+                            }
                             const newVal = pasteToCell(cellData, index, dataItem.rawValue, dataItem.formatted);
                             if (newVal !== undefined) {
                                 editList.push(newVal);
