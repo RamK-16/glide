@@ -1,3 +1,10 @@
+## [6.1.2](https://github.com/RamK-16/glide/compare/v6.1.1...v6.1.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **data-grid:** group header padding and icon geometry from theme ([d4aea6a](https://github.com/RamK-16/glide/commit/d4aea6ae8e6e2e9326a41348cfbda2578108842c))
+
 ## [6.1.1](https://github.com/RamK-16/glide/compare/v6.1.0...v6.1.1) (2026-08-12)
 
 
