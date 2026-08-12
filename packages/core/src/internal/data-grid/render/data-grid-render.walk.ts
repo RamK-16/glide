@@ -155,6 +155,13 @@ export function walkGroups(
         }
         while (
             end < effectiveCols.length &&
+            // spanGroupHeader-колонка НЕ входит ни в какую группу: она рисуется как одна
+            // высокая ячейка (drawGridHeaders) и не должна сливаться в общий групп-спан с
+            // соседями. Иначе в смешанном «»-спане (слитая рядом с неслитой) пустая
+            // групп-ячейка/ховер/клип легли бы поверх слитой колонки. Разрываем спан на
+            // ней с обеих сторон.
+            startCol.spanGroupHeader !== true &&
+            effectiveCols[end].spanGroupHeader !== true &&
             isGroupEqual(effectiveCols[end].group, startCol.group, level) &&
             effectiveCols[end].sticky === effectiveCols[index].sticky
         ) {

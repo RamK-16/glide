@@ -172,6 +172,39 @@ export function SGH_LeafGridDefault() {
 }
 SGH_LeafGridDefault.decorators = [];
 
+// 1c. Чистый grid-дефолт БЕЗ точечных опт-аутов: все листовые колонки слиты одним пропом.
+// Именно эта стори ЛОМАЕТСЯ визуально, если grid-проп spanGroupHeader перестанет доезжать
+// до DataGrid через обёртки (тогда над ВСЕМИ листьями появятся пустые ячейки сверху).
+export function SGH_GridDefaultAllLeaves() {
+    const cols: GridColumn[] = [
+        { title: "Роль", width: 180 },
+        { title: "Период", width: 150 },
+        { title: "Индивидуальные", width: 150, group: KPI },
+        { title: "Коллективные", width: 150, group: KPI },
+        { title: "Оценка", width: 150, group: KPI },
+        { title: "Итого", width: 150 },
+    ];
+    return (
+        <SpanStoryShell
+            cols={cols}
+            spanGroupHeader
+            description={
+                <>
+                    <b>GRID-дефолт `spanGroupHeader` БЕЗ опт-аутов — визуальный страж</b>
+                    {"\n"}
+                    На таблице только проп `spanGroupHeader`, ни на одной колонке флага нет. Все листовые колонки
+                    (Роль, Период, Итого) слиты на всю высоту шапки; группа "{KPI}" — обычная.
+                    {"\n"}
+                    {"\n"}⚠️ Если grid-проп перестанет доезжать до DataGrid через обёртки, ЗДЕСЬ это видно сразу:
+                    над Роль/Период/Итого появятся пустые ячейки (как в SGH_WithoutSpan_Before). Программный страж —
+                    тест «Grid-level spanGroupHeader merges leaf headers through the wrapper chain».
+                </>
+            }
+        />
+    );
+}
+SGH_GridDefaultAllLeaves.decorators = [];
+
 // 2. Тот же набор БЕЗ флага — как выглядит СЕЙЧАС (для сравнения до/после).
 export function SGH_WithoutSpan_Before() {
     const cols: GridColumn[] = [

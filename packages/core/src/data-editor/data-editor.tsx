@@ -2200,8 +2200,21 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
 
             const needle = mangledCols[col];
 
+            // Пустая («») групп-ячейка над безгруппной колонкой — это НЕ настоящая группа.
+            // Клик по ней ничего не выделяет: выделять нечего (группы нет), а группового
+            // highlight рисоваться не должно (иначе — артефактная accent-линия по верху шапки).
+            // Настоящие группы (с именем на кликнутом уровне) идут дальше как раньше.
+            const clickedGroupName = Array.isArray(needle.group)
+                ? (needle.group[level] ?? "")
+                : level === 0
+                  ? (needle.group ?? "")
+                  : "";
+            if (clickedGroupName === "") return;
+
             // Find all columns that belong to the same group at this level and all levels below
-            // We need to find columns that match at the clicked level AND all parent levels
+            // We need to find columns that match at the clicked level AND all parent levels.
+            // spanGroupHeader-колонки в скан не попадают сами собой: у них пустая группа, а
+            // isGroupEqual с нашим НЕпустым именем группы на пустой группе рвётся.
             let start = col;
             let end = col;
 
