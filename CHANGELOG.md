@@ -1,3 +1,10 @@
+## [6.1.4](https://github.com/RamK-16/glide/compare/v6.1.3...v6.1.4) (2026-08-13)
+
+
+### Bug Fixes
+
+* **data-grid:** keep group header top border and stop hover flicker ([#41](https://github.com/RamK-16/glide/issues/41)) ([27b5df1](https://github.com/RamK-16/glide/commit/27b5df1eec13b3181164bff98926c18c8a082181))
+
 ## [6.1.3](https://github.com/RamK-16/glide/compare/v6.1.2...v6.1.3) (2026-08-13)
 
 
