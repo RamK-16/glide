@@ -541,13 +541,15 @@ function drawGroupLevel(
             ? undefined
             : ([selection.current.range.x, selection.current.range.x + selection.current.range.width - 1] as const);
     let finalX = 0;
-    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h) => {
+    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, level, (span, groupName, x, y, w, h, _level, spanMinCol, spanMaxCol, spanAllSpanned) => {
         if (
             damage !== undefined &&
+            // Границы берём из min/max по членам спана, а не из концов colSpan:
+            // при DnD-реордере span[0] может быть > span[1] и ширина схлопнется в 0.
             !damage.hasItemInRectangle({
-                x: span[0],
+                x: spanMinCol,
                 y: targetRow,
-                width: span[1] - span[0] + 1,
+                width: spanMaxCol - spanMinCol + 1,
                 height: 1,
             })
         )
@@ -557,14 +559,7 @@ function drawGroupLevel(
         // если он состоит только из таких колонок (finalX двигаем для правой границы).
         // ВАЖНО: ровно этот же allSpanned-скип обязан быть в clipHeaderDamage (групп-цикл),
         // иначе клип затрёт групп-ряд слитой колонки, а перерисовать его будет некому.
-        let allSpanned = true;
-        for (let i = span[0]; i <= span[1]; i++) {
-            if (effectiveCols[i]?.spanGroupHeader !== true) {
-                allSpanned = false;
-                break;
-            }
-        }
-        if (allSpanned) {
+        if (spanAllSpanned) {
             finalX = x + w;
             return;
         }
