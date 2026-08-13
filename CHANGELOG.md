@@ -1,3 +1,10 @@
+## [6.1.6](https://github.com/RamK-16/glide/compare/v6.1.5...v6.1.6) (2026-08-13)
+
+
+### Bug Fixes
+
+* **data-grid:** draw group header background for custom drawGroupHeader ([0f1bd46](https://github.com/RamK-16/glide/commit/0f1bd469369b5d16ed506d23d02977f42e32bd22))
+
 ## [6.1.5](https://github.com/RamK-16/glide/compare/v6.1.4...v6.1.5) (2026-08-13)
 
 
