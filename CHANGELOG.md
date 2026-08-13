@@ -1,3 +1,10 @@
+## [6.1.3](https://github.com/RamK-16/glide/compare/v6.1.2...v6.1.3) (2026-08-13)
+
+
+### Bug Fixes
+
+* **data-grid:** repair group header damage on column drag reorder ([a87dd58](https://github.com/RamK-16/glide/commit/a87dd58f6ca31cf7a7fef97c6b1537b7fb82ef8e))
+
 ## [6.1.2](https://github.com/RamK-16/glide/compare/v6.1.1...v6.1.2) (2026-08-12)
 
 
