@@ -21,7 +21,12 @@ function col(partial: Partial<MappedGridColumn>): MappedGridColumn {
 type DrawGroupsParams = Parameters<typeof drawGroups>;
 type FillRect = { x: number; y: number; w: number; h: number; fill: string };
 
-function captureGroupFills(cols: MappedGridColumn[], groupHeights: number[], fillColor: string): FillRect[] {
+function captureGroupFills(
+    cols: MappedGridColumn[],
+    groupHeights: number[],
+    fillColor: string,
+    targetGroup = "C"
+): FillRect[] {
     const rects: FillRect[] = [];
     let fillStyle = "";
     const noop = () => undefined;
@@ -57,7 +62,7 @@ function captureGroupFills(cols: MappedGridColumn[], groupHeights: number[], fil
     const theme = mergeAndRealizeTheme(getDataEditorTheme());
     const spriteManager = { drawSprite: noop } as unknown as DrawGroupsParams[7];
     const getGroupDetails: DrawGroupsParams[10] = name =>
-        name === "C" ? { name, overrideTheme: { bgGroupHeader: fillColor } } : { name };
+        name === targetGroup ? { name, overrideTheme: { bgGroupHeader: fillColor } } : { name };
 
     drawGroups(
         ctx,
@@ -95,5 +100,21 @@ describe("drawGroupHeaderInner — заливка группы не перекр
         // высота уменьшается на 1 — верхняя линия P/C остаётся видимой.
         expect(groupFill.y).toBe(h0 + 1);
         expect(groupFill.h).toBe(h1 - 1);
+    });
+
+    it("верхний уровень (level 0) заливается от края (y=0) — без лишней полосы сверху", () => {
+        // "P" — самый верхний уровень: разделителя над ним нет, поэтому заливка идёт от
+        // y=0 на всю высоту. Иначе верхний 1px светил бы фоном шапки светлой полоской.
+        const cols: MappedGridColumn[] = [
+            col({ sourceIndex: 0, width: 150, group: ["P", "C"] }),
+            col({ sourceIndex: 1, width: 160, group: ["P", "C"] }),
+        ];
+        const h0 = 30;
+        const h1 = 28;
+        const fills = captureGroupFills(cols, [h0, h1], "#654321", "P");
+        expect(fills.length).toBeGreaterThan(0);
+        const groupFill = fills[0];
+        expect(groupFill.y).toBe(0);
+        expect(groupFill.h).toBe(h0);
     });
 });

@@ -396,15 +396,18 @@ function drawGroupHeaderInner(
 
     if (fillColor !== theme.bgHeader) {
         ctx.fillStyle = fillColor;
-        // Заливаем с y+1 / height-1, чтобы не перекрыть верхнюю разграничительную линию
-        // между уровнями групп: при видимом bgGroupHeader (напр. выделение) сплошная
-        // заливка на всю высоту затирала верхний бордер (на ховере его уже сохраняли).
+        // Верхний зазор в 1px оставляем ТОЛЬКО под-группам (level > 0) — там он сохраняет
+        // разграничительную линию между уровнями групп (иначе видимый bgGroupHeader её
+        // затирал; ховер её и так сохранял). У самого верхнего уровня (level 0) разделителя
+        // над ним нет: зазор лишь светил бы фоном шапки светлой полоской, поэтому заливаем
+        // от края.
+        const topInset = level === 0 ? 0 : 1;
         if (hoverAmount > 0) {
             ctx.globalAlpha = hoverAmount;
-            ctx.fillRect(x, y + 1, width, height - 1);
+            ctx.fillRect(x, y + topInset, width, height - topInset);
             ctx.globalAlpha = 1;
         } else {
-            ctx.fillRect(x, y + 1, width, height - 1);
+            ctx.fillRect(x, y + topInset, width, height - topInset);
         }
     }
 
