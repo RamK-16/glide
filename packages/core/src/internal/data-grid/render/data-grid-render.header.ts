@@ -396,12 +396,15 @@ function drawGroupHeaderInner(
 
     if (fillColor !== theme.bgHeader) {
         ctx.fillStyle = fillColor;
+        // Заливаем с y+1 / height-1, чтобы не перекрыть верхнюю разграничительную линию
+        // между уровнями групп: при видимом bgGroupHeader (напр. выделение) сплошная
+        // заливка на всю высоту затирала верхний бордер (на ховере его уже сохраняли).
         if (hoverAmount > 0) {
             ctx.globalAlpha = hoverAmount;
             ctx.fillRect(x, y + 1, width, height - 1);
             ctx.globalAlpha = 1;
         } else {
-            ctx.fillRect(x, y, width, height);
+            ctx.fillRect(x, y + 1, width, height - 1);
         }
     }
 
@@ -592,10 +595,24 @@ function drawGroupLevel(
             isSelected = selectionMatchesLevel && spanInSelection && selection.columns.hasAll([span[0], span[1] + 1]);
         }
         const isHovered = hRow === targetRow && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
+        // Hover-amount — СУММА по колонкам спана (клампим в 1), а не значение одной hCol.
+        // При пересечении границы подколонок внутри группы старая колонка гаснет, а новая
+        // разгоняется синхронно (их суммы ≈ 1 в любой момент), поэтому заливка держится
+        // без провала — нет мигания. При входе/выходе анимируется одна колонка → сумма =
+        // штатный 0↔1 (обычная hover-анимация сохраняется).
         const hoverAmount =
             isSelected || !isHovered
                 ? 0
-                : (_hoverValues.find(s => s.item[0] === hCol && s.item[1] === targetRow)?.hoverAmount ?? 0);
+                : Math.min(
+                      1,
+                      _hoverValues.reduce(
+                          (sum, s) =>
+                              s.item[1] === targetRow && s.item[0] >= spanMinCol && s.item[0] <= spanMaxCol
+                                  ? sum + s.hoverAmount
+                                  : sum,
+                          0
+                      )
+                  );
 
         if (drawGroupHeaderCallback !== undefined) {
             const isFirstColumn = x === 0;
