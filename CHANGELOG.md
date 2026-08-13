@@ -1,3 +1,10 @@
+## [6.1.5](https://github.com/RamK-16/glide/compare/v6.1.4...v6.1.5) (2026-08-13)
+
+
+### Bug Fixes
+
+* **data-grid:** drop group header top inset at the top level ([#42](https://github.com/RamK-16/glide/issues/42)) ([34bbf10](https://github.com/RamK-16/glide/commit/34bbf104f0a9d828b7f00f39b15a0810e82e4e76))
+
 ## [6.1.4](https://github.com/RamK-16/glide/compare/v6.1.3...v6.1.4) (2026-08-13)
 
 

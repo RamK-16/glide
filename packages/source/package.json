@@ -1,6 +1,6 @@
 {
     "name": "@glideappsfinal/glide-data-grid-source",
-    "version": "6.1.4",
+    "version": "6.1.5",
     "publishConfig": {
         "access": "public"
     },
@@ -45,7 +45,7 @@
         "canvas"
     ],
     "dependencies": {
-        "@glideappsfinal/glide-data-grid": "6.1.4"
+        "@glideappsfinal/glide-data-grid": "6.1.5"
     },
     "peerDependencies": {
         "lodash": "^4.17.19",
