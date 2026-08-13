@@ -74,7 +74,7 @@ export function clipHeaderDamage(
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
-        walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h) => {
+        walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h, _level, spanMinCol, spanMaxCol, spanAllSpanned) => {
             // ИНВАРИАНТ (держать в синхроне с drawGroupLevel): групп-спан из ОДНИХ слитых
             // колонок (все spanGroupHeader) групп-ячейку НЕ рисует — drawGroupLevel пропускает
             // его как `allSpanned`, а групп-ряд каждой такой колонки восстанавливает её
@@ -83,18 +83,13 @@ export function clipHeaderDamage(
             // слитой ячейки, а перерисовать её будет некому (сосед задел лишь свой групп-ряд
             // [n,-2] → damage слитой колонки нет → её пропускают → серое поверх текста, линия
             // исчезает). Поэтому здесь ТОТ ЖЕ allSpanned-скип, что и в рендере.
-            let allSpanned = true;
-            for (let i = span[0]; i <= span[1]; i++) {
-                if (effectiveColumns[i]?.spanGroupHeader !== true) {
-                    allSpanned = false;
-                    break;
-                }
-            }
-            if (allSpanned) return;
+            if (spanAllSpanned) return;
+            // Границы по членам спана (min/max sourceIndex): при DnD-реордере концы
+            // colSpan немонотонны (span[0] > span[1]) и прямоугольник схлопнулся бы.
             const hasItemInSpan = damage.hasItemInRectangle({
-                x: span[0],
+                x: spanMinCol,
                 y: targetRow,
-                width: span[1] - span[0] + 1,
+                width: spanMaxCol - spanMinCol + 1,
                 height: 1,
             });
             if (hasItemInSpan) {

@@ -93,7 +93,16 @@ export type WalkGroupsCallback = (
     y: number,
     width: number,
     height: number,
-    level: number
+    level: number,
+    // Истинные min/max sourceIndex по ВСЕМ колонкам спана. При DnD-реордере
+    // визуальный порядок ломает монотонность colSpan (напр. [2,1]), поэтому
+    // damage-проверки должны считать прямоугольник по этим границам, а не по концам.
+    spanMinCol: number,
+    spanMaxCol: number,
+    // Спан целиком из spanGroupHeader-колонок (их групп-ячейку рисуют отдельно) —
+    // считаем по фактическим членам, а не циклом по source-диапазону (тот ломается
+    // при span[0] > span[1] и при позиция ≠ sourceIndex).
+    spanAllSpanned: boolean
 ) => void;
 
 export function getGroupLevels(effectiveCols: readonly MappedGridColumn[]): number {
@@ -150,6 +159,9 @@ export function walkGroups(
 
         let end = index + 1;
         let boxWidth = startCol.width;
+        let spanMinCol = startCol.sourceIndex;
+        let spanMaxCol = startCol.sourceIndex;
+        let spanAllSpanned = startCol.spanGroupHeader === true;
         if (startCol.sticky) {
             clipX += boxWidth;
         }
@@ -167,6 +179,9 @@ export function walkGroups(
         ) {
             const endCol = effectiveCols[end];
             boxWidth += endCol.width;
+            spanMinCol = Math.min(spanMinCol, endCol.sourceIndex);
+            spanMaxCol = Math.max(spanMaxCol, endCol.sourceIndex);
+            spanAllSpanned = spanAllSpanned && endCol.spanGroupHeader === true;
             end++;
             index++;
             if (endCol.sticky) {
@@ -186,7 +201,10 @@ export function walkGroups(
             0,
             w,
             groupHeaderHeight,
-            level
+            level,
+            spanMinCol,
+            spanMaxCol,
+            spanAllSpanned
         );
 
         x += boxWidth;
