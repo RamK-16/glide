@@ -25,7 +25,8 @@ function captureGroupFills(
     cols: MappedGridColumn[],
     groupHeights: number[],
     fillColor: string,
-    targetGroup = "C"
+    targetGroup = "C",
+    drawGroupHeaderCallback: DrawGroupsParams[13] = undefined
 ): FillRect[] {
     const rects: FillRect[] = [];
     let fillStyle = "";
@@ -78,7 +79,7 @@ function captureGroupFills(
         getGroupDetails,
         undefined, // damage — полная отрисовка
         undefined, // selection
-        undefined, // drawGroupHeaderCallback — дефолтный путь (drawGroupHeaderInner)
+        drawGroupHeaderCallback, // кастомный путь, если передан (иначе дефолтный drawGroupHeaderInner)
         false // enableLowDprHairline
     );
     return rects.filter(r => r.fill === fillColor);
@@ -116,5 +117,21 @@ describe("drawGroupHeaderInner — заливка группы не перекр
         const groupFill = fills[0];
         expect(groupFill.y).toBe(0);
         expect(groupFill.h).toBe(h0);
+    });
+
+    it("кастомный drawGroupHeader (не зовёт drawContent) всё равно получает фон — его рисует drawGroupLevel", () => {
+        const cols: MappedGridColumn[] = [
+            col({ sourceIndex: 0, width: 150, group: ["P", "C"] }),
+            col({ sourceIndex: 1, width: 160, group: ["P", "C"] }),
+        ];
+        const h0 = 30;
+        const h1 = 28;
+        // Колбэк рисует «своё» (ничего) и НЕ зовёт drawContent → раньше фон терялся.
+        const customCallback: DrawGroupsParams[13] = () => undefined;
+        const fills = captureGroupFills(cols, [h0, h1], "#00ff00", "C", customCallback);
+        expect(fills.length).toBeGreaterThan(0);
+        // Фон под-группы "C" всё равно залит (drawGroupLevel до колбэка), та же геометрия y+1/height-1.
+        expect(fills[0].y).toBe(h0 + 1);
+        expect(fills[0].h).toBe(h1 - 1);
     });
 });

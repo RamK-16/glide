@@ -361,6 +361,22 @@ export function drawGroups(
     }
 }
 
+/**
+ * Цвет фона групп-ячейки по её состоянию: выделение → accent, ховер → bgGroupHeaderHovered,
+ * иначе → bgGroupHeader. Единый источник для заливки фона (drawGroupLevel) и градиента
+ * action-иконок (drawGroupHeaderInner).
+ */
+function resolveGroupHeaderFillColor(
+    isSelected: boolean,
+    isHovered: boolean,
+    groupTheme: FullTheme,
+    theme: FullTheme
+): string {
+    if (isSelected) return groupTheme.accentColor ?? theme.accentColor;
+    if (isHovered) return groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered;
+    return groupTheme.bgGroupHeader ?? groupTheme.bgHeader;
+}
+
 function drawGroupHeaderInner(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -372,7 +388,9 @@ function drawGroupHeaderInner(
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
-    hoverAmount: number,
+    // Фон (и его hover-fade) теперь заливает drawGroupLevel до контент-колбэка —
+    // здесь hoverAmount больше не нужен, но параметр сохраняем для совместимости вызовов.
+    _hoverAmount: number,
     theme: FullTheme,
     groupTheme: FullTheme,
     group: GroupDetails,
@@ -388,28 +406,10 @@ function drawGroupHeaderInner(
     // размерах, где cellHorizontalPadding !== 8 (small=4 / big=16), группа
     // рассинхронивается с колонками по левому отступу.
     const xPad = theme.cellHorizontalPadding;
-    const fillColor = isSelected
-        ? (groupTheme.accentColor ?? theme.accentColor)
-        : isHovered
-          ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
-          : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
-
-    if (fillColor !== theme.bgHeader) {
-        ctx.fillStyle = fillColor;
-        // Верхний зазор в 1px оставляем ТОЛЬКО под-группам (level > 0) — там он сохраняет
-        // разграничительную линию между уровнями групп (иначе видимый bgGroupHeader её
-        // затирал; ховер её и так сохранял). У самого верхнего уровня (level 0) разделителя
-        // над ним нет: зазор лишь светил бы фоном шапки светлой полоской, поэтому заливаем
-        // от края.
-        const topInset = level === 0 ? 0 : 1;
-        if (hoverAmount > 0) {
-            ctx.globalAlpha = hoverAmount;
-            ctx.fillRect(x, y + topInset, width, height - topInset);
-            ctx.globalAlpha = 1;
-        } else {
-            ctx.fillRect(x, y + topInset, width, height - topInset);
-        }
-    }
+    // Фон групп-ячейки заливает drawGroupLevel ДО контент-колбэка — единым путём для
+    // дефолтной и кастомной отрисовки (кастомный drawGroupHeader идёт мимо этой функции).
+    // Здесь fillColor нужен только для градиента action-иконок ниже.
+    const fillColor = resolveGroupHeaderFillColor(isSelected, isHovered, groupTheme, theme);
 
     ctx.fillStyle = groupTheme.textGroupHeader ?? groupTheme.textHeader;
     if (groupName !== "") {
@@ -616,6 +616,24 @@ function drawGroupLevel(
                           0
                       )
                   );
+
+        // Фон групп-ячейки рисуем ЗДЕСЬ — ДО контент-колбэка, единым путём для дефолтной
+        // и кастомной отрисовки (кастомный drawGroupHeader идёт мимо drawGroupHeaderInner
+        // и иначе остался бы без фона/подсветки). topInset: у верхнего уровня (level 0)
+        // разделителя над ним нет — заливаем от края; у под-групп 1px сверху сохраняет
+        // разграничительную линию между уровнями.
+        const groupFillColor = resolveGroupHeaderFillColor(isSelected, isHovered, groupTheme, theme);
+        if (groupFillColor !== theme.bgHeader) {
+            const topInset = level === 0 ? 0 : 1;
+            ctx.fillStyle = groupFillColor;
+            if (hoverAmount > 0) {
+                ctx.globalAlpha = hoverAmount;
+                ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
+                ctx.globalAlpha = 1;
+            } else {
+                ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
+            }
+        }
 
         if (drawGroupHeaderCallback !== undefined) {
             const isFirstColumn = x === 0;
