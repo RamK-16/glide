@@ -1,3 +1,10 @@
+## [6.1.8](https://github.com/RamK-16/glide/compare/v6.1.7...v6.1.8) (2026-08-15)
+
+
+### Bug Fixes
+
+* **header:** чинит сквош слитой группы во время drag-реордера колонок ([#45](https://github.com/RamK-16/glide/issues/45)) ([bc7f3b8](https://github.com/RamK-16/glide/commit/bc7f3b8220433f2d1ea852c95bce17420a9ee964))
+
 ## [6.1.7](https://github.com/RamK-16/glide/compare/v6.1.6...v6.1.7) (2026-08-15)
 
 
