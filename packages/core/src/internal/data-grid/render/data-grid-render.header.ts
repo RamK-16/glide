@@ -627,10 +627,15 @@ function drawGroupLevel(
             const topInset = level === 0 ? 0 : 1;
             ctx.fillStyle = groupFillColor;
             if (hoverAmount > 0) {
+                // Ховер набирается по alpha от нуля (плавный фейд).
                 ctx.globalAlpha = hoverAmount;
                 ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
                 ctx.globalAlpha = 1;
-            } else {
+            } else if (isSelected || !isHovered) {
+                // Непрозрачно: выделение (accentColor) и обычный фон группы
+                // (bgGroupHeader). НЕ красим только кадр «ховер до старта анимации»
+                // (isHovered && hoverAmount === 0) — иначе виден проблеск hover-цвета
+                // на полной насыщенности до того, как начнётся фейд.
                 ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
             }
         }
@@ -734,14 +739,21 @@ function drawGroupLevel(
         finalX = x + w;
     });
 
-    ctx.beginPath();
-    ctx.moveTo(finalX + 0.5, yOffset);
-    ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
-    ctx.strokeStyle = theme.borderColor;
-    const previousLineWidth = ctx.lineWidth;
-    ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
-    ctx.stroke();
-    ctx.lineWidth = previousLineWidth;
+    // Закрывающую вертикаль уровня рисуем ТОЛЬКО если на нём реально отрисована хотя бы
+    // одна группа (finalX двигается лишь при обработанной группе). При частичной (hover)
+    // перерисовке все группы уровня могут отфильтроваться damage-проверкой — тогда finalX
+    // остаётся 0, и штрих на finalX+0.5 = 0.5 рисует ложную вертикаль на левом краю шапки
+    // (видно как «мигающая» линия слева у слитой ячейки на первой позиции).
+    if (finalX > 0) {
+        ctx.beginPath();
+        ctx.moveTo(finalX + 0.5, yOffset);
+        ctx.lineTo(finalX + 0.5, yOffset + groupHeaderHeight);
+        ctx.strokeStyle = theme.borderColor;
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+        ctx.stroke();
+        ctx.lineWidth = previousLineWidth;
+    }
 
     // Horizontal border at the bottom of the last level (level 0 is the bottommost)
     // This will be drawn in drawGroups function between levels
