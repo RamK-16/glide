@@ -64,6 +64,43 @@ describe("getSpannedGroupRegions — какие группы сливаются"
     });
 });
 
+describe("getSpannedGroupRegions под DnD-реордером (позиция ≠ sourceIndex)", () => {
+    // Одиночная слитая группа pppp (sourceIndex 6) перетащена в СЕРЕДИНУ — стоит на
+    // позиции 5, а на позиции 6 оказался лист глубокой группы (sourceIndex 5). Прежний
+    // цикл effectiveCols[span[0]..span[1]] брал effectiveCols[6] (чужой лист с подгруппой)
+    // и ошибочно исключал регион pppp → сквош рвался. Теперь терминальность считается по
+    // фактическим членам.
+    const reordered: MappedGridColumn[] = [
+        col({ sourceIndex: 0 }), // ID, без группы, поз 0
+        col({ sourceIndex: 1, group: ["Показатели", "Продажи"] }), // поз 1
+        col({ sourceIndex: 2, group: ["Показатели", "Продажи"] }), // поз 2
+        col({ sourceIndex: 3, group: ["Показатели", "Оценка"] }), // поз 3
+        col({ sourceIndex: 4, group: ["Показатели", "Оценка"] }), // поз 4
+        col({ sourceIndex: 6, group: "pppp" }), // TR перетащен сюда (поз 5)
+        col({ sourceIndex: 5, group: ["Показатели", "Оценка"] }), // Итог (поз 6)
+    ];
+    const isPppp = (name: string) => name === "pppp";
+
+    it("терминальная слитая группа pppp определяется корректно, несмотря на реордер", () => {
+        const regions = getSpannedGroupRegions(reordered, getGroupLevels(reordered), isPppp);
+        expect(regions).toEqual([{ level: 0, startCol: 6, endCol: 6 }]);
+    });
+
+    it("без реордера (позиция = sourceIndex) результат тот же", () => {
+        const inOrder: MappedGridColumn[] = [
+            col({ sourceIndex: 0 }),
+            col({ sourceIndex: 1, group: ["Показатели", "Продажи"] }),
+            col({ sourceIndex: 2, group: ["Показатели", "Продажи"] }),
+            col({ sourceIndex: 3, group: ["Показатели", "Оценка"] }),
+            col({ sourceIndex: 4, group: ["Показатели", "Оценка"] }),
+            col({ sourceIndex: 5, group: ["Показатели", "Оценка"] }),
+            col({ sourceIndex: 6, group: "pppp" }),
+        ];
+        const regions = getSpannedGroupRegions(inOrder, getGroupLevels(inOrder), isPppp);
+        expect(regions).toEqual([{ level: 0, startCol: 6, endCol: 6 }]);
+    });
+});
+
 describe("findSpannedGroupRegion — покрытие колонки регионом", () => {
     const regions = getSpannedGroupRegions(cols, getGroupLevels(cols), spanAll);
 
