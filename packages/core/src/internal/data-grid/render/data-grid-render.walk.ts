@@ -102,7 +102,11 @@ export type WalkGroupsCallback = (
     // Спан целиком из spanGroupHeader-колонок (их групп-ячейку рисуют отдельно) —
     // считаем по фактическим членам, а не циклом по source-диапазону (тот ломается
     // при span[0] > span[1] и при позиция ≠ sourceIndex).
-    spanAllSpanned: boolean
+    spanAllSpanned: boolean,
+    // У какой-либо колонки спана есть более глубокая подгруппа (level+1). Считаем по
+    // фактическим членам (по позиции) по той же причине, что и spanAllSpanned. Нужно
+    // getSpannedGroupRegions, чтобы отличить «терминальную» слитую группу под DnD.
+    spanHasDeeperGroup: boolean
 ) => void;
 
 export function getGroupLevels(effectiveCols: readonly MappedGridColumn[]): number {
@@ -162,6 +166,7 @@ export function walkGroups(
         let spanMinCol = startCol.sourceIndex;
         let spanMaxCol = startCol.sourceIndex;
         let spanAllSpanned = startCol.spanGroupHeader === true;
+        let spanHasDeeperGroup = getGroupAtLevel(startCol.group, level + 1) !== "";
         if (startCol.sticky) {
             clipX += boxWidth;
         }
@@ -182,6 +187,7 @@ export function walkGroups(
             spanMinCol = Math.min(spanMinCol, endCol.sourceIndex);
             spanMaxCol = Math.max(spanMaxCol, endCol.sourceIndex);
             spanAllSpanned = spanAllSpanned && endCol.spanGroupHeader === true;
+            spanHasDeeperGroup = spanHasDeeperGroup || getGroupAtLevel(endCol.group, level + 1) !== "";
             end++;
             index++;
             if (endCol.sticky) {
@@ -204,7 +210,8 @@ export function walkGroups(
             level,
             spanMinCol,
             spanMaxCol,
-            spanAllSpanned
+            spanAllSpanned,
+            spanHasDeeperGroup
         );
 
         x += boxWidth;
@@ -231,13 +238,22 @@ export function getSpannedGroupRegions(
 ): SpannedGroupRegionCols[] {
     const regions: SpannedGroupRegionCols[] = [];
     for (let level = 0; level < levels - 1; level++) {
-        walkGroups(effectiveCols, 0, 0, 0, level, (span, groupName) => {
-            if (groupName === "" || !isGroupSpanned(groupName)) return;
-            for (let i = span[0]; i <= span[1]; i++) {
-                if (getGroupAtLevel(effectiveCols[i]?.group, level + 1) !== "") return;
+        walkGroups(
+            effectiveCols,
+            0,
+            0,
+            0,
+            level,
+            (span, groupName, _x, _y, _w, _h, _lvl, _min, _max, _allSpanned, spanHasDeeperGroup) => {
+                if (groupName === "" || !isGroupSpanned(groupName)) return;
+                // Терминальность (нет более глубокой подгруппы) берём из флага walkGroups —
+                // он считается по фактическим членам-позициям. Прежний цикл
+                // effectiveCols[span[0]..span[1]] индексировал по sourceIndex как по позиции
+                // и ломался под DnD-реордером (позиция ≠ sourceIndex → сквош рвался).
+                if (spanHasDeeperGroup) return;
+                regions.push({ level, startCol: span[0], endCol: span[1] });
             }
-            regions.push({ level, startCol: span[0], endCol: span[1] });
-        });
+        );
     }
     return regions;
 }
