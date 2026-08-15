@@ -1,3 +1,10 @@
+## [6.1.7](https://github.com/RamK-16/glide/compare/v6.1.6...v6.1.7) (2026-08-15)
+
+
+### Bug Fixes
+
+* **header:** убрать проблеск ховера группы и ложную левую линию слитой шапки на первой позиции ([#44](https://github.com/RamK-16/glide/issues/44)) ([6ef15e4](https://github.com/RamK-16/glide/commit/6ef15e4df7414e25e874884a3b71996173414a0b))
+
 ## [6.1.6](https://github.com/RamK-16/glide/compare/v6.1.5...v6.1.6) (2026-08-13)
 
 

@@ -1,6 +1,6 @@
 {
     "name": "@glideappsfinal/glide-data-grid",
-    "version": "6.1.6",
+    "version": "6.1.7",
     "publishConfig": {
         "access": "public"
     },
