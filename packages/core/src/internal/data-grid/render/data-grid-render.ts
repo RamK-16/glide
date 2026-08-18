@@ -14,6 +14,8 @@ import {
     getSpannedGroupRegions,
     findSpannedGroupRegion,
     getTotalGroupHeaderHeight,
+    getSpanBounds,
+    getRowSpanBounds,
 } from "./data-grid-render.walk.js";
 import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders } from "./data-grid-render.header.js";
@@ -162,7 +164,11 @@ function getDamageDrawRegions(
     getRowHeight: (row: number) => number,
     freezeTrailingRows: number,
     hasAppendRow: boolean,
-    damage: CellSet
+    damage: CellSet,
+    getCellContent: (cell: readonly [number, number]) => {
+        readonly span?: readonly [number, number];
+        readonly spanRows?: readonly [number, number];
+    }
 ): Rectangle[] {
     const result: Rectangle[] = [];
     const cellIndex: [number, number] = [0, 0];
@@ -194,7 +200,39 @@ function getDamageDrawRegions(
 
                     cellIndex[1] = row;
                     if (damage.has(cellIndex)) {
-                        result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                        const cell = getCellContent(cellIndex);
+                        if (cell.span !== undefined || cell.spanRows !== undefined) {
+                            // Слитый блок рисуется на весь прямоугольник, поэтому и
+                            // damage-регион делаем на весь блок — иначе overlay'и
+                            // (рамка/подсветка/fill-handle) восстановятся лишь по
+                            // одной ячейке и «пропадут» на остальной площади блока.
+                            let ry = drawY;
+                            let rHeight = rh;
+                            if (cell.spanRows !== undefined) {
+                                const v = getRowSpanBounds(cell.spanRows, row, drawY, getRowHeight);
+                                ry = v.y;
+                                rHeight = v.height;
+                            }
+                            if (cell.span !== undefined) {
+                                const [frozenArea, contentArea] = getSpanBounds(
+                                    cell.span,
+                                    colDrawX,
+                                    drawY,
+                                    colWidth,
+                                    rh,
+                                    c,
+                                    effectiveColumns
+                                );
+                                if (frozenArea !== undefined)
+                                    result.push({ x: frozenArea.x, y: ry, width: frozenArea.width, height: rHeight });
+                                if (contentArea !== undefined)
+                                    result.push({ x: contentArea.x, y: ry, width: contentArea.width, height: rHeight });
+                            } else {
+                                result.push({ x: colDrawX, y: ry, width: colWidth, height: rHeight });
+                            }
+                        } else {
+                            result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                        }
                     }
                 }
             );
@@ -574,7 +612,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                       getRowHeight,
                       freezeTrailingRows,
                       hasAppendRow,
-                      damage
+                      damage,
+                      getCellContent
                   )
                 : undefined;
 
