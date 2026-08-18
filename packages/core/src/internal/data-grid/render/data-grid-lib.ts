@@ -42,6 +42,35 @@ export function resolveSpanAlignment(
 }
 
 /**
+ * Покрытая ячейка слитого блока (span/spanRows), но НЕ его origin. Используется
+ * в fill/paste/delete, чтобы писать только в origin, а покрытые координаты
+ * пропускать — иначе запись летит в середину блока.
+ */
+export function isCoveredSpanCell(
+    cell: Pick<BaseGridCell, "span" | "spanRows">,
+    col: number,
+    row: number
+): boolean {
+    return (
+        (cell.span !== undefined && cell.span[0] !== col) ||
+        (cell.spanRows !== undefined && cell.spanRows[0] !== row)
+    );
+}
+
+/**
+ * Origin (левый верхний угол) слитого блока для любой его ячейки. span/spanRows
+ * одинаковы на всех ячейках блока, поэтому берём [span[0], spanRows[0]] с
+ * фолбэком на исходные координаты. Нормализует клик и навигацию к origin.
+ */
+export function getSpanOrigin(
+    cell: Pick<BaseGridCell, "span" | "spanRows">,
+    col: number,
+    row: number
+): readonly [number, number] {
+    return [cell.span?.[0] ?? col, cell.spanRows?.[0] ?? row];
+}
+
+/**
  * Считает Y текста и baseline по вертикальному выравниванию внутри ячейки высотой height.
  * middleBias — сдвиг для центрирования (из getMiddleCenterBias); padY — отступ сверху/снизу.
  */
@@ -226,7 +255,10 @@ function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boo
 
     const [cellCol, cellRow] = location;
     // Строки: point-проверка, либо (для rowspan) перекрытие диапазона [spanStart,spanEnd]
-    // с [startY,endY] — зеркало логики диапазона колонок ниже.
+    // с [startY,endY] — ДОСЛОВНОЕ зеркало колоночной ветки ниже (включая её quirk во
+    // втором условии: `rowSpanStart <= endY`, а не `rowSpanEnd <= endY`). Не «чинить»
+    // только строчную сторону — иначе строки и колонки рассинхронятся; три условия в
+    // сумме дают корректное перекрытие, менять обе ветки или ни одной.
     if (cell.spanRows === undefined) {
         if (cellRow < startY || cellRow > endY) return false;
     } else {

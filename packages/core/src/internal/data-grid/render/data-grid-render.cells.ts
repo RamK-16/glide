@@ -33,7 +33,13 @@ import type { RenderStateProvider } from "../../../common/render-state-provider.
 import type { ImageWindowLoader } from "../image-window-loader-interface.js";
 import { intersectRect } from "../../../common/math.js";
 import type { GridMouseGroupHeaderEventArgs } from "../event-args.js";
-import { getRowSpanBounds, getSkipPoint, getSpanBounds, walkColumns, walkRowsInCol } from "./data-grid-render.walk.js";
+import {
+    getRowSpanBounds,
+    getSkipPoint,
+    resolveHorizontalSpanArea,
+    walkColumns,
+    walkRowsInCol,
+} from "./data-grid-render.walk.js";
 
 const loadingCell: InnerGridCell = {
     kind: GridCellKind.Loading,
@@ -245,25 +251,12 @@ export function drawCells(
                         const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky}`; //alloc
                         if (handledSpans === undefined) handledSpans = new Set();
                         if (!handledSpans.has(spanKey)) {
-                            // Горизонталь: colspan — через getSpanBounds (frozen/scrollable сплит),
-                            // иначе одиночная колонка. area === undefined → видимая часть colspan этой
-                            // колонки в другой freeze-области: как раньше, блок тут не рисуем.
-                            let hx = drawX;
-                            let hw = c.width;
-                            let horizontalOk = true;
-                            if (cell.span !== undefined) {
-                                const areas = getSpanBounds(cell.span, drawX, drawY, c.width, rh, c, allColumns);
-                                const area = c.sticky ? areas[0] : areas[1];
-                                if (!c.sticky && areas[0] !== undefined) {
-                                    skipContents = true;
-                                }
-                                if (area !== undefined) {
-                                    hx = area.x;
-                                    hw = area.width;
-                                } else {
-                                    horizontalOk = false;
-                                }
-                            }
+                            // Горизонталь: colspan — через resolveHorizontalSpanArea (frozen/scrollable
+                            // сплит), иначе одиночная колонка. horizontalOk === false → видимая часть
+                            // colspan этой колонки в другой freeze-области: блок тут не рисуем.
+                            const { hx, hw, horizontalOk, skipContents: horizontalSkip } =
+                                resolveHorizontalSpanArea(cell.span, drawX, drawY, c.width, rh, c, allColumns);
+                            skipContents = horizontalSkip;
                             if (horizontalOk) {
                                 // Вертикаль: rowspan — накопление высот строк блока; origin-строка может
                                 // быть выше вьюпорта → cellY уходит в минус (scroll-safe, канва клипует).

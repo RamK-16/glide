@@ -52,6 +52,8 @@ import {
     itemIsInRect,
     gridSelectionHasItem,
     getFreezeTrailingHeight,
+    isCoveredSpanCell,
+    getSpanOrigin,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { GroupRename } from "./group-rename.js";
 import { measureColumn, useColumnSizer } from "./use-column-sizer.js";
@@ -2422,10 +2424,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     // Не пишем в покрытые ячейки слитого блока — значение получит только origin
                     // (когда цикл дойдёт до его координаты). Иначе запись летит в середину блока.
                     const targetCell = getMangledCellContent(cell);
-                    if (
-                        (targetCell.span !== undefined && targetCell.span[0] !== cell[0]) ||
-                        (targetCell.spanRows !== undefined && targetCell.spanRows[0] !== cell[1])
-                    ) {
+                    if (isCoveredSpanCell(targetCell, cell[0], cell[1])) {
                         continue;
                     }
                     const patternCell = pattern[y % patternRange.height][x % patternRange.width];
@@ -3306,10 +3305,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     const cellValue = getCellContent([x - rowMarkerOffset, y]);
                     // Покрытая ячейка слитого блока: очистку выполнит origin (если он в диапазоне),
                     // здесь пропускаем — иначе onCellEdited летит в середину блока.
-                    if (
-                        (cellValue.span !== undefined && cellValue.span[0] !== x - rowMarkerOffset) ||
-                        (cellValue.spanRows !== undefined && cellValue.spanRows[0] !== y)
-                    ) {
+                    if (isCoveredSpanCell(cellValue, x - rowMarkerOffset, y)) {
                         continue;
                     }
                     if (!cellValue.allowOverlay && cellValue.kind !== GridCellKind.Boolean) continue;
@@ -3644,8 +3640,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     col <= columns.length - 1 + rowMarkerOffset;
                 if (inBounds) {
                     const landed = getMangledCellContent([col, row]);
-                    if (landed.span !== undefined) col = landed.span[0];
-                    if (landed.spanRows !== undefined) row = landed.spanRows[0];
+                    [col, row] = getSpanOrigin(landed, col, row);
                 }
             }
 
@@ -3943,10 +3938,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                             const cellData = getMangledCellContent(index);
                             // Покрытая ячейка слитого блока: пишем только в origin, покрытые
                             // координаты пропускаем — иначе вставка попадёт в середину блока.
-                            if (
-                                (cellData.span !== undefined && cellData.span[0] !== writeCol) ||
-                                (cellData.spanRows !== undefined && cellData.spanRows[0] !== writeRow)
-                            ) {
+                            if (isCoveredSpanCell(cellData, writeCol, writeRow)) {
                                 continue;
                             }
                             const newVal = pasteToCell(cellData, index, dataItem.rawValue, dataItem.formatted);

@@ -324,6 +324,42 @@ export function getSpanBounds(
 }
 
 /**
+ * Горизонтальная геометрия слитого блока для текущей freeze-области. Отдаёт x/width
+ * видимой части colspan (frozen для sticky-колонки, scrollable иначе), флаг
+ * `horizontalOk` (рисуется ли блок в этой области) и `skipContents` (контент уже
+ * отрисован во frozen-области — не дублировать). Для ячейки без colspan
+ * (`span === undefined`) возвращает исходные drawX/colWidth.
+ */
+export function resolveHorizontalSpanArea(
+    span: Item | undefined,
+    drawX: number,
+    drawY: number,
+    colWidth: number,
+    rowHeight: number,
+    column: MappedGridColumn,
+    allColumns: readonly MappedGridColumn[]
+): { hx: number; hw: number; horizontalOk: boolean; skipContents: boolean } {
+    let hx = drawX;
+    let hw = colWidth;
+    let horizontalOk = true;
+    let skipContents = false;
+    if (span !== undefined) {
+        const areas = getSpanBounds(span, drawX, drawY, colWidth, rowHeight, column, allColumns);
+        const area = column.sticky ? areas[0] : areas[1];
+        if (!column.sticky && areas[0] !== undefined) {
+            skipContents = true;
+        }
+        if (area !== undefined) {
+            hx = area.x;
+            hw = area.width;
+        } else {
+            horizontalOk = false;
+        }
+    }
+    return { hx, hw, horizontalOk, skipContents };
+}
+
+/**
  * Вертикальная геометрия объединённого по строкам блока (rowspan). Возвращает верх
  * блока (`y`) и его полную высоту для диапазона `[startRow, endRow]`, отсчитывая от
  * текущей рисуемой строки `currentRow` с её экранным верхом `currentDrawY`.

@@ -5,6 +5,7 @@ import {
     getColumnIndexForX,
     getEffectiveColumns,
     getRowIndexForY,
+    getSpanOrigin,
     getStickyWidth,
     rectBottomRight,
     useMappedColumns,
@@ -727,18 +728,11 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     };
                 }
             } else {
-                // Объединённая ячейка тела (rowspan/прямоугольник): попадание в любую точку блока
-                // трактуем как origin [startCol, startRow], чтобы клик/выделение/редактирование/hover
-                // работали по всему блоку. colspan (span без spanRows) не трогаем.
-                let cellCol = col;
-                let cellRow = row;
+                // Объединённая ячейка тела (colspan/rowspan/прямоугольник): попадание в любую
+                // точку блока трактуем как origin [startCol, startRow], чтобы клик/выделение/
+                // редактирование/hover работали по всему блоку.
                 const spanCell = getCellContent([col, row]);
-                if (spanCell.spanRows !== undefined) {
-                    cellRow = spanCell.spanRows[0];
-                    if (spanCell.span !== undefined) {
-                        cellCol = spanCell.span[0];
-                    }
-                }
+                const [cellCol, cellRow] = getSpanOrigin(spanCell, col, row);
                 const bounds = getBoundsForItem(canvas, cellCol, cellRow);
                 assert(bounds !== undefined);
                 const isEdge = bounds !== undefined && bounds.x + bounds.width - posX < edgeDetectionBuffer;
