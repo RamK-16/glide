@@ -2,7 +2,7 @@
 /* eslint-disable unicorn/no-for-loop */
 import { type Rectangle } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
-import { getEffectiveColumns, type MappedGridColumn, rectBottomRight } from "./data-grid-lib.js";
+import { getEffectiveColumns, type MappedGridColumn } from "./data-grid-lib.js";
 import { blend } from "../color-parser.js";
 import { assert } from "../../../common/support.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
@@ -837,14 +837,40 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 minimumCellWidth
             );
 
+            // Слитый блок при damage-перерисовке затирает overlay'и своей заливкой на
+            // всю площадь. Рамку/подсветку выделения восстанавливаем поверх (в
+            // hairline-пути это делает клип-версия выше; здесь — прямым вызовом).
+            const damageHighlightRedraw = drawHighlightRings(
+                ctx,
+                width,
+                height,
+                cellXOffset,
+                cellYOffset,
+                translateX,
+                translateY,
+                mappedColumns,
+                freezeColumns,
+                headerHeight,
+                groupHeaderHeight,
+                rowHeight,
+                freezeTrailingRows,
+                rows,
+                highlightRegions,
+                theme,
+                enableLowDprHairline
+            );
+            damageHighlightRedraw?.();
+
             const selectionCurrent = selection.current;
 
+            // fill-handle тоже затирается блоком — перерисовываем его на любой damage
+            // с активным выделением (раньше только когда damaged bottom-right ячейка,
+            // из-за чего квадратик пропадал при ховере по любой другой ячейке блока).
             if (
                 fillHandle !== false &&
                 fillHandle !== undefined &&
                 drawFocus &&
-                selectionCurrent !== undefined &&
-                damage.has(rectBottomRight(selectionCurrent.range))
+                selectionCurrent !== undefined
             ) {
                 drawFillHandle(
                     ctx,
