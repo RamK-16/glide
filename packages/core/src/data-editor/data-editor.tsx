@@ -3593,7 +3593,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 } else if (dx > 0) {
                     col = blockRight + 1;
                     row = startRow;
-                } else {
+                } else if (dx < 0) {
                     col = blockLeft - 1;
                     row = startRow;
                 }

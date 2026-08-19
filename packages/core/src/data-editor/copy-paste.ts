@@ -108,6 +108,12 @@ function convertCellToBuffer(cell: GridCell): CellBuffer {
     }
 }
 
+const emptyBufferCell = {
+    formatted: "",
+    rawValue: "",
+    format: "string",
+} as const;
+
 function createBufferFromGridCells(
     cells: readonly (readonly GridCell[])[],
     columnIndexes: readonly number[]
@@ -115,12 +121,7 @@ function createBufferFromGridCells(
     const copyBuffer: CopyBuffer = cells.map((row, index) => {
         const mappedIndex = columnIndexes[index];
         return row.map((cell, colIndex) => {
-            if (cell.span !== undefined && cell.span[0] !== mappedIndex)
-                return {
-                    formatted: "",
-                    rawValue: "",
-                    format: "string",
-                };
+            if (cell.span !== undefined && cell.span[0] !== mappedIndex) return emptyBufferCell;
             // Покрытая (не верхняя) строка rowspan-блока: у ячейки строкой выше в этой же
             // колонке тот же spanRows-диапазон → значение уже отдал origin, здесь пусто.
             const above = cells[index - 1]?.[colIndex];
@@ -130,11 +131,7 @@ function createBufferFromGridCells(
                 above.spanRows[0] === cell.spanRows[0] &&
                 above.spanRows[1] === cell.spanRows[1]
             )
-                return {
-                    formatted: "",
-                    rawValue: "",
-                    format: "string",
-                };
+                return emptyBufferCell;
             return convertCellToBuffer(cell);
         });
     });

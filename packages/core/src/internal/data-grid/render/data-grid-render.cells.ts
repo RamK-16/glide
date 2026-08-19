@@ -255,7 +255,7 @@ export function drawCells(
                             // сплит), иначе одиночная колонка. horizontalOk === false → видимая часть
                             // colspan этой колонки в другой freeze-области: блок тут не рисуем.
                             const { hx, hw, horizontalOk, skipContents: horizontalSkip } =
-                                resolveHorizontalSpanArea(cell.span, drawX, drawY, c.width, rh, c, allColumns);
+                                resolveHorizontalSpanArea(cell.span, drawX, c.width, c, allColumns);
                             skipContents = horizontalSkip;
                             if (horizontalOk) {
                                 // Вертикаль: rowspan — накопление высот строк блока; origin-строка может

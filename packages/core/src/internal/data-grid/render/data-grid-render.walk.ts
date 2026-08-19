@@ -333,9 +333,7 @@ export function getSpanBounds(
 export function resolveHorizontalSpanArea(
     span: Item | undefined,
     drawX: number,
-    drawY: number,
     colWidth: number,
-    rowHeight: number,
     column: MappedGridColumn,
     allColumns: readonly MappedGridColumn[]
 ): { hx: number; hw: number; horizontalOk: boolean; skipContents: boolean } {
@@ -344,7 +342,8 @@ export function resolveHorizontalSpanArea(
     let horizontalOk = true;
     let skipContents = false;
     if (span !== undefined) {
-        const areas = getSpanBounds(span, drawX, drawY, colWidth, rowHeight, column, allColumns);
+        // y/height от getSpanBounds здесь не используются (нужны только x/width).
+        const areas = getSpanBounds(span, drawX, 0, colWidth, 0, column, allColumns);
         const area = column.sticky ? areas[0] : areas[1];
         if (!column.sticky && areas[0] !== undefined) {
             skipContents = true;
@@ -360,14 +359,10 @@ export function resolveHorizontalSpanArea(
 }
 
 /**
- * Вертикальная геометрия объединённого по строкам блока (rowspan). Возвращает верх
- * блока (`y`) и его полную высоту для диапазона `[startRow, endRow]`, отсчитывая от
- * текущей рисуемой строки `currentRow` с её экранным верхом `currentDrawY`.
- *
- * `startRow` может быть выше вьюпорта (уехал при прокрутке) — тогда `y` уходит в минус,
- * и это нормально: канва клипует. Именно это даёт scroll-safe поведение (вертикальный
- * аналог того, как `getSpanBounds` переживает горизонтальный скролл). Чистая функция —
- * вынесена для юнит-тестов геометрии.
+ * Вертикальная геометрия rowspan-блока: верх (`y`) и полная высота диапазона
+ * `[startRow, endRow]`, отсчитанные от текущей строки `currentRow` с её экранным
+ * верхом `currentDrawY`. `startRow` может быть выше вьюпорта — тогда `y` уходит
+ * в минус, канва клипует (scroll-safe).
  */
 export function getRowSpanBounds(
     spanRows: readonly [startRow: number, endRow: number],

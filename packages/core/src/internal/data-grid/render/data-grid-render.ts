@@ -214,6 +214,8 @@ function getDamageDrawRegions(
                                 rHeight = v.height;
                             }
                             if (cell.span !== undefined) {
+                                // getSpanBounds напрямую (не resolveHorizontalSpanArea): damage-регион
+                                // должен покрыть ОБЕ области блока — и frozen, и scrollable.
                                 const [frozenArea, contentArea] = getSpanBounds(
                                     cell.span,
                                     colDrawX,

@@ -254,11 +254,8 @@ function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boo
     const endY = rect.y + rect.height - 1;
 
     const [cellCol, cellRow] = location;
-    // Строки: point-проверка, либо (для rowspan) перекрытие диапазона [spanStart,spanEnd]
-    // с [startY,endY] — ДОСЛОВНОЕ зеркало колоночной ветки ниже (включая её quirk во
-    // втором условии: `rowSpanStart <= endY`, а не `rowSpanEnd <= endY`). Не «чинить»
-    // только строчную сторону — иначе строки и колонки рассинхронятся; три условия в
-    // сумме дают корректное перекрытие, менять обе ветки или ни одной.
+    // Rowspan-перекрытие — дословное зеркало колоночной ветки ниже, включая её
+    // quirk (`rowSpanStart <= endY` во втором условии). Менять обе ветки или ни одной.
     if (cell.spanRows === undefined) {
         if (cellRow < startY || cellRow > endY) return false;
     } else {
