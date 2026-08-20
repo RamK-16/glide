@@ -60,7 +60,7 @@ import { measureColumn, useColumnSizer } from "./use-column-sizer.js";
 import { isHotkey } from "../common/is-hotkey.js";
 import { type SelectionBlending, useSelectionBehavior } from "../internal/data-grid/use-selection-behavior.js";
 import { useCellsForSelection } from "./use-cells-for-selection.js";
-import { unquote, expandSelection, copyToClipboard, toggleBoolean } from "./data-editor-fns.js";
+import { unquote, expandSelection, expandRectToSpans, copyToClipboard, toggleBoolean } from "./data-editor-fns.js";
 import { DataEditorContainer } from "../internal/data-editor-container/data-grid-container.js";
 import { useAutoscroll } from "./use-autoscroll.js";
 import type { CustomRenderer, CellRenderer, InternalCellRenderer } from "../cells/cell-types.js";
@@ -2917,7 +2917,13 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     const prevRange = mouseState.previousSelection.current.range;
                     row = Math.min(row, showTrailingBlankRow ? rows - 1 : rows);
                     const rect = getClosestRect(prevRange, col, row, allowedFillDirections);
-                    setFillHighlightRegion(rect);
+                    // Пунктир протяжки прилипает к границам слитых блоков: частично
+                    // задетый блок захватывается целиком (как и последующая запись).
+                    const snapped =
+                        rect === undefined
+                            ? rect
+                            : expandRectToSpans(rect, getCellsForSelection, rowMarkerOffset, abortControllerRef.current);
+                    setFillHighlightRegion(snapped);
                 } else {
                     const startedFromLastStickyRow = showTrailingBlankRow && selectedRow === rows;
                     if (startedFromLastStickyRow) return;
@@ -2971,6 +2977,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             allowedFillDirections,
             getSelectionRowLimits,
             setCurrent,
+            getCellsForSelection,
         ]
     );
 
