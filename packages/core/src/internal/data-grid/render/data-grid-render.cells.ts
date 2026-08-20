@@ -346,7 +346,7 @@ export function drawCells(
                         }
                     }
 
-                    if (highlightRegions !== undefined) {
+                    if (highlightRegions !== undefined && !drawingSpan) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             const r = region.range;
@@ -358,6 +358,61 @@ export function drawCells(
                                 row < r.y + r.height
                             ) {
                                 fill = blend(region.color, fill);
+                            }
+                        }
+                    }
+
+                    // Слитый блок: fill-регион (выделение строк/колонок) красит только своё
+                    // ПЕРЕСЕЧЕНИЕ с блоком, а не весь его прямоугольник. Пересечение считаем в
+                    // логических координатах блока и переводим в пиксели по ширинам колонок и
+                    // высотам строк; при frozen-сплите клэмпим в видимую часть блока. Полосы
+                    // кладутся ПОСЛЕ базовой заливки (см. ниже), полный охват идёт обычным blend.
+                    let spanRegionFills:
+                        | { x: number; y: number; w: number; h: number; color: string }[]
+                        | undefined;
+                    if (highlightRegions !== undefined && drawingSpan) {
+                        const [blockC0, blockC1] = cell.span ?? [c.sourceIndex, c.sourceIndex];
+                        const [blockR0, blockR1] = cell.spanRows ?? [row, row];
+                        for (let i = 0; i < highlightRegions.length; i++) {
+                            const region = highlightRegions[i];
+                            const r = region.range;
+                            if (region.style === "solid-outline") continue;
+                            const ic0 = Math.max(r.x, blockC0);
+                            const ic1 = Math.min(r.x + r.width - 1, blockC1);
+                            const ir0 = Math.max(r.y, blockR0);
+                            const ir1 = Math.min(r.y + r.height - 1, blockR1);
+                            if (ic0 > ic1 || ir0 > ir1) continue;
+                            if (ic0 === blockC0 && ic1 === blockC1 && ir0 === blockR0 && ir1 === blockR1) {
+                                fill = blend(region.color, fill);
+                                continue;
+                            }
+                            let px = cellX;
+                            let pw = 0;
+                            for (let cc = blockC0; cc <= blockC1; cc++) {
+                                const wcc = allColumns[cc]?.width ?? 0;
+                                if (cc < ic0) px += wcc;
+                                else if (cc <= ic1) pw += wcc;
+                            }
+                            let py = cellY;
+                            let ph = 0;
+                            for (let rr = blockR0; rr <= blockR1; rr++) {
+                                const hrr = getRowHeight(rr);
+                                if (rr < ir0) py += hrr;
+                                else if (rr <= ir1) ph += hrr;
+                            }
+                            const fx0 = Math.max(px, cellX);
+                            const fx1 = Math.min(px + pw, cellX + cellWidth);
+                            const fy0 = Math.max(py, cellY);
+                            const fy1 = Math.min(py + ph, cellY + cellHeight);
+                            if (fx1 > fx0 && fy1 > fy0) {
+                                if (spanRegionFills === undefined) spanRegionFills = [];
+                                spanRegionFills.push({
+                                    x: fx0,
+                                    y: fy0,
+                                    w: fx1 - fx0,
+                                    h: fy1 - fy0,
+                                    color: region.color,
+                                });
                             }
                         }
                     }
@@ -408,6 +463,15 @@ export function drawCells(
                             );
                         } else {
                             ctx.fillRect(cellX, cellY, cellWidth, cellHeight);
+                        }
+                    }
+
+                    if (spanRegionFills !== undefined) {
+                        // Полосы частичного выделения внутри блока: rgba-цвет региона ложится
+                        // поверх базовой заливки, что эквивалентно blend для полного охвата.
+                        for (const f of spanRegionFills) {
+                            ctx.fillStyle = f.color;
+                            ctx.fillRect(f.x, f.y, f.w, f.h);
                         }
                     }
 
