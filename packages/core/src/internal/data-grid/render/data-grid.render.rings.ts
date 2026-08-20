@@ -87,10 +87,17 @@ export function drawHighlightRings(
                           rowHeight
                       );
 
-            if (rect.x + rect.width >= mappedColumns.length) {
+            // Апстримный -1 задуман против подрезки рамки краем канвы. Применяем его
+            // только когда край ДЕЙСТВИТЕЛЬНО упирается в канву: иначе рамка на
+            // последней колонке/строке отъезжает на 1px от бордера ячейки (и
+            // fill-хэндл, центрованный на настоящем крае, вылезает за рамку).
+            if (
+                rect.x + rect.width >= mappedColumns.length &&
+                bottomRightBounds.x + bottomRightBounds.width >= width
+            ) {
                 bottomRightBounds.width -= 1;
             }
-            if (rect.y + rect.height >= rows) {
+            if (rect.y + rect.height >= rows && bottomRightBounds.y + bottomRightBounds.height >= height) {
                 bottomRightBounds.height -= 1;
             }
             return {
