@@ -304,8 +304,67 @@ export function drawCells(
 
                     ctx.beginPath();
 
-                    const isSelected = cellIsSelected(cellIndex, cell, selection);
-                    let accentCount = cellIsInRange(cellIndex, cell, selection, drawFocus);
+                    // Слитый блок: частичные пересечения выделений красим полосами по
+                    // пересечению (см. pushSpanStrip), а не всем прямоугольником блока.
+                    // Общий сборщик полос для accent-пути (нативный range) и fill-регионов.
+                    let spanPartialFills:
+                        | { x: number; y: number; w: number; h: number; color: string }[]
+                        | undefined;
+                    const spanBlockCols: readonly [number, number] = cell.span ?? [c.sourceIndex, c.sourceIndex];
+                    const spanBlockRows: readonly [number, number] = cell.spanRows ?? [row, row];
+                    const pushSpanStrip = (ic0: number, ic1: number, ir0: number, ir1: number, color: string) => {
+                        let px = cellX;
+                        let pw = 0;
+                        for (let cc = spanBlockCols[0]; cc <= spanBlockCols[1]; cc++) {
+                            const wcc = allColumns[cc]?.width ?? 0;
+                            if (cc < ic0) px += wcc;
+                            else if (cc <= ic1) pw += wcc;
+                        }
+                        let py = cellY;
+                        let ph = 0;
+                        for (let rr = spanBlockRows[0]; rr <= spanBlockRows[1]; rr++) {
+                            const hrr = getRowHeight(rr);
+                            if (rr < ir0) py += hrr;
+                            else if (rr <= ir1) ph += hrr;
+                        }
+                        const fx0 = Math.max(px, cellX);
+                        const fx1 = Math.min(px + pw, cellX + cellWidth);
+                        const fy0 = Math.max(py, cellY);
+                        const fy1 = Math.min(py + ph, cellY + cellHeight);
+                        if (fx1 > fx0 && fy1 > fy0) {
+                            if (spanPartialFills === undefined) spanPartialFills = [];
+                            spanPartialFills.push({ x: fx0, y: fy0, w: fx1 - fx0, h: fy1 - fy0, color });
+                        }
+                    };
+
+                    // Нативный range: синтетическое выделение строки/колонки приходит range-ом
+                    // высотой/шириной в одну ячейку и НЕ расширяется до блока, поэтому при
+                    // частичном пересечении гасим accent-путь и рисуем полосу. Обычный
+                    // range-select расширен expandSelection до целых блоков (full) — прежний путь.
+                    let rangeIsPartial = false;
+                    // Без условия drawFocus: cellIsInRange красит range и в
+                    // несфокусированном гриде, частичный гейт должен совпадать с ним.
+                    if (drawingSpan && selection.current !== undefined) {
+                        const sr = selection.current.range;
+                        const ic0 = Math.max(sr.x, spanBlockCols[0]);
+                        const ic1 = Math.min(sr.x + sr.width - 1, spanBlockCols[1]);
+                        const ir0 = Math.max(sr.y, spanBlockRows[0]);
+                        const ir1 = Math.min(sr.y + sr.height - 1, spanBlockRows[1]);
+                        const overlaps = ic0 <= ic1 && ir0 <= ir1;
+                        const full =
+                            overlaps &&
+                            ic0 === spanBlockCols[0] &&
+                            ic1 === spanBlockCols[1] &&
+                            ir0 === spanBlockRows[0] &&
+                            ir1 === spanBlockRows[1];
+                        if (overlaps && !full) {
+                            rangeIsPartial = true;
+                            pushSpanStrip(ic0, ic1, ir0, ir1, theme.accentLight);
+                        }
+                    }
+
+                    const isSelected = !rangeIsPartial && cellIsSelected(cellIndex, cell, selection);
+                    let accentCount = rangeIsPartial ? 0 : cellIsInRange(cellIndex, cell, selection, drawFocus);
                     const spanIsHighlighted =
                         cell.span !== undefined &&
                         selection.columns.some(
@@ -363,57 +422,27 @@ export function drawCells(
                     }
 
                     // Слитый блок: fill-регион (выделение строк/колонок) красит только своё
-                    // ПЕРЕСЕЧЕНИЕ с блоком, а не весь его прямоугольник. Пересечение считаем в
-                    // логических координатах блока и переводим в пиксели по ширинам колонок и
-                    // высотам строк; при frozen-сплите клэмпим в видимую часть блока. Полосы
-                    // кладутся ПОСЛЕ базовой заливки (см. ниже), полный охват идёт обычным blend.
-                    let spanRegionFills:
-                        | { x: number; y: number; w: number; h: number; color: string }[]
-                        | undefined;
+                    // ПЕРЕСЕЧЕНИЕ с блоком; полный охват идёт обычным blend всей заливки.
                     if (highlightRegions !== undefined && drawingSpan) {
-                        const [blockC0, blockC1] = cell.span ?? [c.sourceIndex, c.sourceIndex];
-                        const [blockR0, blockR1] = cell.spanRows ?? [row, row];
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             const r = region.range;
                             if (region.style === "solid-outline") continue;
-                            const ic0 = Math.max(r.x, blockC0);
-                            const ic1 = Math.min(r.x + r.width - 1, blockC1);
-                            const ir0 = Math.max(r.y, blockR0);
-                            const ir1 = Math.min(r.y + r.height - 1, blockR1);
+                            const ic0 = Math.max(r.x, spanBlockCols[0]);
+                            const ic1 = Math.min(r.x + r.width - 1, spanBlockCols[1]);
+                            const ir0 = Math.max(r.y, spanBlockRows[0]);
+                            const ir1 = Math.min(r.y + r.height - 1, spanBlockRows[1]);
                             if (ic0 > ic1 || ir0 > ir1) continue;
-                            if (ic0 === blockC0 && ic1 === blockC1 && ir0 === blockR0 && ir1 === blockR1) {
+                            if (
+                                ic0 === spanBlockCols[0] &&
+                                ic1 === spanBlockCols[1] &&
+                                ir0 === spanBlockRows[0] &&
+                                ir1 === spanBlockRows[1]
+                            ) {
                                 fill = blend(region.color, fill);
                                 continue;
                             }
-                            let px = cellX;
-                            let pw = 0;
-                            for (let cc = blockC0; cc <= blockC1; cc++) {
-                                const wcc = allColumns[cc]?.width ?? 0;
-                                if (cc < ic0) px += wcc;
-                                else if (cc <= ic1) pw += wcc;
-                            }
-                            let py = cellY;
-                            let ph = 0;
-                            for (let rr = blockR0; rr <= blockR1; rr++) {
-                                const hrr = getRowHeight(rr);
-                                if (rr < ir0) py += hrr;
-                                else if (rr <= ir1) ph += hrr;
-                            }
-                            const fx0 = Math.max(px, cellX);
-                            const fx1 = Math.min(px + pw, cellX + cellWidth);
-                            const fy0 = Math.max(py, cellY);
-                            const fy1 = Math.min(py + ph, cellY + cellHeight);
-                            if (fx1 > fx0 && fy1 > fy0) {
-                                if (spanRegionFills === undefined) spanRegionFills = [];
-                                spanRegionFills.push({
-                                    x: fx0,
-                                    y: fy0,
-                                    w: fx1 - fx0,
-                                    h: fy1 - fy0,
-                                    color: region.color,
-                                });
-                            }
+                            pushSpanStrip(ic0, ic1, ir0, ir1, region.color);
                         }
                     }
 
@@ -466,10 +495,10 @@ export function drawCells(
                         }
                     }
 
-                    if (spanRegionFills !== undefined) {
-                        // Полосы частичного выделения внутри блока: rgba-цвет региона ложится
-                        // поверх базовой заливки, что эквивалентно blend для полного охвата.
-                        for (const f of spanRegionFills) {
+                    if (spanPartialFills !== undefined) {
+                        // Полосы частичного выделения внутри блока: rgba-цвет ложится поверх
+                        // базовой заливки, что эквивалентно blend при полном охвате.
+                        for (const f of spanPartialFills) {
                             ctx.fillStyle = f.color;
                             ctx.fillRect(f.x, f.y, f.w, f.h);
                         }
