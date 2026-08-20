@@ -75,6 +75,76 @@ export interface Highlight {
     readonly style?: "dashed" | "solid" | "no-outline" | "solid-outline";
 }
 
+interface SpanIntersection {
+    c0: number;
+    c1: number;
+    r0: number;
+    r1: number;
+    /** Прямоугольник покрывает блок целиком. */
+    full: boolean;
+}
+
+/** Пересечение прямоугольника выделения с диапазоном слитого блока (логические координаты). */
+function intersectRangeWithSpan(
+    r: Rectangle,
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number]
+): SpanIntersection | null {
+    const c0 = Math.max(r.x, blockCols[0]);
+    const c1 = Math.min(r.x + r.width - 1, blockCols[1]);
+    const r0 = Math.max(r.y, blockRows[0]);
+    const r1 = Math.min(r.y + r.height - 1, blockRows[1]);
+    if (c0 > c1 || r0 > r1) return null;
+    const full = c0 === blockCols[0] && c1 === blockCols[1] && r0 === blockRows[0] && r1 === blockRows[1];
+    return { c0, c1, r0, r1, full };
+}
+
+interface SpanPartialFill {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: string;
+}
+
+/**
+ * Пиксельная полоса пересечения внутри блока: смещение от левого верхнего угла по
+ * ширинам колонок и высотам строк, с клэмпом в видимую часть блока (frozen-сплит).
+ */
+function spanPartialFillRect(
+    hit: SpanIntersection,
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number],
+    cellX: number,
+    cellY: number,
+    cellWidth: number,
+    cellHeight: number,
+    allColumns: readonly MappedGridColumn[],
+    getRowHeight: (row: number) => number,
+    color: string
+): SpanPartialFill | null {
+    let px = cellX;
+    let pw = 0;
+    for (let cc = blockCols[0]; cc <= blockCols[1]; cc++) {
+        const w = allColumns[cc]?.width ?? 0;
+        if (cc < hit.c0) px += w;
+        else if (cc <= hit.c1) pw += w;
+    }
+    let py = cellY;
+    let ph = 0;
+    for (let rr = blockRows[0]; rr <= blockRows[1]; rr++) {
+        const h = getRowHeight(rr);
+        if (rr < hit.r0) py += h;
+        else if (rr <= hit.r1) ph += h;
+    }
+    const x0 = Math.max(px, cellX);
+    const x1 = Math.min(px + pw, cellX + cellWidth);
+    const y0 = Math.max(py, cellY);
+    const y1 = Math.min(py + ph, cellY + cellHeight);
+    if (x1 <= x0 || y1 <= y0) return null;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, color };
+}
+
 // preppable items:
 // - font
 // - fillStyle
@@ -304,62 +374,33 @@ export function drawCells(
 
                     ctx.beginPath();
 
-                    // Слитый блок: частичные пересечения выделений красим полосами по
-                    // пересечению (см. pushSpanStrip), а не всем прямоугольником блока.
-                    // Общий сборщик полос для accent-пути (нативный range) и fill-регионов.
-                    let spanPartialFills:
-                        | { x: number; y: number; w: number; h: number; color: string }[]
-                        | undefined;
+                    // Слитый блок: выделение, пересекающее блок частично, красится полосой
+                    // по пересечению, а не всем прямоугольником блока. Синтетический range
+                    // строки/колонки не расширяется до блока, поэтому при частичном
+                    // пересечении гасим accent-путь; гейт без drawFocus, как cellIsInRange.
+                    let spanPartialFills: SpanPartialFill[] | undefined;
                     const spanBlockCols: readonly [number, number] = cell.span ?? [c.sourceIndex, c.sourceIndex];
                     const spanBlockRows: readonly [number, number] = cell.spanRows ?? [row, row];
-                    const pushSpanStrip = (ic0: number, ic1: number, ir0: number, ir1: number, color: string) => {
-                        let px = cellX;
-                        let pw = 0;
-                        for (let cc = spanBlockCols[0]; cc <= spanBlockCols[1]; cc++) {
-                            const wcc = allColumns[cc]?.width ?? 0;
-                            if (cc < ic0) px += wcc;
-                            else if (cc <= ic1) pw += wcc;
-                        }
-                        let py = cellY;
-                        let ph = 0;
-                        for (let rr = spanBlockRows[0]; rr <= spanBlockRows[1]; rr++) {
-                            const hrr = getRowHeight(rr);
-                            if (rr < ir0) py += hrr;
-                            else if (rr <= ir1) ph += hrr;
-                        }
-                        const fx0 = Math.max(px, cellX);
-                        const fx1 = Math.min(px + pw, cellX + cellWidth);
-                        const fy0 = Math.max(py, cellY);
-                        const fy1 = Math.min(py + ph, cellY + cellHeight);
-                        if (fx1 > fx0 && fy1 > fy0) {
-                            if (spanPartialFills === undefined) spanPartialFills = [];
-                            spanPartialFills.push({ x: fx0, y: fy0, w: fx1 - fx0, h: fy1 - fy0, color });
-                        }
-                    };
-
-                    // Нативный range: синтетическое выделение строки/колонки приходит range-ом
-                    // высотой/шириной в одну ячейку и НЕ расширяется до блока, поэтому при
-                    // частичном пересечении гасим accent-путь и рисуем полосу. Обычный
-                    // range-select расширен expandSelection до целых блоков (full) — прежний путь.
                     let rangeIsPartial = false;
-                    // Без условия drawFocus: cellIsInRange красит range и в
-                    // несфокусированном гриде, частичный гейт должен совпадать с ним.
                     if (drawingSpan && selection.current !== undefined) {
-                        const sr = selection.current.range;
-                        const ic0 = Math.max(sr.x, spanBlockCols[0]);
-                        const ic1 = Math.min(sr.x + sr.width - 1, spanBlockCols[1]);
-                        const ir0 = Math.max(sr.y, spanBlockRows[0]);
-                        const ir1 = Math.min(sr.y + sr.height - 1, spanBlockRows[1]);
-                        const overlaps = ic0 <= ic1 && ir0 <= ir1;
-                        const full =
-                            overlaps &&
-                            ic0 === spanBlockCols[0] &&
-                            ic1 === spanBlockCols[1] &&
-                            ir0 === spanBlockRows[0] &&
-                            ir1 === spanBlockRows[1];
-                        if (overlaps && !full) {
+                        const hit = intersectRangeWithSpan(selection.current.range, spanBlockCols, spanBlockRows);
+                        if (hit !== null && !hit.full) {
                             rangeIsPartial = true;
-                            pushSpanStrip(ic0, ic1, ir0, ir1, theme.accentLight);
+                            const strip = spanPartialFillRect(
+                                hit,
+                                spanBlockCols,
+                                spanBlockRows,
+                                cellX,
+                                cellY,
+                                cellWidth,
+                                cellHeight,
+                                allColumns,
+                                getRowHeight,
+                                theme.accentLight
+                            );
+                            if (strip !== null) {
+                                spanPartialFills = [strip];
+                            }
                         }
                     }
 
@@ -421,28 +462,34 @@ export function drawCells(
                         }
                     }
 
-                    // Слитый блок: fill-регион (выделение строк/колонок) красит только своё
-                    // ПЕРЕСЕЧЕНИЕ с блоком; полный охват идёт обычным blend всей заливки.
+                    // Слитый блок: fill-регион красит только своё пересечение с блоком;
+                    // полный охват идёт обычным blend всей заливки.
                     if (highlightRegions !== undefined && drawingSpan) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
-                            const r = region.range;
                             if (region.style === "solid-outline") continue;
-                            const ic0 = Math.max(r.x, spanBlockCols[0]);
-                            const ic1 = Math.min(r.x + r.width - 1, spanBlockCols[1]);
-                            const ir0 = Math.max(r.y, spanBlockRows[0]);
-                            const ir1 = Math.min(r.y + r.height - 1, spanBlockRows[1]);
-                            if (ic0 > ic1 || ir0 > ir1) continue;
-                            if (
-                                ic0 === spanBlockCols[0] &&
-                                ic1 === spanBlockCols[1] &&
-                                ir0 === spanBlockRows[0] &&
-                                ir1 === spanBlockRows[1]
-                            ) {
+                            const hit = intersectRangeWithSpan(region.range, spanBlockCols, spanBlockRows);
+                            if (hit === null) continue;
+                            if (hit.full) {
                                 fill = blend(region.color, fill);
                                 continue;
                             }
-                            pushSpanStrip(ic0, ic1, ir0, ir1, region.color);
+                            const strip = spanPartialFillRect(
+                                hit,
+                                spanBlockCols,
+                                spanBlockRows,
+                                cellX,
+                                cellY,
+                                cellWidth,
+                                cellHeight,
+                                allColumns,
+                                getRowHeight,
+                                region.color
+                            );
+                            if (strip !== null) {
+                                if (spanPartialFills === undefined) spanPartialFills = [];
+                                spanPartialFills.push(strip);
+                            }
                         }
                     }
 
