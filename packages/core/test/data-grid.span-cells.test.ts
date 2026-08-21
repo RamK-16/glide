@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getRowSpanBounds } from "../src/internal/data-grid/render/data-grid-render.walk.js";
 import { cellIsSelected } from "../src/internal/data-grid/render/data-grid-lib.js";
+import {
+    pushSpanSelectionStrips,
+    type SpanPartialFill,
+} from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import { expandSelection } from "../src/data-editor/data-editor-fns.js";
 import {
     CompactSelection,
@@ -161,5 +165,119 @@ describe("expandSelection — rowspan (расширение диапазона �
     it("под диапазоном нет spanRows → без изменений", () => {
         const res = expandSelection(rangeSel(0, 0, 1, 1), makeGetCells(2, [1, 4]), 0, "default", ac);
         expect(res.current?.range).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+    });
+});
+
+// ── pushSpanSelectionStrips: выделение строк/колонок красит полосы, а не весь блок ──
+// Регресс: выделение чекбоксом одной строки блока красило весь объединённый прямоугольник,
+// а при ховере соседних ячеек блок перерисовывался от невыделенной покрытой строки и заливка
+// «осыпалась». Полоса считается от полного диапазона блока (не от строки-триггера).
+
+const cols3 = [{ width: 100 }, { width: 100 }, { width: 100 }] as unknown as Parameters<
+    typeof pushSpanSelectionStrips
+>[8];
+const evenRh = () => 20;
+
+describe("pushSpanSelectionStrips — полосы выделения внутри слитого блока", () => {
+    it("одна выделенная строка блока → одна полоса во всю ширину, высотой одной строки сверху", () => {
+        const out: SpanPartialFill[] = [];
+        // блок: колонки [0,0], строки [0,9]; выделена строка 0 (origin)
+        pushSpanSelectionStrips(
+            CompactSelection.fromSingleSelection(0),
+            CompactSelection.empty(),
+            [0, 0],
+            [0, 9],
+            0, // cellX
+            0, // cellY
+            100, // cellWidth
+            200, // cellHeight = 10*20
+            cols3,
+            evenRh,
+            "#aaccff",
+            out
+        );
+        expect(out).toHaveLength(1);
+        expect(out[0]).toMatchObject({ x: 0, y: 0, w: 100, h: 20, color: "#aaccff" });
+    });
+
+    it("выделение НЕ origin-строки (напр. строки 5) даёт полосу именно на ней — не зависит от строки-триггера", () => {
+        const out: SpanPartialFill[] = [];
+        pushSpanSelectionStrips(
+            CompactSelection.fromSingleSelection(5),
+            CompactSelection.empty(),
+            [0, 0],
+            [0, 9],
+            0,
+            0,
+            100,
+            200,
+            cols3,
+            evenRh,
+            "#aaccff",
+            out
+        );
+        expect(out).toHaveLength(1);
+        // строка 5 → смещение 5*20 = 100
+        expect(out[0]).toMatchObject({ x: 0, y: 100, w: 100, h: 20 });
+    });
+
+    it("смежные выделенные строки объединяются в одну полосу", () => {
+        const out: SpanPartialFill[] = [];
+        pushSpanSelectionStrips(
+            CompactSelection.empty().add(2).add(3).add(4),
+            CompactSelection.empty(),
+            [0, 0],
+            [0, 9],
+            0,
+            0,
+            100,
+            200,
+            cols3,
+            evenRh,
+            "#aaccff",
+            out
+        );
+        expect(out).toHaveLength(1);
+        expect(out[0]).toMatchObject({ y: 40, h: 60 }); // строки 2..4: 40..100
+    });
+
+    it("выделенная колонка блока → вертикальная полоса во всю высоту", () => {
+        const out: SpanPartialFill[] = [];
+        // прямоугольник: колонки [0,2], строки [0,1]; выделена колонка 1
+        pushSpanSelectionStrips(
+            CompactSelection.empty(),
+            CompactSelection.fromSingleSelection(1),
+            [0, 2],
+            [0, 1],
+            0,
+            0,
+            300,
+            40,
+            cols3,
+            evenRh,
+            "#aaccff",
+            out
+        );
+        expect(out).toHaveLength(1);
+        expect(out[0]).toMatchObject({ x: 100, y: 0, w: 100, h: 40 });
+    });
+
+    it("нет пересечения выделения с блоком → полос нет", () => {
+        const out: SpanPartialFill[] = [];
+        pushSpanSelectionStrips(
+            CompactSelection.fromSingleSelection(50),
+            CompactSelection.empty(),
+            [0, 0],
+            [0, 9],
+            0,
+            0,
+            100,
+            200,
+            cols3,
+            evenRh,
+            "#aaccff",
+            out
+        );
+        expect(out).toHaveLength(0);
     });
 });

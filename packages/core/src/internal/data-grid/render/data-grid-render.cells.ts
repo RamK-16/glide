@@ -99,7 +99,7 @@ function intersectRangeWithSpan(
     return { c0, c1, r0, r1, full };
 }
 
-interface SpanPartialFill {
+export interface SpanPartialFill {
     x: number;
     y: number;
     w: number;
@@ -143,6 +143,67 @@ function spanPartialFillRect(
     const y1 = Math.min(py + ph, cellY + cellHeight);
     if (x1 <= x0 || y1 <= y0) return null;
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, color };
+}
+
+/**
+ * Полосы заливки для выделения целыми строками/колонками (чекбоксы, шапки колонок)
+ * внутри слитого блока. Считаются от полного диапазона блока, а не от строки/колонки,
+ * инициировавшей отрисовку, поэтому результат одинаков при полной и damage-перерисовке
+ * (иначе при ховере соседних ячеек блок перерисовывался от невыделенной покрытой строки
+ * и заливка выделения пропадала). Смежные выделенные строки/колонки объединяются в одну полосу.
+ */
+export function pushSpanSelectionStrips(
+    selectedRows: CompactSelection,
+    selectedCols: CompactSelection,
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number],
+    cellX: number,
+    cellY: number,
+    cellWidth: number,
+    cellHeight: number,
+    allColumns: readonly MappedGridColumn[],
+    getRowHeight: (row: number) => number,
+    color: string,
+    out: SpanPartialFill[]
+): void {
+    for (let r = blockRows[0]; r <= blockRows[1]; r++) {
+        if (!selectedRows.hasIndex(r)) continue;
+        let r1 = r;
+        while (r1 + 1 <= blockRows[1] && selectedRows.hasIndex(r1 + 1)) r1++;
+        const strip = spanPartialFillRect(
+            { c0: blockCols[0], c1: blockCols[1], r0: r, r1, full: false },
+            blockCols,
+            blockRows,
+            cellX,
+            cellY,
+            cellWidth,
+            cellHeight,
+            allColumns,
+            getRowHeight,
+            color
+        );
+        if (strip !== null) out.push(strip);
+        r = r1;
+    }
+    for (let cc = blockCols[0]; cc <= blockCols[1]; cc++) {
+        if (!selectedCols.hasIndex(cc)) continue;
+        let c1 = cc;
+        while (c1 + 1 <= blockCols[1] && selectedCols.hasIndex(c1 + 1)) c1++;
+        const strip = spanPartialFillRect(
+            { c0: cc, c1, r0: blockRows[0], r1: blockRows[1], full: false },
+            blockCols,
+            blockRows,
+            cellX,
+            cellY,
+            cellWidth,
+            cellHeight,
+            allColumns,
+            getRowHeight,
+            color
+        );
+        if (strip !== null) out.push(strip);
+        cc = c1;
+    }
 }
 
 // preppable items:
@@ -372,6 +433,16 @@ export function drawCells(
                             ? colTheme
                             : mergeAndRealizeTheme(colTheme, rowTheme, trailingTheme, cell.themeOverride); //alloc
 
+                    // Тема без row-override: для слитого блока базовый фон берём отсюда, чтобы
+                    // фон выделения/ховера origin-строки (bgCell из getRowThemeOverride) не
+                    // заливал весь прямоугольник блока — он красится пополосно по строкам ниже.
+                    const themeNoRow =
+                        drawingSpan && rowTheme !== undefined
+                            ? cell.themeOverride === undefined && trailingTheme === undefined
+                                ? colTheme
+                                : mergeAndRealizeTheme(colTheme, undefined, trailingTheme, cell.themeOverride) //alloc
+                            : theme;
+
                     ctx.beginPath();
 
                     // Слитый блок: выделение, пересекающее блок частично, красится полосой
@@ -404,6 +475,27 @@ export function drawCells(
                         }
                     }
 
+                    // Выделение целыми строками/колонками внутри блока красим полосами по
+                    // пересечению с полным диапазоном блока, а не заливкой всего прямоугольника.
+                    if (drawingSpan && (selection.rows.length > 0 || selection.columns.length > 0)) {
+                        if (spanPartialFills === undefined) spanPartialFills = [];
+                        pushSpanSelectionStrips(
+                            selection.rows,
+                            selection.columns,
+                            spanBlockCols,
+                            spanBlockRows,
+                            cellX,
+                            cellY,
+                            cellWidth,
+                            cellHeight,
+                            allColumns,
+                            getRowHeight,
+                            theme.accentLight,
+                            spanPartialFills
+                        );
+                        if (spanPartialFills.length === 0) spanPartialFills = undefined;
+                    }
+
                     const isSelected = !rangeIsPartial && cellIsSelected(cellIndex, cell, selection);
                     let accentCount = rangeIsPartial ? 0 : cellIsInRange(cellIndex, cell, selection, drawFocus);
                     const spanIsHighlighted =
@@ -416,15 +508,51 @@ export function drawCells(
                     } else if (isSelected && drawFocus) {
                         accentCount = Math.max(accentCount, 1);
                     }
-                    if (spanIsHighlighted) {
+                    // Для слитого блока подсветку строк/колонок уже нарисовали полосами
+                    // (pushSpanSelectionStrips), поэтому весь прямоугольник не тинтуем.
+                    if (spanIsHighlighted && !drawingSpan) {
                         accentCount++;
                     }
-                    if (!isSelected) {
+                    if (!isSelected && !drawingSpan) {
                         if (rowSelected) accentCount++;
                         if (colSelected && !isTrailingRow) accentCount++;
                     }
 
-                    const bgCell = cell.kind === GridCellKind.Protected ? theme.bgCellMedium : theme.bgCell;
+                    // Пополосный фон строк слитого блока: фон выделения/ховера (bgCell из
+                    // getRowThemeOverride) считаем для КАЖДОЙ строки блока, а не только для
+                    // строки-триггера отрисовки. Иначе при damage-перерисовке от невыделенной
+                    // покрытой строки фон блока пропадал (осыпался при ховере соседних ячеек).
+                    let spanRowBgFills: SpanPartialFill[] | undefined;
+                    // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
+                    // он по mergeAndRealizeTheme перебивает row-override — как у обычных ячеек.
+                    // Тогда пополосную заливку строк не рисуем: блок остаётся своим фоном
+                    // (уже покрашен базой из themeNoRow), консистентно с не-слитыми соседями.
+                    const cellForcesBg = cell.themeOverride?.bgCell !== undefined;
+                    if (drawingSpan && getRowThemeOverride !== undefined && !cellForcesBg) {
+                        for (let r = spanBlockRows[0]; r <= spanBlockRows[1]; r++) {
+                            const rBg = getRowThemeOverride(r)?.bgCell;
+                            if (rBg === undefined) continue;
+                            const strip = spanPartialFillRect(
+                                { c0: spanBlockCols[0], c1: spanBlockCols[1], r0: r, r1: r, full: false },
+                                spanBlockCols,
+                                spanBlockRows,
+                                cellX,
+                                cellY,
+                                cellWidth,
+                                cellHeight,
+                                allColumns,
+                                getRowHeight,
+                                rBg
+                            );
+                            if (strip !== null) {
+                                if (spanRowBgFills === undefined) spanRowBgFills = [];
+                                spanRowBgFills.push(strip);
+                            }
+                        }
+                    }
+
+                    const bgTheme = drawingSpan ? themeNoRow : theme;
+                    const bgCell = cell.kind === GridCellKind.Protected ? bgTheme.bgCellMedium : bgTheme.bgCell;
                     let fill: string | undefined;
                     if (isSticky || bgCell !== outerTheme.bgCell) {
                         fill = blend(bgCell, fill);
@@ -518,7 +646,9 @@ export function drawCells(
 
                         // we also need to make sure to wipe the contents. Since the fill can do that lets repurpose
                         // that call to avoid an extra draw call.
-                        fill = fill === undefined ? theme.bgCell : blend(fill, theme.bgCell);
+                        // Для слитого блока подтираем базовым фоном без row-override — фон строк
+                        // блока дорисуется пополосно (spanRowBgFills), иначе origin-строка залила бы весь блок.
+                        fill = fill === undefined ? bgTheme.bgCell : blend(fill, bgTheme.bgCell);
                     }
 
                     const isLastColumn = c.sourceIndex === allColumns.length - 1;
@@ -539,6 +669,15 @@ export function drawCells(
                             );
                         } else {
                             ctx.fillRect(cellX, cellY, cellWidth, cellHeight);
+                        }
+                    }
+
+                    if (spanRowBgFills !== undefined) {
+                        // Пофоновая заливка строк блока (выделение/ховер) поверх базового фона,
+                        // но ПОД accent/highlight-полосами (spanPartialFills).
+                        for (const f of spanRowBgFills) {
+                            ctx.fillStyle = f.color;
+                            ctx.fillRect(f.x, f.y, f.w, f.h);
                         }
                     }
 
