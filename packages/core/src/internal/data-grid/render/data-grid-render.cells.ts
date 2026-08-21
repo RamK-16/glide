@@ -703,6 +703,28 @@ export function drawCells(
                         }
                     }
 
+                    // Для слитого блока контент (в т.ч. кастомный: фон select-триггера)
+                    // рисуется на origin-строке. accent выделения тут вынесен в отдельные
+                    // полосы, поэтому fill origin-ячейки его не содержит и cellFillColor,
+                    // отдаваемый кастомной ячейке, не отражал бы выделение (в отличие от
+                    // обычных ячеек, где accent уже в fill). Подмешиваем accent в
+                    // finalCellFillColor, когда выделена origin-строка блока.
+                    let contentFillColor = fill;
+                    if (drawingSpan) {
+                        const originRow = spanBlockRows[0];
+                        const originAccented =
+                            (selection.current !== undefined &&
+                                intersectRangeWithSpan(selection.current.range, spanBlockCols, [
+                                    originRow,
+                                    originRow,
+                                ]) !== null) ||
+                            selection.rows.hasIndex(originRow) ||
+                            selection.columns.some(i => i >= spanBlockCols[0] && i <= spanBlockCols[1]);
+                        if (originAccented) {
+                            contentFillColor = blend(theme.accentLight, contentFillColor);
+                        }
+                    }
+
                     if (cellWidth > minimumCellWidth && !skipContents) {
                         const cellFont = theme.baseFontFull;
                         if (cellFont !== font) {
@@ -722,7 +744,7 @@ export function drawCells(
                             cellHeight,
                             accentCount > 0,
                             theme,
-                            fill ?? theme.bgCell,
+                            contentFillColor ?? theme.bgCell,
                             imageLoader,
                             spriteManager,
                             hoverValue?.hoverAmount ?? 0,
