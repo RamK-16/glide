@@ -26,11 +26,19 @@ import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function getDamageRepairPad(enableLowDprHairline: boolean): number {
     // repairPad привязан к фактической hairline-ширине: damage clip приходит в точных bounds ячейки,
-    // а widened stroke может выступать за них и резаться на hover redraw. Раньше pad был 0 без
-    // low-DPR — из-за чего нижняя/правая граница span-блока (на самом краю bbox) не восстанавливалась
-    // при hover damage (её исключает условие ty <= maxY-1 в drawGridLines). Теперь pad всегда >= 1
-    // (hairline-based), чтобы span-repair чинил границы независимо от hairline-режима.
-    return Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5);
+    // а widened stroke при DPR < 1 может выступать за них и резаться на hover redraw. Без low-DPR
+    // штрих ровно 1px и за bounds не выходит → pad = 0. ВАЖНО: это ещё и pad для clipHeaderDamage,
+    // и ненулевой pad там залезает в соседний групп-ряд (светлая полоса на выделенной группе при
+    // hover листа). Body span-border-repair добирает свой pad ЛОКАЛЬНО (см. getBodyDamagePad).
+    return enableLowDprHairline ? Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5) : 0;
+}
+
+// Pad для body-damage span-repair. Границу span-блока на самом краю bbox исключает условие
+// ty <= maxY-1 в drawGridLines, поэтому при наличии span в damage нужен pad >= 1 (даже без
+// low-DPR). Отдельно от getDamageRepairPad, чтобы НЕ раздувать header-клип.
+export function getBodyDamagePad(enableLowDprHairline: boolean, spansInDamage: boolean): number {
+    const base = getDamageRepairPad(enableLowDprHairline);
+    return spansInDamage ? Math.max(1, base) : base;
 }
 
 // Есть ли среди damaged-ячеек (в области данных) хотя бы одна span-ячейка. На hover
@@ -646,7 +654,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
         const doDamage = (ctx: CanvasRenderingContext2D) => {
             if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
-                const repairPad = getDamageRepairPad(enableLowDprHairline);
+                const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);
                 // cellDamageRegions остаются точной dirty-геометрией, а visualDamageRegions расширяют только область repair.
                 // Так мы дорисовываем соседние grid/highlight штрихи без отдельного hover-хака и без смены normal cell rendering path.
                 const visualDamageRegions = expandDamageDrawRegions(cellDamageRegions, repairPad);

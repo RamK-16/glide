@@ -1,13 +1,24 @@
 import { describe, expect, test } from "vitest";
 import { CellSet } from "../src/internal/data-grid/cell-set.js";
-import { damageHasSpanCells, getDamageRepairPad } from "../src/internal/data-grid/render/data-grid-render.js";
+import {
+    damageHasSpanCells,
+    getBodyDamagePad,
+    getDamageRepairPad,
+} from "../src/internal/data-grid/render/data-grid-render.js";
 
 // Регресс на баг: при ховере по объединённому блоку без enableLowDprHairline
 // пропадали границы блока (span-repair damage-путь гейтился этим флагом, а pad был 0).
 describe("span hover damage repair — развязано от enableLowDprHairline", () => {
-    test("getDamageRepairPad всегда >= 1 (в т.ч. без low-DPR), иначе граница блока на краю bbox не восстановится", () => {
-        expect(getDamageRepairPad(false)).toBeGreaterThanOrEqual(1);
+    test("getDamageRepairPad без low-DPR = 0 (тугой header-клип, не залезает в соседний групп-ряд)", () => {
+        // Ненулевой pad тут раздул бы clipHeaderDamage → светлая полоса на выделенной группе.
+        expect(getDamageRepairPad(false)).toBe(0);
         expect(getDamageRepairPad(true)).toBeGreaterThanOrEqual(1);
+    });
+
+    test("getBodyDamagePad: при span в damage pad >= 1 даже без low-DPR (иначе граница блока на краю bbox не восстановится)", () => {
+        expect(getBodyDamagePad(false, true)).toBeGreaterThanOrEqual(1);
+        expect(getBodyDamagePad(false, false)).toBe(0);
+        expect(getBodyDamagePad(true, false)).toBeGreaterThanOrEqual(1);
     });
 
     test("damageHasSpanCells: видит colspan-ячейку в damage", () => {
