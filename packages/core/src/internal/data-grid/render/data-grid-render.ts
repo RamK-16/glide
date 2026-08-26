@@ -24,10 +24,31 @@ import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-rende
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
-function getDamageRepairPad(enableLowDprHairline: boolean): number {
+export function getDamageRepairPad(enableLowDprHairline: boolean): number {
     // repairPad привязан к фактической hairline-ширине: damage clip приходит в точных bounds ячейки,
-    // а widened stroke при DPR < 1 может выступать за них и резаться на hover redraw.
-    return enableLowDprHairline ? Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5) : 0;
+    // а widened stroke может выступать за них и резаться на hover redraw. Раньше pad был 0 без
+    // low-DPR — из-за чего нижняя/правая граница span-блока (на самом краю bbox) не восстанавливалась
+    // при hover damage (её исключает условие ty <= maxY-1 в drawGridLines). Теперь pad всегда >= 1
+    // (hairline-based), чтобы span-repair чинил границы независимо от hairline-режима.
+    return Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5);
+}
+
+// Есть ли среди damaged-ячеек (в области данных) хотя бы одна span-ячейка. На hover
+// damage крошечный (1-2 ячейки), поэтому проверка дешёвая. Нужна, чтобы включать
+// ручной span-repair damage-путь независимо от enableLowDprHairline.
+export function damageHasSpanCells(
+    damage: CellSet,
+    getCellContent: (cell: readonly [number, number]) => {
+        readonly span?: readonly [number, number];
+        readonly spanRows?: readonly [number, number];
+    }
+): boolean {
+    for (const item of damage.values()) {
+        if (item[1] < 0) continue;
+        const cell = getCellContent(item);
+        if (cell.span !== undefined || cell.spanRows !== undefined) return true;
+    }
+    return false;
 }
 
 // Future optimization opportunities
@@ -601,8 +622,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             },
         ]);
 
+        // span-repair НЕ зависит от enableLowDprHairline: ручной damage-путь нужен всегда,
+        // когда в damage попала span-ячейка (иначе hover затирает границы объединённого блока
+        // и не восстанавливает их). Обычные таблицы без флага и без span — быстрый blit-путь.
+        const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
         const cellDamageRegions =
-            enableLowDprHairline && damageInView
+            (enableLowDprHairline || spansInDamage) && damageInView
                 ? getDamageDrawRegions(
                       effectiveCols,
                       height,
