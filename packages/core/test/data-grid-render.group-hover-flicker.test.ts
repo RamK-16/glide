@@ -25,6 +25,8 @@ type FillRect = { x: number; y: number; w: number; h: number; fill: string; alph
 // Уровень "C" (подгруппа) → targetRow = -2 - level = -3.
 const GROUP_ROW = -3;
 const HOVER_FILL = "#ABCDEF";
+// Базовый фон группы отличается от bgHeader — иначе вспышки нет (база == очищенный фон).
+const BASE_FILL = "#123456";
 
 function captureHoverFills(
     hoverCol: number,
@@ -74,8 +76,11 @@ function captureHoverFills(
     ];
     const theme = mergeAndRealizeTheme(getDataEditorTheme());
     const spriteManager = { drawSprite: noop } as unknown as DrawGroupsParams[7];
+    // eslint-disable-next-line unicorn/consistent-function-scoping
     const getGroupDetails: DrawGroupsParams[10] = name =>
-        name === "C" ? { name, overrideTheme: { bgGroupHeaderHovered: HOVER_FILL } } : { name };
+        name === "C"
+            ? { name, overrideTheme: { bgGroupHeader: BASE_FILL, bgGroupHeaderHovered: HOVER_FILL } }
+            : { name };
 
     drawGroups(
         ctx,
@@ -97,7 +102,7 @@ function captureHoverFills(
         undefined, // drawGroupHeaderCallback
         false // enableLowDprHairline
     );
-    return rects.filter(r => r.fill === HOVER_FILL);
+    return rects;
 }
 
 describe("drawGroupHeaderInner — hover-amount группы = сумма по колонкам спана (регресс мигания)", () => {
@@ -106,7 +111,7 @@ describe("drawGroupHeaderInner — hover-amount группы = сумма по �
         const fills = captureHoverFills(0, [
             { item: [0, GROUP_ROW], hoverAmount: 0.3 },
             { item: [1, GROUP_ROW], hoverAmount: 0.4 },
-        ]);
+        ]).filter(r => r.fill === HOVER_FILL);
         expect(fills.length).toBeGreaterThan(0);
         // Старый код взял бы 0.3 (hCol=0) → провал/мигание. Сумма по спану: 0.3 + 0.4 = 0.7.
         expect(fills[0].alpha).toBeCloseTo(0.7, 5);
@@ -116,7 +121,7 @@ describe("drawGroupHeaderInner — hover-amount группы = сумма по �
         const fills = captureHoverFills(1, [
             { item: [0, GROUP_ROW], hoverAmount: 0.8 },
             { item: [1, GROUP_ROW], hoverAmount: 0.75 },
-        ]);
+        ]).filter(r => r.fill === HOVER_FILL);
         expect(fills.length).toBeGreaterThan(0);
         expect(fills[0].alpha).toBeCloseTo(1, 5);
     });
@@ -126,8 +131,22 @@ describe("drawGroupHeaderInner — hover-amount группы = сумма по �
             { item: [0, GROUP_ROW], hoverAmount: 0.5 },
             { item: [5, GROUP_ROW], hoverAmount: 0.9 }, // колонка 5 вне спана [0,1]
             { item: [1, -1], hoverAmount: 0.9 }, // ряд колонок, не групп-ряд
-        ]);
+        ]).filter(r => r.fill === HOVER_FILL);
         expect(fills.length).toBeGreaterThan(0);
         expect(fills[0].alpha).toBeCloseTo(0.5, 5);
+    });
+
+    // Регресс на вспышку: при hover уже начавшемся, но ha=0 (анимация не стартовала) группа
+    // должна показывать БАЗОВЫЙ фон (перекрывает очищенный яркий bgHeader), а hover-цвет на
+    // полной насыщенности НЕ красится (иначе старый «проблеск»).
+    it("на кадре ha=0 красится базовый фон группы, без вспышки bgHeader и без проблеска hover", () => {
+        const rects = captureHoverFills(0, [
+            { item: [0, GROUP_ROW], hoverAmount: 0 },
+            { item: [1, GROUP_ROW], hoverAmount: 0 },
+        ]);
+        // Проблеска нет: hover-цвет на ha=0 не рисуется.
+        expect(rects.some(r => r.fill === HOVER_FILL)).toBe(false);
+        // Вспышки нет: базовый фон группы отрисован непрозрачно (перекрывает очищенный bgHeader).
+        expect(rects.some(r => r.fill === BASE_FILL && r.alpha === 1)).toBe(true);
     });
 });
