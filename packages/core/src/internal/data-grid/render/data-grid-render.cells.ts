@@ -85,7 +85,7 @@ interface SpanIntersection {
 }
 
 /** Пересечение прямоугольника выделения с диапазоном слитого блока (логические координаты). */
-function intersectRangeWithSpan(
+export function intersectRangeWithSpan(
     r: Rectangle,
     blockCols: readonly [number, number],
     blockRows: readonly [number, number]
