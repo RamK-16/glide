@@ -207,6 +207,69 @@ export function pushSpanSelectionStrips(
     }
 }
 
+/**
+ * Пополосный фон строк слитого блока: bgCell из getRowThemeOverride считается для
+ * КАЖДОЙ строки блока, а не только для строки-триггера отрисовки. Иначе при
+ * damage-перерисовке от невыделенной покрытой строки фон блока пропадал (осыпался
+ * при ховере соседних ячеек). При cellForcesBg (ячейка сама форсит bgCell, напр.
+ * bgEditableCell) полосы не рисуются: блок остаётся своим фоном, консистентно
+ * с не-слитыми соседями. Экспортируется для юнит-тестов.
+ */
+export function computeSpanRowBgFills(
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number],
+    cellX: number,
+    cellY: number,
+    cellWidth: number,
+    cellHeight: number,
+    allColumns: readonly MappedGridColumn[],
+    getRowHeight: (row: number) => number,
+    getRowThemeOverride: GetRowThemeCallback | undefined,
+    cellForcesBg: boolean
+): SpanPartialFill[] | undefined {
+    if (getRowThemeOverride === undefined || cellForcesBg) return undefined;
+    let fills: SpanPartialFill[] | undefined;
+    for (let r = blockRows[0]; r <= blockRows[1]; r++) {
+        const rBg = getRowThemeOverride(r)?.bgCell;
+        if (rBg === undefined) continue;
+        const strip = spanPartialFillRect(
+            { c0: blockCols[0], c1: blockCols[1], r0: r, r1: r, full: false },
+            blockCols,
+            blockRows,
+            cellX,
+            cellY,
+            cellWidth,
+            cellHeight,
+            allColumns,
+            getRowHeight,
+            rBg
+        );
+        if (strip !== null) {
+            if (fills === undefined) fills = [];
+            fills.push(strip);
+        }
+    }
+    return fills;
+}
+
+/**
+ * Выделена ли origin-строка слитого блока: range-выделение пересекает её, либо строка
+ * выбрана целиком, либо выбрана любая колонка блока. Управляет подмешиванием accent
+ * в цвет фона, отдаваемый контенту origin-ячейки. Экспортируется для юнит-тестов.
+ */
+export function isSpanOriginAccented(
+    selection: GridSelection,
+    blockCols: readonly [number, number],
+    originRow: number
+): boolean {
+    return (
+        (selection.current !== undefined &&
+            intersectRangeWithSpan(selection.current.range, blockCols, [originRow, originRow]) !== null) ||
+        selection.rows.hasIndex(originRow) ||
+        selection.columns.some(i => i >= blockCols[0] && i <= blockCols[1])
+    );
+}
+
 // preppable items:
 // - font
 // - fillStyle
@@ -519,38 +582,23 @@ export function drawCells(
                         if (colSelected && !isTrailingRow) accentCount++;
                     }
 
-                    // Пополосный фон строк слитого блока: фон выделения/ховера (bgCell из
-                    // getRowThemeOverride) считаем для КАЖДОЙ строки блока, а не только для
-                    // строки-триггера отрисовки. Иначе при damage-перерисовке от невыделенной
-                    // покрытой строки фон блока пропадал (осыпался при ховере соседних ячеек).
-                    let spanRowBgFills: SpanPartialFill[] | undefined;
                     // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
                     // он по mergeAndRealizeTheme перебивает row-override — как у обычных ячеек.
-                    // Тогда пополосную заливку строк не рисуем: блок остаётся своим фоном
-                    // (уже покрашен базой из themeNoRow), консистентно с не-слитыми соседями.
                     const cellForcesBg = cell.themeOverride?.bgCell !== undefined;
-                    if (drawingSpan && getRowThemeOverride !== undefined && !cellForcesBg) {
-                        for (let r = spanBlockRows[0]; r <= spanBlockRows[1]; r++) {
-                            const rBg = getRowThemeOverride(r)?.bgCell;
-                            if (rBg === undefined) continue;
-                            const strip = spanPartialFillRect(
-                                { c0: spanBlockCols[0], c1: spanBlockCols[1], r0: r, r1: r, full: false },
-                                spanBlockCols,
-                                spanBlockRows,
-                                cellX,
-                                cellY,
-                                cellWidth,
-                                cellHeight,
-                                allColumns,
-                                getRowHeight,
-                                rBg
-                            );
-                            if (strip !== null) {
-                                if (spanRowBgFills === undefined) spanRowBgFills = [];
-                                spanRowBgFills.push(strip);
-                            }
-                        }
-                    }
+                    const spanRowBgFills = drawingSpan
+                        ? computeSpanRowBgFills(
+                              spanBlockCols,
+                              spanBlockRows,
+                              cellX,
+                              cellY,
+                              cellWidth,
+                              cellHeight,
+                              allColumns,
+                              getRowHeight,
+                              getRowThemeOverride,
+                              cellForcesBg
+                          )
+                        : undefined;
 
                     const bgTheme = drawingSpan ? themeNoRow : theme;
                     const bgCell = cell.kind === GridCellKind.Protected ? bgTheme.bgCellMedium : bgTheme.bgCell;
@@ -711,19 +759,8 @@ export function drawCells(
                     // обычных ячеек, где accent уже в fill). Подмешиваем accent в
                     // finalCellFillColor, когда выделена origin-строка блока.
                     let contentFillColor = fill;
-                    if (drawingSpan) {
-                        const originRow = spanBlockRows[0];
-                        const originAccented =
-                            (selection.current !== undefined &&
-                                intersectRangeWithSpan(selection.current.range, spanBlockCols, [
-                                    originRow,
-                                    originRow,
-                                ]) !== null) ||
-                            selection.rows.hasIndex(originRow) ||
-                            selection.columns.some(i => i >= spanBlockCols[0] && i <= spanBlockCols[1]);
-                        if (originAccented) {
-                            contentFillColor = blend(theme.accentLight, contentFillColor);
-                        }
+                    if (drawingSpan && isSpanOriginAccented(selection, spanBlockCols, spanBlockRows[0])) {
+                        contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 
                     if (cellWidth > minimumCellWidth && !skipContents) {
