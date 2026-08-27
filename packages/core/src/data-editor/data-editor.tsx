@@ -3590,19 +3590,16 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 const startCell = getMangledCellContent([startCol, startRow]);
                 const [blockLeft, blockRight] = startCell.span ?? [startCol, startCol];
                 const [blockTop, blockBottom] = startCell.spanRows ?? [startRow, startRow];
+                // Перпендикулярная ось при одиночном шаге не менялась, правим только ось движения.
                 const [dx, dy] = arrowStep;
                 if (dy > 0) {
                     row = blockBottom + 1;
-                    col = startCol;
                 } else if (dy < 0) {
                     row = blockTop - 1;
-                    col = startCol;
                 } else if (dx > 0) {
                     col = blockRight + 1;
-                    row = startRow;
                 } else if (dx < 0) {
                     col = blockLeft - 1;
-                    row = startRow;
                 }
             }
 

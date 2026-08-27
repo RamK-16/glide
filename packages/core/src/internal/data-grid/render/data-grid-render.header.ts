@@ -389,9 +389,6 @@ function drawGroupHeaderInner(
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
-    // Фон (и его hover-fade) теперь заливает drawGroupLevel до контент-колбэка —
-    // здесь hoverAmount больше не нужен, но параметр сохраняем для совместимости вызовов.
-    _hoverAmount: number,
     theme: FullTheme,
     groupTheme: FullTheme,
     group: GroupDetails,
@@ -688,7 +685,6 @@ function drawGroupLevel(
                         span,
                         isSelected,
                         isHovered,
-                        hoverAmount,
                         theme,
                         groupTheme,
                         group,
@@ -725,7 +721,6 @@ function drawGroupLevel(
                 span,
                 isSelected,
                 isHovered,
-                hoverAmount,
                 theme,
                 groupTheme,
                 group,
