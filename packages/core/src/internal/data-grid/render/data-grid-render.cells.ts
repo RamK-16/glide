@@ -111,7 +111,8 @@ export interface SpanPartialFill {
  * Пиксельная полоса пересечения внутри блока: смещение от левого верхнего угла по
  * ширинам колонок и высотам строк, с клэмпом в видимую часть блока (frozen-сплит).
  */
-function spanPartialFillRect(
+// Экспортируется для юнит-тестов геометрии частичной заливки.
+export function spanPartialFillRect(
     hit: SpanIntersection,
     blockCols: readonly [number, number],
     blockRows: readonly [number, number],

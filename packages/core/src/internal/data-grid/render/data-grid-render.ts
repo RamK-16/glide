@@ -182,7 +182,8 @@ export function clipHeaderDamage(
     ctx.clip();
 }
 
-function getDamageDrawRegions(
+// Экспортируется для юнит-тестов damage-регионов (plain/colspan/rowspan).
+export function getDamageDrawRegions(
     effectiveColumns: readonly MappedGridColumn[],
     height: number,
     totalHeaderHeight: number,
