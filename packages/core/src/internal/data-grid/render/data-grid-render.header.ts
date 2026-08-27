@@ -262,7 +262,7 @@ export function drawGroups(
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
-    _hoverValues: HoverValues,
+    hoverValues: HoverValues,
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
@@ -344,7 +344,7 @@ export function drawGroups(
             hovered,
             theme,
             spriteManager,
-            _hoverValues,
+            hoverValues,
             verticalBorder,
             getGroupDetails,
             damage,
@@ -523,7 +523,7 @@ function drawGroupLevel(
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
-    _hoverValues: HoverValues,
+    hoverValues: HoverValues,
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
@@ -606,7 +606,7 @@ function drawGroupLevel(
                 ? 0
                 : Math.min(
                       1,
-                      _hoverValues.reduce(
+                      hoverValues.reduce(
                           (sum, s) =>
                               s.item[1] === targetRow && s.item[0] >= spanMinCol && s.item[0] <= spanMaxCol
                                   ? sum + s.hoverAmount
