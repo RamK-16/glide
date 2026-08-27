@@ -108,40 +108,45 @@ export interface SpanPartialFill {
 }
 
 /**
+ * Геометрия слитого блока для полос заливки: логические диапазоны колонок/строк
+ * (`cols`/`rows`), пиксельный прямоугольник видимой части блока (с учётом
+ * frozen-сплита) и доступ к ширинам колонок и высотам строк.
+ */
+export interface SpanBlockGeometry {
+    readonly cols: readonly [number, number];
+    readonly rows: readonly [number, number];
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly allColumns: readonly MappedGridColumn[];
+    readonly getRowHeight: (row: number) => number;
+}
+
+/**
  * Пиксельная полоса пересечения внутри блока: смещение от левого верхнего угла по
  * ширинам колонок и высотам строк, с клэмпом в видимую часть блока (frozen-сплит).
  */
 // Экспортируется для юнит-тестов геометрии частичной заливки.
-export function spanPartialFillRect(
-    hit: SpanIntersection,
-    blockCols: readonly [number, number],
-    blockRows: readonly [number, number],
-    cellX: number,
-    cellY: number,
-    cellWidth: number,
-    cellHeight: number,
-    allColumns: readonly MappedGridColumn[],
-    getRowHeight: (row: number) => number,
-    color: string
-): SpanPartialFill | null {
-    let px = cellX;
+export function spanPartialFillRect(hit: SpanIntersection, geom: SpanBlockGeometry, color: string): SpanPartialFill | null {
+    let px = geom.x;
     let pw = 0;
-    for (let cc = blockCols[0]; cc <= blockCols[1]; cc++) {
-        const w = allColumns[cc]?.width ?? 0;
+    for (let cc = geom.cols[0]; cc <= geom.cols[1]; cc++) {
+        const w = geom.allColumns[cc]?.width ?? 0;
         if (cc < hit.c0) px += w;
         else if (cc <= hit.c1) pw += w;
     }
-    let py = cellY;
+    let py = geom.y;
     let ph = 0;
-    for (let rr = blockRows[0]; rr <= blockRows[1]; rr++) {
-        const h = getRowHeight(rr);
+    for (let rr = geom.rows[0]; rr <= geom.rows[1]; rr++) {
+        const h = geom.getRowHeight(rr);
         if (rr < hit.r0) py += h;
         else if (rr <= hit.r1) ph += h;
     }
-    const x0 = Math.max(px, cellX);
-    const x1 = Math.min(px + pw, cellX + cellWidth);
-    const y0 = Math.max(py, cellY);
-    const y1 = Math.min(py + ph, cellY + cellHeight);
+    const x0 = Math.max(px, geom.x);
+    const x1 = Math.min(px + pw, geom.x + geom.width);
+    const y0 = Math.max(py, geom.y);
+    const y1 = Math.min(py + ph, geom.y + geom.height);
     if (x1 <= x0 || y1 <= y0) return null;
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, color };
 }
@@ -156,33 +161,16 @@ export function spanPartialFillRect(
 export function pushSpanSelectionStrips(
     selectedRows: CompactSelection,
     selectedCols: CompactSelection,
-    blockCols: readonly [number, number],
-    blockRows: readonly [number, number],
-    cellX: number,
-    cellY: number,
-    cellWidth: number,
-    cellHeight: number,
-    allColumns: readonly MappedGridColumn[],
-    getRowHeight: (row: number) => number,
+    geom: SpanBlockGeometry,
     color: string,
     out: SpanPartialFill[]
 ): void {
+    const { cols: blockCols, rows: blockRows } = geom;
     for (let r = blockRows[0]; r <= blockRows[1]; r++) {
         if (!selectedRows.hasIndex(r)) continue;
         let r1 = r;
         while (r1 + 1 <= blockRows[1] && selectedRows.hasIndex(r1 + 1)) r1++;
-        const strip = spanPartialFillRect(
-            { c0: blockCols[0], c1: blockCols[1], r0: r, r1, full: false },
-            blockCols,
-            blockRows,
-            cellX,
-            cellY,
-            cellWidth,
-            cellHeight,
-            allColumns,
-            getRowHeight,
-            color
-        );
+        const strip = spanPartialFillRect({ c0: blockCols[0], c1: blockCols[1], r0: r, r1, full: false }, geom, color);
         if (strip !== null) out.push(strip);
         r = r1;
     }
@@ -190,18 +178,7 @@ export function pushSpanSelectionStrips(
         if (!selectedCols.hasIndex(cc)) continue;
         let c1 = cc;
         while (c1 + 1 <= blockCols[1] && selectedCols.hasIndex(c1 + 1)) c1++;
-        const strip = spanPartialFillRect(
-            { c0: cc, c1, r0: blockRows[0], r1: blockRows[1], full: false },
-            blockCols,
-            blockRows,
-            cellX,
-            cellY,
-            cellWidth,
-            cellHeight,
-            allColumns,
-            getRowHeight,
-            color
-        );
+        const strip = spanPartialFillRect({ c0: cc, c1, r0: blockRows[0], r1: blockRows[1], full: false }, geom, color);
         if (strip !== null) out.push(strip);
         cc = c1;
     }
@@ -216,34 +193,16 @@ export function pushSpanSelectionStrips(
  * с не-слитыми соседями. Экспортируется для юнит-тестов.
  */
 export function computeSpanRowBgFills(
-    blockCols: readonly [number, number],
-    blockRows: readonly [number, number],
-    cellX: number,
-    cellY: number,
-    cellWidth: number,
-    cellHeight: number,
-    allColumns: readonly MappedGridColumn[],
-    getRowHeight: (row: number) => number,
+    geom: SpanBlockGeometry,
     getRowThemeOverride: GetRowThemeCallback | undefined,
     cellForcesBg: boolean
 ): SpanPartialFill[] | undefined {
     if (getRowThemeOverride === undefined || cellForcesBg) return undefined;
     let fills: SpanPartialFill[] | undefined;
-    for (let r = blockRows[0]; r <= blockRows[1]; r++) {
+    for (let r = geom.rows[0]; r <= geom.rows[1]; r++) {
         const rBg = getRowThemeOverride(r)?.bgCell;
         if (rBg === undefined) continue;
-        const strip = spanPartialFillRect(
-            { c0: blockCols[0], c1: blockCols[1], r0: r, r1: r, full: false },
-            blockCols,
-            blockRows,
-            cellX,
-            cellY,
-            cellWidth,
-            cellHeight,
-            allColumns,
-            getRowHeight,
-            rBg
-        );
+        const strip = spanPartialFillRect({ c0: geom.cols[0], c1: geom.cols[1], r0: r, r1: r, full: false }, geom, rBg);
         if (strip !== null) {
             if (fills === undefined) fills = [];
             fills.push(strip);
@@ -516,23 +475,24 @@ export function drawCells(
                     let spanPartialFills: SpanPartialFill[] | undefined;
                     const spanBlockCols: readonly [number, number] = cell.span ?? [c.sourceIndex, c.sourceIndex];
                     const spanBlockRows: readonly [number, number] = cell.spanRows ?? [row, row];
+                    const spanGeom: SpanBlockGeometry | undefined = drawingSpan
+                        ? {
+                              cols: spanBlockCols,
+                              rows: spanBlockRows,
+                              x: cellX,
+                              y: cellY,
+                              width: cellWidth,
+                              height: cellHeight,
+                              allColumns,
+                              getRowHeight,
+                          } //alloc
+                        : undefined;
                     let rangeIsPartial = false;
-                    if (drawingSpan && selection.current !== undefined) {
+                    if (spanGeom !== undefined && selection.current !== undefined) {
                         const hit = intersectRangeWithSpan(selection.current.range, spanBlockCols, spanBlockRows);
                         if (hit !== null && !hit.full) {
                             rangeIsPartial = true;
-                            const strip = spanPartialFillRect(
-                                hit,
-                                spanBlockCols,
-                                spanBlockRows,
-                                cellX,
-                                cellY,
-                                cellWidth,
-                                cellHeight,
-                                allColumns,
-                                getRowHeight,
-                                theme.accentLight
-                            );
+                            const strip = spanPartialFillRect(hit, spanGeom, theme.accentLight);
                             if (strip !== null) {
                                 spanPartialFills = [strip];
                             }
@@ -541,22 +501,9 @@ export function drawCells(
 
                     // Выделение целыми строками/колонками внутри блока красим полосами по
                     // пересечению с полным диапазоном блока, а не заливкой всего прямоугольника.
-                    if (drawingSpan && (selection.rows.length > 0 || selection.columns.length > 0)) {
+                    if (spanGeom !== undefined && (selection.rows.length > 0 || selection.columns.length > 0)) {
                         if (spanPartialFills === undefined) spanPartialFills = [];
-                        pushSpanSelectionStrips(
-                            selection.rows,
-                            selection.columns,
-                            spanBlockCols,
-                            spanBlockRows,
-                            cellX,
-                            cellY,
-                            cellWidth,
-                            cellHeight,
-                            allColumns,
-                            getRowHeight,
-                            theme.accentLight,
-                            spanPartialFills
-                        );
+                        pushSpanSelectionStrips(selection.rows, selection.columns, spanGeom, theme.accentLight, spanPartialFills);
                         if (spanPartialFills.length === 0) spanPartialFills = undefined;
                     }
 
@@ -585,20 +532,10 @@ export function drawCells(
                     // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
                     // он по mergeAndRealizeTheme перебивает row-override — как у обычных ячеек.
                     const cellForcesBg = cell.themeOverride?.bgCell !== undefined;
-                    const spanRowBgFills = drawingSpan
-                        ? computeSpanRowBgFills(
-                              spanBlockCols,
-                              spanBlockRows,
-                              cellX,
-                              cellY,
-                              cellWidth,
-                              cellHeight,
-                              allColumns,
-                              getRowHeight,
-                              getRowThemeOverride,
-                              cellForcesBg
-                          )
-                        : undefined;
+                    const spanRowBgFills =
+                        spanGeom !== undefined
+                            ? computeSpanRowBgFills(spanGeom, getRowThemeOverride, cellForcesBg)
+                            : undefined;
 
                     const bgTheme = drawingSpan ? themeNoRow : theme;
                     const bgCell = cell.kind === GridCellKind.Protected ? bgTheme.bgCellMedium : bgTheme.bgCell;
@@ -641,7 +578,7 @@ export function drawCells(
 
                     // Слитый блок: fill-регион красит только своё пересечение с блоком;
                     // полный охват идёт обычным blend всей заливки.
-                    if (highlightRegions !== undefined && drawingSpan) {
+                    if (highlightRegions !== undefined && spanGeom !== undefined) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
@@ -651,18 +588,7 @@ export function drawCells(
                                 fill = blend(region.color, fill);
                                 continue;
                             }
-                            const strip = spanPartialFillRect(
-                                hit,
-                                spanBlockCols,
-                                spanBlockRows,
-                                cellX,
-                                cellY,
-                                cellWidth,
-                                cellHeight,
-                                allColumns,
-                                getRowHeight,
-                                region.color
-                            );
+                            const strip = spanPartialFillRect(hit, spanGeom, region.color);
                             if (strip !== null) {
                                 if (spanPartialFills === undefined) spanPartialFills = [];
                                 spanPartialFills.push(strip);

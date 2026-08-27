@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
     computeSpanRowBgFills,
     isSpanOriginAccented,
+    type SpanBlockGeometry,
 } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import type { MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
 import { CompactSelection, type GridSelection } from "../src/internal/data-grid/data-grid-types.js";
@@ -18,14 +19,21 @@ const cols: MappedGridColumn[] = [
     col({ sourceIndex: 3 }),
 ];
 
-const rh = () => 32;
-
 // Блок: колонки 1-2 (x=100, ширина 200), строки 0-2 (y=0, высота 96).
 const blockCols: readonly [number, number] = [1, 2];
-const blockRows: readonly [number, number] = [0, 2];
+const geom: SpanBlockGeometry = {
+    cols: blockCols,
+    rows: [0, 2],
+    x: 100,
+    y: 0,
+    width: 200,
+    height: 96,
+    allColumns: cols,
+    getRowHeight: () => 32,
+};
 
 function fills(getRowThemeOverride: ((row: number) => { bgCell?: string } | undefined) | undefined, forcesBg = false) {
-    return computeSpanRowBgFills(blockCols, blockRows, 100, 0, 200, 96, cols, rh, getRowThemeOverride, forcesBg);
+    return computeSpanRowBgFills(geom, getRowThemeOverride, forcesBg);
 }
 
 describe("computeSpanRowBgFills — пополосный фон строк слитого блока", () => {

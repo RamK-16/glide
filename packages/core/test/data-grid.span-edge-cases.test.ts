@@ -9,6 +9,7 @@ import {
 } from "../src/internal/data-grid/render/data-grid-render.walk.js";
 import {
     pushSpanSelectionStrips,
+    type SpanBlockGeometry,
     type SpanPartialFill,
 } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import { expandSelection } from "../src/data-editor/data-editor-fns.js";
@@ -25,15 +26,21 @@ import {
 // и колонкам одновременно, guard cellIsSelected, colspan-ветка expandSelection,
 // уровни findSpannedGroupRegion.
 
-const cols3 = [{ width: 100 }, { width: 100 }, { width: 100 }] as unknown as Parameters<
-    typeof pushSpanSelectionStrips
->[8];
-const rh = () => 20;
+// Блок: колонки [0,2], строки [0,3]. Пиксельно 300x80.
+const stripsGeom: SpanBlockGeometry = {
+    cols: [0, 2],
+    rows: [0, 3],
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 80,
+    allColumns: [{ width: 100 }, { width: 100 }, { width: 100 }] as unknown as SpanBlockGeometry["allColumns"],
+    getRowHeight: () => 20,
+};
 
 function strips(rows: CompactSelection, columns: CompactSelection): SpanPartialFill[] {
     const out: SpanPartialFill[] = [];
-    // Блок: колонки [0,2], строки [0,3]. cellWidth 300, cellHeight 80.
-    pushSpanSelectionStrips(rows, columns, [0, 2], [0, 3], 0, 0, 300, 80, cols3, rh, "#s", out);
+    pushSpanSelectionStrips(rows, columns, stripsGeom, "#s", out);
     return out;
 }
 

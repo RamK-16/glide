@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spanPartialFillRect } from "../src/internal/data-grid/render/data-grid-render.cells.js";
+import { spanPartialFillRect, type SpanBlockGeometry } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import type { MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
 
 function col(partial: Partial<MappedGridColumn>): MappedGridColumn {
@@ -13,56 +13,36 @@ const cols: MappedGridColumn[] = [
     col({ sourceIndex: 3 }),
 ];
 
-const rowHeight = () => 32;
+// Блок: колонки 1-2 (x=100, ширина 200), строки 0-1 (y=0, высота 64).
+function geom(overrides: Partial<SpanBlockGeometry> = {}): SpanBlockGeometry {
+    return {
+        cols: [1, 2],
+        rows: [0, 1],
+        x: 100,
+        y: 0,
+        width: 200,
+        height: 64,
+        allColumns: cols,
+        getRowHeight: () => 32,
+        ...overrides,
+    };
+}
 
 describe("spanPartialFillRect — пиксельная полоса пересечения внутри блока", () => {
-    // Блок: колонки 1-2 (x=100, ширина 200), строки 0-1 (y=0, высота 64).
-    const blockCols: readonly [number, number] = [1, 2];
-    const blockRows: readonly [number, number] = [0, 1];
-
     it("пересечение на весь блок = весь прямоугольник блока", () => {
-        const r = spanPartialFillRect(
-            { c0: 1, c1: 2, r0: 0, r1: 1, full: true },
-            blockCols,
-            blockRows,
-            100,
-            0,
-            200,
-            64,
-            cols,
-            rowHeight,
-            "red"
-        );
+        const r = spanPartialFillRect({ c0: 1, c1: 2, r0: 0, r1: 1, full: true }, geom(), "red");
         expect(r).toEqual({ x: 100, y: 0, w: 200, h: 64, color: "red" });
     });
 
     it("частичное пересечение: смещение по ширинам колонок и высотам строк", () => {
-        const r = spanPartialFillRect(
-            { c0: 2, c1: 2, r0: 1, r1: 1, full: false },
-            blockCols,
-            blockRows,
-            100,
-            0,
-            200,
-            64,
-            cols,
-            rowHeight,
-            "blue"
-        );
+        const r = spanPartialFillRect({ c0: 2, c1: 2, r0: 1, r1: 1, full: false }, geom(), "blue");
         expect(r).toEqual({ x: 200, y: 32, w: 100, h: 32, color: "blue" });
     });
 
-    it("клэмп в видимую часть блока (frozen-сплит: cellWidth меньше блока)", () => {
+    it("клэмп в видимую часть блока (frozen-сплит: width меньше блока)", () => {
         const r = spanPartialFillRect(
             { c0: 1, c1: 2, r0: 0, r1: 1, full: false },
-            blockCols,
-            blockRows,
-            100,
-            0,
-            150, // видно только 150px из 200
-            64,
-            cols,
-            rowHeight,
+            geom({ width: 150 }), // видно только 150px из 200
             "green"
         );
         expect(r).toEqual({ x: 100, y: 0, w: 150, h: 64, color: "green" });
@@ -71,14 +51,7 @@ describe("spanPartialFillRect — пиксельная полоса пересе
     it("полоса целиком вне видимой части → null", () => {
         const r = spanPartialFillRect(
             { c0: 2, c1: 2, r0: 0, r1: 1, full: false },
-            blockCols,
-            blockRows,
-            100,
-            0,
-            90, // видима только часть колонки 1, полоса начинается с колонки 2
-            64,
-            cols,
-            rowHeight,
+            geom({ width: 90 }), // видима только часть колонки 1, полоса начинается с колонки 2
             "red"
         );
         expect(r).toBeNull();
@@ -87,14 +60,7 @@ describe("spanPartialFillRect — пиксельная полоса пересе
     it("нулевая высота пересечения → null", () => {
         const r = spanPartialFillRect(
             { c0: 1, c1: 2, r0: 1, r1: 1, full: false },
-            blockCols,
-            blockRows,
-            100,
-            0,
-            200,
-            30, // видимая высота меньше первой строки, вторая строка не видна
-            cols,
-            rowHeight,
+            geom({ height: 30 }), // видимая высота меньше первой строки, вторая строка не видна
             "red"
         );
         expect(r).toBeNull();
