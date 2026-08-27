@@ -366,7 +366,8 @@ export function drawGroups(
  * иначе → bgGroupHeader. Единый источник для заливки фона (drawGroupLevel) и градиента
  * action-иконок (drawGroupHeaderInner).
  */
-function resolveGroupHeaderFillColor(
+// Экспортируется для юнит-теста приоритета выделение > ховер > фон.
+export function resolveGroupHeaderFillColor(
     isSelected: boolean,
     isHovered: boolean,
     groupTheme: FullTheme,

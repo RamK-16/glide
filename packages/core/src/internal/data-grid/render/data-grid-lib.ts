@@ -247,7 +247,8 @@ export function rectBottomRight(rect: Rectangle): Item {
     return [rect.x + rect.width - 1, rect.y + rect.height - 1];
 }
 
-function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boolean {
+// Экспортируется для юнит-теста перекрытий span/spanRows с прямоугольником выделения.
+export function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boolean {
     const startX = rect.x;
     const endX = rect.x + rect.width - 1;
     const startY = rect.y;
