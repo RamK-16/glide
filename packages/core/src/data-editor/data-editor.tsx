@@ -1499,8 +1499,31 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
+            // Слитая ячейка (spanRows): редактор/превью открываем по вертикали
+            // блока (spanAlign.vertical), а не только в origin-строке сверху.
+            // Origin-строка даёт верх блока (val.target), нижняя строка — низ.
+            let target = val.target;
+            const { spanRows, spanAlign } = val.content;
+            if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
+                const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
+                if (bottomBounds !== undefined) {
+                    const blockTop = target.y;
+                    const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
+                    const editorHeight = target.height;
+                    const vertical = spanAlign?.vertical ?? "center";
+                    let y = blockTop;
+                    if (vertical === "center") {
+                        y = blockTop + (blockHeight - editorHeight) / 2;
+                    } else if (vertical === "bottom") {
+                        y = blockTop + blockHeight - editorHeight;
+                    }
+                    target = { ...target, y };
+                }
+            }
+
             setOverlay({
                 ...val,
+                target,
                 theme: mergeAndRealizeTheme(mergedTheme, groupTheme, colTheme, rowTheme, val.content.themeOverride),
             });
         },
