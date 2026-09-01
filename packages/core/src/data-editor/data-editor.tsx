@@ -1313,10 +1313,10 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         }
 
         if (highlightFocusCol !== undefined && highlightFocusRow !== undefined) {
-            // Слитая ячейка (span/spanRows): focus-обводку рисуем на ВЕСЬ блок, а не по одной
-            // origin-ячейке. Identity выделения (current.cell) не трогаем — это чисто визуал
-            // рамки. span в ячейке — в data-пространстве, поэтому прибавляем rowMarkerOffset;
-            // spanRows — индексы строк (без офсета).
+            // Объединённая ячейка (span/spanRows): рамку фокуса рисуем на весь блок,
+            // а не на одну ячейку. Само выделение (current.cell) не трогаем — это
+            // только рамка. span у ячейки считается без служебных колонок, поэтому
+            // добавляем rowMarkerOffset; spanRows — это индексы строк, смещение не нужно.
             let fx = highlightFocusCol;
             let fy = highlightFocusRow;
             let fw = 1;
@@ -1499,9 +1499,9 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
-            // Слитая ячейка (spanRows): редактор/превью открываем по вертикали
-            // блока (spanAlign.vertical), а не только в origin-строке сверху.
-            // Origin-строка даёт верх блока (val.target), нижняя строка — низ.
+            // Объединённая ячейка (spanRows): редактор/превью открываем по вертикали
+            // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
+            // даёт верх блока (val.target), нижняя строка — низ.
             let target = val.target;
             const { spanRows, spanAlign } = val.content;
             if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
