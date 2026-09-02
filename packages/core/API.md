@@ -329,6 +329,8 @@ interface BaseGridCell {
     readonly style?: "normal" | "faded";
     readonly themeOverride?: Partial<Theme>;
     readonly span?: readonly [number, number];
+    readonly spanRows?: readonly [number, number];
+    readonly spanAlign?: { horizontal?: "left" | "center" | "right"; vertical?: "top" | "center" | "bottom" };
     readonly contentAlign?: "left" | "right" | "center";
     readonly cursor?: CSSProperties["cursor"];
 }
@@ -341,6 +343,8 @@ interface BaseGridCell {
 | style         | If set to `faded` the cell will draw with a transparent appearance.                                                                                     |
 | themeOverride | A partial theme override to use when drawing this cell.                                                                                                 |
 | span          | If set the `span` controls which horizontal span a cell belongs to. Spans are inclusive and must be correctly reported for all cells in the span range. |
+| spanRows      | Vertical merging: the inclusive `[startRow, endRow]` range the cell belongs to. Every cell of the range must report the same `spanRows` (and the same data). Combined with `span` it forms a rectangular merged block. |
+| spanAlign     | Content alignment inside a merged cell, both axes. Horizontal defaults to `contentAlign` (else `left`), vertical defaults to `center`. Has no effect on a cell without `span`/`spanRows`. |
 | contentAlign  | Changes the default text alignment for the cell.                                                                                                        |
 | cursor        | An override for the cell cursor when hovered.                                                                                                           |
 
