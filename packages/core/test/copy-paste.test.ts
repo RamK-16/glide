@@ -388,6 +388,25 @@ test("handle cell span", () => {
     expect(result.textPlain).toBe(""); // It should be empty since span doesn't match
 });
 
+test("handle cell span across multiple rows", () => {
+    // Две строки, в каждой блок на две колонки. Значение отдаёт первая колонка
+    // блока, вторая копируется пустой — в каждой строке, а не только в первой.
+    const spanCell = (data: string): GridCell => ({
+        kind: GridCellKind.Text,
+        data,
+        displayData: data,
+        span: [0, 1],
+        allowOverlay: true,
+    });
+    const cells: GridCell[][] = [
+        [spanCell("A1"), spanCell("A1")],
+        [spanCell("A2"), spanCell("A2")],
+    ];
+    const columnIndexes = [0, 1];
+    const result = getCopyBufferContents(cells, columnIndexes);
+    expect(result.textPlain).toBe("A1\t\nA2\t");
+});
+
 test("handle cell rowspan", () => {
     // Слитый по строкам блок: обе ячейки несут одинаковый spanRows [0,1] и значение.
     // origin (верхняя строка) отдаёт значение, покрытая (нижняя) — пусто.

@@ -119,9 +119,10 @@ function createBufferFromGridCells(
     columnIndexes: readonly number[]
 ): CopyBuffer {
     const copyBuffer: CopyBuffer = cells.map((row, index) => {
-        const mappedIndex = columnIndexes[index];
         return row.map((cell, colIndex) => {
-            if (cell.span !== undefined && cell.span[0] !== mappedIndex) return emptyBufferCell;
+            // Блок на несколько колонок: значение отдаёт только первая его колонка,
+            // остальные копируются пустыми. Сравниваем номер колонки самой ячейки.
+            if (cell.span !== undefined && cell.span[0] !== columnIndexes[colIndex]) return emptyBufferCell;
             // Покрытая (не верхняя) строка rowspan-блока: у ячейки строкой выше в этой же
             // колонке тот же spanRows-диапазон → значение уже отдал origin, здесь пусто.
             const above = cells[index - 1]?.[colIndex];
