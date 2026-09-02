@@ -1043,6 +1043,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         [onGridSelectionChange, getCellsForSelection, rowMarkerOffset, spanRangeBehavior]
     );
 
+
     const onColumnResize = whenDefined(
         onColumnResizeIn,
         React.useCallback<NonNullable<typeof onColumnResizeIn>>(
@@ -1447,6 +1448,45 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             getCellContent,
         ]
     );
+
+    // Правка данных может пересобрать объединённые блоки: значение ячейки стало
+    // равно соседнему, блок вырос, а выделенный диапазон остался старым — блок
+    // рисуется выделенным частично. Поэтому при смене данных расширяем диапазон
+    // до границ блока фокус-ячейки (только расширяем, как клик; повторный прогон
+    // ничего не меняет, цикла нет). span тут уже со смещением служебных колонок.
+    React.useEffect(() => {
+        if (spanRangeBehavior === "allowPartial") return;
+        const sel = gridSelection.current;
+        if (sel === undefined) return;
+        const [col, row] = sel.cell;
+        if (col < rowMarkerOffset || row < 0 || row >= rows) return;
+        const content = getMangledCellContent([col, row]);
+        const span = "span" in content ? content.span : undefined;
+        const spanRows = "spanRows" in content ? content.spanRows : undefined;
+        if (span === undefined && spanRows === undefined) return;
+        const blockLeft = span === undefined ? col : span[0];
+        const blockRight = span === undefined ? col : span[1];
+        const blockTop = spanRows === undefined ? row : spanRows[0];
+        const blockBottom = spanRows === undefined ? row : spanRows[1];
+        const r = sel.range;
+        const left = Math.min(r.x, blockLeft);
+        const top = Math.min(r.y, blockTop);
+        const right = Math.max(r.x + r.width - 1, blockRight);
+        const bottom = Math.max(r.y + r.height - 1, blockBottom);
+        if (left === r.x && top === r.y && right === r.x + r.width - 1 && bottom === r.y + r.height - 1) {
+            return;
+        }
+        setGridSelection(
+            {
+                ...gridSelection,
+                current: {
+                    ...sel,
+                    range: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 },
+                },
+            },
+            false
+        );
+    }, [getMangledCellContent, gridSelection, rows, rowMarkerOffset, spanRangeBehavior, setGridSelection]);
 
     const mangledGetGroupDetails = React.useCallback<NonNullable<DataEditorProps["getGroupDetails"]>>(
         group => {
