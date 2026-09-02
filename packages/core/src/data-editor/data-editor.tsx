@@ -1977,6 +1977,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 lastSelectedColRef.current = undefined;
 
                 lastMouseSelectLocation.current = [col, row];
+                arrowLaneRef.current = {};
 
                 if (col === 0 && hasRowMarkers) {
                     if (
@@ -2215,6 +2216,10 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     );
     const isActivelyDraggingHeader = React.useRef(false);
     const lastMouseSelectLocation = React.useRef<readonly [number, number] | undefined>(undefined);
+    // Память полосы для стрелочной навигации сквозь объединённые блоки: помним
+    // строку и колонку входа и при выходе из блока возвращаемся на них, а не на
+    // верхнюю-левую ячейку блока (как в Excel). Клик мышью память сбрасывает.
+    const arrowLaneRef = React.useRef<{ row?: number; col?: number }>({});
     const touchDownArgs = React.useRef(visibleRegion);
     const mouseDownData = React.useRef<{
         time: number;
@@ -3646,23 +3651,43 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             // #endregion
 
-            // Merged-aware стрелочная навигация: один шаг перепрыгивает весь слитый блок,
-            // а не идёт по его покрытым ячейкам. По оси движения берём дальнюю грань блока
-            // origin-ячейки (span — колонки, spanRows — строки) и шагаем за неё.
+            // Стрелочная навигация с учётом объединений: один шаг перепрыгивает весь
+            // блок, а не идёт по его покрытым ячейкам. По оси движения берём дальнюю
+            // грань блока и шагаем за неё. Поперёк движения работает память полосы:
+            // строку и колонку входа помним и выходим на них, а не на верх блока.
             if (arrowStep !== undefined) {
                 const startCell = getMangledCellContent([startCol, startRow]);
                 const [blockLeft, blockRight] = startCell.span ?? [startCol, startCol];
                 const [blockTop, blockBottom] = startCell.spanRows ?? [startRow, startRow];
-                // Перпендикулярная ось при одиночном шаге не менялась, правим только ось движения.
                 const [dx, dy] = arrowStep;
-                if (dy > 0) {
-                    row = blockBottom + 1;
-                } else if (dy < 0) {
-                    row = blockTop - 1;
-                } else if (dx > 0) {
-                    col = blockRight + 1;
-                } else if (dx < 0) {
-                    col = blockLeft - 1;
+                const lane = arrowLaneRef.current;
+                if (dy !== 0) {
+                    row = dy > 0 ? blockBottom + 1 : blockTop - 1;
+                    // Колонка входа: на обычной ячейке запоминаем текущую; внутри
+                    // широкого блока используем запомненную, если она внутри блока.
+                    if (
+                        startCell.span === undefined ||
+                        lane.col === undefined ||
+                        lane.col < blockLeft ||
+                        lane.col > blockRight
+                    ) {
+                        lane.col = startCol;
+                    }
+                    col = lane.col;
+                    lane.row = row;
+                } else if (dx !== 0) {
+                    col = dx > 0 ? blockRight + 1 : blockLeft - 1;
+                    // Строка входа: то же самое для высокого блока.
+                    if (
+                        startCell.spanRows === undefined ||
+                        lane.row === undefined ||
+                        lane.row < blockTop ||
+                        lane.row > blockBottom
+                    ) {
+                        lane.row = startRow;
+                    }
+                    row = lane.row;
+                    lane.col = col;
                 }
             }
 
