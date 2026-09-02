@@ -3597,12 +3597,17 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     freeMove = true;
                     arrowStep = [-1, 0];
                 } else if (isHotkey(keys.goToLastRow, event, details)) {
+                    // Прыжок в начало или конец сбрасывает память полосы, как клик.
+                    arrowLaneRef.current = {};
                     row = rows - 1;
                 } else if (isHotkey(keys.goToFirstRow, event, details)) {
+                    arrowLaneRef.current = {};
                     row = Number.MIN_SAFE_INTEGER;
                 } else if (isHotkey(keys.goToLastColumn, event, details)) {
+                    arrowLaneRef.current = {};
                     col = Number.MAX_SAFE_INTEGER;
                 } else if (isHotkey(keys.goToFirstColumn, event, details)) {
+                    arrowLaneRef.current = {};
                     col = Number.MIN_SAFE_INTEGER;
                 } else if (rangeSelect === "rect" || rangeSelect === "multi-rect") {
                     if (isHotkey(keys.selectGrowDown, event, details)) {
@@ -3674,7 +3679,6 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                         lane.col = startCol;
                     }
                     col = lane.col;
-                    lane.row = row;
                 } else if (dx !== 0) {
                     col = dx > 0 ? blockRight + 1 : blockLeft - 1;
                     // Строка входа: то же самое для высокого блока.
@@ -3687,7 +3691,6 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                         lane.row = startRow;
                     }
                     row = lane.row;
-                    lane.col = col;
                 }
             }
 
@@ -3719,6 +3722,17 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     if (row >= rows) {
                         row = startRow;
                     }
+                }
+            }
+
+            // Ход по оси задаёт полосу этой оси заново: вертикальный шаг запоминает
+            // строку уже после пропуска строк-заголовков групп, горизонтальный — колонку.
+            if (arrowStep !== undefined) {
+                const [dx, dy] = arrowStep;
+                if (dy !== 0) {
+                    arrowLaneRef.current.row = row;
+                } else if (dx !== 0) {
+                    arrowLaneRef.current.col = col;
                 }
             }
 
