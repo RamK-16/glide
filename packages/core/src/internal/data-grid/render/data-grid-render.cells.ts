@@ -119,6 +119,12 @@ export interface SpanBlockGeometry {
     readonly y: number;
     readonly width: number;
     readonly height: number;
+    /**
+     * Номер колонки, с которой начинается пиксель `x`. У прокручиваемой части
+     * блока, начавшегося в закреплённой зоне, это первая незакреплённая колонка,
+     * а не первая колонка блока. Не задано — первая колонка блока.
+     */
+    readonly xStartCol?: number;
     readonly allColumns: readonly MappedGridColumn[];
     readonly getRowHeight: (row: number) => number;
 }
@@ -131,7 +137,9 @@ export interface SpanBlockGeometry {
 export function spanPartialFillRect(hit: SpanIntersection, geom: SpanBlockGeometry, color: string): SpanPartialFill | null {
     let px = geom.x;
     let pw = 0;
-    for (let cc = geom.cols[0]; cc <= geom.cols[1]; cc++) {
+    // Идём от колонки, которой соответствует пиксель geom.x, иначе у блока через
+    // границу закрепления ширины закреплённых колонок прибавились бы дважды.
+    for (let cc = geom.xStartCol ?? geom.cols[0]; cc <= geom.cols[1]; cc++) {
         const w = geom.allColumns[cc]?.width ?? 0;
         if (cc < hit.c0) px += w;
         else if (cc <= hit.c1) pw += w;
@@ -473,23 +481,31 @@ export function drawCells(
                     // строки/колонки не расширяется до блока, поэтому при частичном
                     // пересечении гасим accent-путь; гейт без drawFocus, как cellIsInRange.
                     let spanPartialFills: SpanPartialFill[] | undefined;
-                    const spanBlockCols: readonly [number, number] = cell.span ?? [c.sourceIndex, c.sourceIndex];
-                    const spanBlockRows: readonly [number, number] = cell.spanRows ?? [row, row];
-                    const spanGeom: SpanBlockGeometry | undefined = drawingSpan
-                        ? {
-                              cols: spanBlockCols,
-                              rows: spanBlockRows,
-                              x: cellX,
-                              y: cellY,
-                              width: cellWidth,
-                              height: cellHeight,
-                              allColumns,
-                              getRowHeight,
-                          } //alloc
-                        : undefined;
+                    // Диапазоны и геометрия блока считаются один раз на отрисовываемый
+                    // блок; обычные ячейки в этом цикле ничего не создают.
+                    let spanGeom: SpanBlockGeometry | undefined;
+                    if (drawingSpan) {
+                        const blockCols: readonly [number, number] = cell.span ?? [c.sourceIndex, c.sourceIndex];
+                        const blockRows: readonly [number, number] = cell.spanRows ?? [row, row];
+                        spanGeom = {
+                            cols: blockCols,
+                            rows: blockRows,
+                            x: cellX,
+                            y: cellY,
+                            width: cellWidth,
+                            height: cellHeight,
+                            // Прокручиваемая часть блока начинается с первой
+                            // незакреплённой колонки, закреплённая — с первой колонки блока.
+                            xStartCol: c.sticky
+                                ? blockCols[0]
+                                : Math.max(blockCols[0], allColumns.find(mc => !mc.sticky)?.sourceIndex ?? 0),
+                            allColumns,
+                            getRowHeight,
+                        }; //alloc
+                    }
                     let rangeIsPartial = false;
                     if (spanGeom !== undefined && selection.current !== undefined) {
-                        const hit = intersectRangeWithSpan(selection.current.range, spanBlockCols, spanBlockRows);
+                        const hit = intersectRangeWithSpan(selection.current.range, spanGeom.cols, spanGeom.rows);
                         if (hit !== null && !hit.full) {
                             rangeIsPartial = true;
                             const strip = spanPartialFillRect(hit, spanGeom, theme.accentLight);
@@ -582,7 +598,7 @@ export function drawCells(
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
-                            const hit = intersectRangeWithSpan(region.range, spanBlockCols, spanBlockRows);
+                            const hit = intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows);
                             if (hit === null) continue;
                             if (hit.full) {
                                 fill = blend(region.color, fill);
@@ -685,7 +701,7 @@ export function drawCells(
                     // обычных ячеек, где accent уже в fill). Подмешиваем accent в
                     // finalCellFillColor, когда выделена origin-строка блока.
                     let contentFillColor = fill;
-                    if (drawingSpan && isSpanOriginAccented(selection, spanBlockCols, spanBlockRows[0])) {
+                    if (spanGeom !== undefined && isSpanOriginAccented(selection, spanGeom.cols, spanGeom.rows[0])) {
                         contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 
