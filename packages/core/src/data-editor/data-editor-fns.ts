@@ -2,6 +2,82 @@ import type { DataGridSearchProps } from "../internal/data-grid-search/data-grid
 import { type GridCell, type GridSelection, type Rectangle } from "../internal/data-grid/data-grid-types.js";
 import { getCopyBufferContents, type CopyBuffer } from "./copy-paste.js";
 
+/**
+ * Расширяет прямоугольник до границ пересечённых слитых блоков (colspan/rowspan)
+ * до неподвижной точки. Общая геометрия для expandSelection и fill-превью.
+ * При недоступных ячейках (thunk от getCellsForSelection) возвращает исходный rect.
+ */
+export function expandRectToSpans(
+    rect: Rectangle,
+    getCellsForSelection: DataGridSearchProps["getCellsForSelection"],
+    rowMarkerOffset: number,
+    abortController: AbortController
+): Rectangle {
+    if (getCellsForSelection === undefined) return rect;
+    let result = rect;
+    let isFilled = false;
+    do {
+        const r: Rectangle = result;
+        const cells: (readonly GridCell[])[] = [];
+
+        const collect = (rc: Rectangle): boolean => {
+            const fetched = getCellsForSelection(rc, abortController.signal);
+            if (typeof fetched === "function") return false;
+            cells.push(...fetched);
+            return true;
+        };
+
+        if (r.width > 2) {
+            // Боковые полосы — как раньше: colspan ловим по левому/правому столбцу.
+            if (!collect({ x: r.x, y: r.y, width: 1, height: r.height })) return rect;
+            if (!collect({ x: r.x + r.width - 1, y: r.y, width: 1, height: r.height })) return rect;
+            // Высокий диапазон — добираем верхнюю/нижнюю строки, чтобы поймать rowspan,
+            // пересекающий верхнюю/нижнюю границу (симметрично боковым полосам для colspan).
+            if (r.height > 2) {
+                if (!collect({ x: r.x, y: r.y, width: r.width, height: 1 })) return rect;
+                if (!collect({ x: r.x, y: r.y + r.height - 1, width: r.width, height: 1 })) return rect;
+            }
+        } else {
+            // Узкий по ширине диапазон берём целиком — ловит и colspan, и rowspan.
+            if (!collect({ x: r.x, y: r.y, width: r.width, height: r.height })) return rect;
+        }
+
+        let left = r.x - rowMarkerOffset;
+        let right = r.x + r.width - 1 - rowMarkerOffset;
+        let top = r.y;
+        let bottom = r.y + r.height - 1;
+        for (const row of cells) {
+            for (const cell of row) {
+                if (cell.span !== undefined) {
+                    left = Math.min(cell.span[0], left);
+                    right = Math.max(cell.span[1], right);
+                }
+                if (cell.spanRows !== undefined) {
+                    top = Math.min(cell.spanRows[0], top);
+                    bottom = Math.max(cell.spanRows[1], bottom);
+                }
+            }
+        }
+
+        if (
+            left === r.x - rowMarkerOffset &&
+            right === r.x + r.width - 1 - rowMarkerOffset &&
+            top === r.y &&
+            bottom === r.y + r.height - 1
+        ) {
+            isFilled = true;
+        } else {
+            result = {
+                x: left + rowMarkerOffset,
+                y: top,
+                width: right - left + 1,
+                height: bottom - top + 1,
+            };
+        }
+    } while (!isFilled);
+    return result;
+}
+
 export function expandSelection(
     newVal: GridSelection,
     getCellsForSelection: DataGridSearchProps["getCellsForSelection"],
@@ -9,92 +85,19 @@ export function expandSelection(
     spanRangeBehavior: "allowPartial" | "default",
     abortController: AbortController
 ): GridSelection {
-    const origVal = newVal;
     if (spanRangeBehavior === "allowPartial" || newVal.current === undefined || getCellsForSelection === undefined)
         return newVal;
-    let isFilled = false;
-    do {
-        if (newVal?.current === undefined) break;
-        const r: Rectangle = newVal.current?.range;
-        const cells: (readonly GridCell[])[] = [];
-        if (r.width > 2) {
-            const leftCells = getCellsForSelection(
-                {
-                    x: r.x,
-                    y: r.y,
-                    width: 1,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-
-            if (typeof leftCells === "function") {
-                return origVal;
-            }
-
-            cells.push(...leftCells);
-
-            const rightCells = getCellsForSelection(
-                {
-                    x: r.x + r.width - 1,
-                    y: r.y,
-                    width: 1,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-
-            if (typeof rightCells === "function") {
-                return origVal;
-            }
-
-            cells.push(...rightCells);
-        } else {
-            const rCells = getCellsForSelection(
-                {
-                    x: r.x,
-                    y: r.y,
-                    width: r.width,
-                    height: r.height,
-                },
-                abortController.signal
-            );
-            if (typeof rCells === "function") {
-                return origVal;
-            }
-            cells.push(...rCells);
-        }
-
-        let left = r.x - rowMarkerOffset;
-        let right = r.x + r.width - 1 - rowMarkerOffset;
-        for (const row of cells) {
-            for (const cell of row) {
-                if (cell.span === undefined) continue;
-                left = Math.min(cell.span[0], left);
-                right = Math.max(cell.span[1], right);
-            }
-        }
-
-        if (left === r.x - rowMarkerOffset && right === r.x + r.width - 1 - rowMarkerOffset) {
-            isFilled = true;
-        } else {
-            newVal = {
-                current: {
-                    cell: newVal.current.cell ?? [0, 0],
-                    range: {
-                        x: left + rowMarkerOffset,
-                        y: r.y,
-                        width: right - left + 1,
-                        height: r.height,
-                    },
-                    rangeStack: newVal.current.rangeStack,
-                },
-                columns: newVal.columns,
-                rows: newVal.rows,
-            };
-        }
-    } while (!isFilled);
-    return newVal;
+    const expanded = expandRectToSpans(newVal.current.range, getCellsForSelection, rowMarkerOffset, abortController);
+    if (expanded === newVal.current.range) return newVal;
+    return {
+        current: {
+            cell: newVal.current.cell ?? [0, 0],
+            range: expanded,
+            rangeStack: newVal.current.rangeStack,
+        },
+        columns: newVal.columns,
+        rows: newVal.rows,
+    };
 }
 
 function descape(s: string): string {

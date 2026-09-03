@@ -14,6 +14,8 @@ import {
     getSpannedGroupRegions,
     findSpannedGroupRegion,
     getTotalGroupHeaderHeight,
+    getSpanBounds,
+    getRowSpanBounds,
 } from "./data-grid-render.walk.js";
 import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders } from "./data-grid-render.header.js";
@@ -22,10 +24,39 @@ import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-rende
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 
-function getDamageRepairPad(enableLowDprHairline: boolean): number {
+export function getDamageRepairPad(enableLowDprHairline: boolean): number {
     // repairPad привязан к фактической hairline-ширине: damage clip приходит в точных bounds ячейки,
-    // а widened stroke при DPR < 1 может выступать за них и резаться на hover redraw.
+    // а widened stroke при DPR < 1 может выступать за них и резаться на hover redraw. Без low-DPR
+    // штрих ровно 1px и за bounds не выходит → pad = 0. ВАЖНО: это ещё и pad для clipHeaderDamage,
+    // и ненулевой pad там залезает в соседний групп-ряд (светлая полоса на выделенной группе при
+    // hover листа). Body span-border-repair добирает свой pad ЛОКАЛЬНО (см. getBodyDamagePad).
     return enableLowDprHairline ? Math.ceil(getHairlineWidth(enableLowDprHairline) / 2 + 0.5) : 0;
+}
+
+// Pad для body-damage span-repair. Границу span-блока на самом краю bbox исключает условие
+// ty <= maxY-1 в drawGridLines, поэтому при наличии span в damage нужен pad >= 1 (даже без
+// low-DPR). Отдельно от getDamageRepairPad, чтобы НЕ раздувать header-клип.
+export function getBodyDamagePad(enableLowDprHairline: boolean, spansInDamage: boolean): number {
+    const base = getDamageRepairPad(enableLowDprHairline);
+    return spansInDamage ? Math.max(1, base) : base;
+}
+
+// Есть ли среди damaged-ячеек (в области данных) хотя бы одна span-ячейка. На hover
+// damage крошечный (1-2 ячейки), поэтому проверка дешёвая. Нужна, чтобы включать
+// ручной span-repair damage-путь независимо от enableLowDprHairline.
+export function damageHasSpanCells(
+    damage: CellSet,
+    getCellContent: (cell: readonly [number, number]) => {
+        readonly span?: readonly [number, number];
+        readonly spanRows?: readonly [number, number];
+    }
+): boolean {
+    for (const item of damage.values()) {
+        if (item[1] < 0) continue;
+        const cell = getCellContent(item);
+        if (cell.span !== undefined || cell.spanRows !== undefined) return true;
+    }
+    return false;
 }
 
 // Future optimization opportunities
@@ -151,7 +182,8 @@ export function clipHeaderDamage(
     ctx.clip();
 }
 
-function getDamageDrawRegions(
+// Экспортируется для юнит-тестов damage-регионов (plain/colspan/rowspan).
+export function getDamageDrawRegions(
     effectiveColumns: readonly MappedGridColumn[],
     height: number,
     totalHeaderHeight: number,
@@ -162,7 +194,11 @@ function getDamageDrawRegions(
     getRowHeight: (row: number) => number,
     freezeTrailingRows: number,
     hasAppendRow: boolean,
-    damage: CellSet
+    damage: CellSet,
+    getCellContent: (cell: readonly [number, number]) => {
+        readonly span?: readonly [number, number];
+        readonly spanRows?: readonly [number, number];
+    }
 ): Rectangle[] {
     const result: Rectangle[] = [];
     const cellIndex: [number, number] = [0, 0];
@@ -194,7 +230,41 @@ function getDamageDrawRegions(
 
                     cellIndex[1] = row;
                     if (damage.has(cellIndex)) {
-                        result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                        const cell = getCellContent(cellIndex);
+                        if (cell.span !== undefined || cell.spanRows !== undefined) {
+                            // Слитый блок рисуется на весь прямоугольник, поэтому и
+                            // damage-регион делаем на весь блок — иначе overlay'и
+                            // (рамка/подсветка/fill-handle) восстановятся лишь по
+                            // одной ячейке и «пропадут» на остальной площади блока.
+                            let ry = drawY;
+                            let rHeight = rh;
+                            if (cell.spanRows !== undefined) {
+                                const v = getRowSpanBounds(cell.spanRows, row, drawY, getRowHeight);
+                                ry = v.y;
+                                rHeight = v.height;
+                            }
+                            if (cell.span !== undefined) {
+                                // getSpanBounds напрямую (не resolveHorizontalSpanArea): damage-регион
+                                // должен покрыть ОБЕ области блока — и frozen, и scrollable.
+                                const [frozenArea, contentArea] = getSpanBounds(
+                                    cell.span,
+                                    colDrawX,
+                                    drawY,
+                                    colWidth,
+                                    rh,
+                                    c,
+                                    effectiveColumns
+                                );
+                                if (frozenArea !== undefined)
+                                    result.push({ x: frozenArea.x, y: ry, width: frozenArea.width, height: rHeight });
+                                if (contentArea !== undefined)
+                                    result.push({ x: contentArea.x, y: ry, width: contentArea.width, height: rHeight });
+                            } else {
+                                result.push({ x: colDrawX, y: ry, width: colWidth, height: rHeight });
+                            }
+                        } else {
+                            result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                        }
                     }
                 }
             );
@@ -561,8 +631,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             },
         ]);
 
+        // span-repair НЕ зависит от enableLowDprHairline: ручной damage-путь нужен всегда,
+        // когда в damage попала span-ячейка (иначе hover затирает границы объединённого блока
+        // и не восстанавливает их). Обычные таблицы без флага и без span — быстрый blit-путь.
+        const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
         const cellDamageRegions =
-            enableLowDprHairline && damageInView
+            (enableLowDprHairline || spansInDamage) && damageInView
                 ? getDamageDrawRegions(
                       effectiveCols,
                       height,
@@ -574,13 +648,14 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                       getRowHeight,
                       freezeTrailingRows,
                       hasAppendRow,
-                      damage
+                      damage,
+                      getCellContent
                   )
                 : undefined;
 
         const doDamage = (ctx: CanvasRenderingContext2D) => {
             if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
-                const repairPad = getDamageRepairPad(enableLowDprHairline);
+                const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);
                 // cellDamageRegions остаются точной dirty-геометрией, а visualDamageRegions расширяют только область repair.
                 // Так мы дорисовываем соседние grid/highlight штрихи без отдельного hover-хака и без смены normal cell rendering path.
                 const visualDamageRegions = expandDamageDrawRegions(cellDamageRegions, repairPad);
@@ -800,6 +875,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
             const selectionCurrent = selection.current;
 
+            // В эту ветку попадают только кадры без слитых ячеек в damage (они идут
+            // клип-путём выше), поэтому здесь достаточно поведения апстрима: ручка
+            // заполнения перерисовывается, только когда повреждена её ячейка.
             if (
                 fillHandle !== false &&
                 fillHandle !== undefined &&

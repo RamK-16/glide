@@ -358,7 +358,20 @@ export interface BaseGridCell {
     readonly style?: "normal" | "faded";
     readonly themeOverride?: Partial<Theme>;
     readonly span?: readonly [start: number, end: number];
+    /**
+     * Объединяет ячейку по вертикали на строки `[startRow, endRow]` (rowspan).
+     * Вместе со `span` (диапазон колонок) даёт прямоугольный блок строки × колонки.
+     * Все ячейки блока должны вернуть одинаковые `span`/`spanRows` — рисование само
+     * выберет верхнюю-левую и нарисует блок один раз. Не задано — обычная строка.
+     */
+    readonly spanRows?: readonly [startRow: number, endRow: number];
     readonly contentAlign?: "left" | "right" | "center";
+    /**
+     * Выравнивание контента в объединённой ячейке (`span`/`spanRows`) по обеим осям.
+     * По умолчанию горизонталь — из `contentAlign` (иначе `left`), вертикаль — `center`.
+     * На обычную (не объединённую) ячейку не влияет.
+     */
+    readonly spanAlign?: SpanAlignment;
     readonly cursor?: CSSProperties["cursor"];
     readonly copyData?: string;
     readonly activationBehaviorOverride?: CellActivationBehavior;

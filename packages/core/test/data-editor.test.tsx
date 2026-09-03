@@ -2314,6 +2314,189 @@ describe("data-editor", () => {
         expect(spy).toBeCalledWith(expect.objectContaining({ current: expect.objectContaining({ cell: [1, 1] }) }));
     });
 
+    test("Arrow down skips whole merged block in one press", async () => {
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        render(
+            <EventedDataEditor
+                {...basicProps}
+                getCellContent={cell => {
+                    const [col, row] = cell;
+                    const base = {
+                        kind: GridCellKind.Text,
+                        allowOverlay: true,
+                        displayData: `${col},${row}`,
+                        data: `${col},${row}`,
+                    } as const;
+                    // Слитый по строкам блок в колонке B, строки 1..3.
+                    if (col === 1 && row >= 1 && row <= 3) {
+                        return { ...base, spanRows: [1, 3] as const };
+                    }
+                    return base;
+                }}
+                onGridSelectionChange={spy}
+            />,
+            { wrapper: Context }
+        );
+        prep();
+
+        const canvas = screen.getByTestId("data-grid-canvas");
+        // Клик по origin блока (колонка B, строка 1).
+        sendClick(canvas, { clientX: 300, clientY: 36 + 32 + 16 });
+
+        spy.mockClear();
+        fireEvent.keyDown(canvas, { key: "ArrowDown" });
+
+        // Один ArrowDown перепрыгивает весь блок [1..3] и встаёт на строку 4.
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({ current: expect.objectContaining({ cell: [1, 4] }) })
+        );
+    });
+
+    test("Arrow up skips whole merged block in one press", async () => {
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        render(
+            <EventedDataEditor
+                {...basicProps}
+                getCellContent={cell => {
+                    const [col, row] = cell;
+                    const base = {
+                        kind: GridCellKind.Text,
+                        allowOverlay: true,
+                        displayData: `${col},${row}`,
+                        data: `${col},${row}`,
+                    } as const;
+                    if (col === 1 && row >= 1 && row <= 3) {
+                        return { ...base, spanRows: [1, 3] as const };
+                    }
+                    return base;
+                }}
+                onGridSelectionChange={spy}
+            />,
+            { wrapper: Context }
+        );
+        prep();
+
+        const canvas = screen.getByTestId("data-grid-canvas");
+        // Клик в строку 4 (сразу под блоком).
+        sendClick(canvas, { clientX: 300, clientY: 36 + 32 * 4 + 16 });
+
+        spy.mockClear();
+        fireEvent.keyDown(canvas, { key: "ArrowUp" });
+
+        // Один ArrowUp пропускает весь блок и встаёт на origin [1, 1].
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({ current: expect.objectContaining({ cell: [1, 1] }) })
+        );
+    });
+
+    test("Arrow travel through merged block returns to the entry row", async () => {
+        // Память полосы: зашли в блок стрелкой со строки 2, вышли обратно
+        // вправо — попали на строку 2, а не на верхнюю строку блока.
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        render(
+            <EventedDataEditor
+                {...basicProps}
+                getCellContent={cell => {
+                    const [col, row] = cell;
+                    const base = {
+                        kind: GridCellKind.Text,
+                        allowOverlay: true,
+                        displayData: `${col},${row}`,
+                        data: `${col},${row}`,
+                    } as const;
+                    if (col === 1 && row >= 1 && row <= 3) {
+                        return { ...base, spanRows: [1, 3] as const };
+                    }
+                    return base;
+                }}
+                onGridSelectionChange={spy}
+            />,
+            { wrapper: Context }
+        );
+        prep();
+
+        const canvas = screen.getByTestId("data-grid-canvas");
+        // Клик по блоку (встанет на origin [1, 1]), затем клавиатурой доходим
+        // до обычной ячейки [2, 2] справа от блока.
+        sendClick(canvas, { clientX: 300, clientY: 36 + 32 + 16 });
+        fireEvent.keyDown(canvas, { key: "ArrowDown" }); // [1, 4] под блоком
+        fireEvent.keyDown(canvas, { key: "ArrowRight" }); // [2, 4]
+        fireEvent.keyDown(canvas, { key: "ArrowUp" }); // [2, 3]
+        fireEvent.keyDown(canvas, { key: "ArrowUp" }); // [2, 2]
+
+        // Влево со строки 2: попадаем в блок, фокус на его origin [1, 1].
+        fireEvent.keyDown(canvas, { key: "ArrowLeft" });
+
+        spy.mockClear();
+        // Вправо из блока: выходим на строку входа 2, а не на строку origin 1.
+        fireEvent.keyDown(canvas, { key: "ArrowRight" });
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({ current: expect.objectContaining({ cell: [2, 2] }) })
+        );
+    });
+
+    test("Selection range follows the block when data change grows it", async () => {
+        // Правка данных пересобрала блок и он вырос: выделенный диапазон должен
+        // сам дорасти до новых границ блока, иначе блок красится частично.
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        const makeGetCellContent =
+            (endRow: number) =>
+            (cell: Item): GridCell => {
+                const [col, row] = cell;
+                const base = {
+                    kind: GridCellKind.Text,
+                    allowOverlay: true,
+                    displayData: `${col},${row}`,
+                    data: `${col},${row}`,
+                } as const;
+                if (col === 1 && row >= 1 && row <= endRow) {
+                    return { ...base, spanRows: [1, endRow] as [number, number] };
+                }
+                return base;
+            };
+        const { rerender } = render(
+            <EventedDataEditor
+                {...basicProps}
+                getCellContent={makeGetCellContent(2)}
+                onGridSelectionChange={spy}
+            />,
+            { wrapper: Context }
+        );
+        prep();
+
+        const canvas = screen.getByTestId("data-grid-canvas");
+        // Клик по блоку строк 1-2: диапазон растягивается на блок (высота 2).
+        sendClick(canvas, { clientX: 300, clientY: 36 + 32 + 16 });
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({
+                current: expect.objectContaining({
+                    range: expect.objectContaining({ y: 1, height: 2 }),
+                }),
+            })
+        );
+
+        spy.mockClear();
+        // Данные изменились: блок теперь строки 1-4. Диапазон должен дорасти сам.
+        rerender(
+            <EventedDataEditor
+                {...basicProps}
+                getCellContent={makeGetCellContent(4)}
+                onGridSelectionChange={spy}
+            />
+        );
+        expect(spy).toBeCalledWith(
+            expect.objectContaining({
+                current: expect.objectContaining({
+                    range: expect.objectContaining({ y: 1, height: 4 }),
+                }),
+            })
+        );
+    });
+
     test("Freeze area reported", async () => {
         const spy = vi.fn();
         vi.useFakeTimers();

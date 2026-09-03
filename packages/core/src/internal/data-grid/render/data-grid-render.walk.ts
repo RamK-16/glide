@@ -322,3 +322,62 @@ export function getSpanBounds(
 
     return [frozenRect, contentRect];
 }
+
+/**
+ * Горизонтальная геометрия слитого блока для текущей freeze-области. Отдаёт x/width
+ * видимой части colspan (frozen для sticky-колонки, scrollable иначе), флаг
+ * `horizontalOk` (рисуется ли блок в этой области) и `skipContents` (контент уже
+ * отрисован во frozen-области — не дублировать). Для ячейки без colspan
+ * (`span === undefined`) возвращает исходные drawX/colWidth.
+ */
+export function resolveHorizontalSpanArea(
+    span: Item | undefined,
+    drawX: number,
+    colWidth: number,
+    column: MappedGridColumn,
+    allColumns: readonly MappedGridColumn[]
+): { hx: number; hw: number; horizontalOk: boolean; skipContents: boolean } {
+    let hx = drawX;
+    let hw = colWidth;
+    let horizontalOk = true;
+    let skipContents = false;
+    if (span !== undefined) {
+        // y/height от getSpanBounds здесь не используются (нужны только x/width).
+        const areas = getSpanBounds(span, drawX, 0, colWidth, 0, column, allColumns);
+        const area = column.sticky ? areas[0] : areas[1];
+        if (!column.sticky && areas[0] !== undefined) {
+            skipContents = true;
+        }
+        if (area !== undefined) {
+            hx = area.x;
+            hw = area.width;
+        } else {
+            horizontalOk = false;
+        }
+    }
+    return { hx, hw, horizontalOk, skipContents };
+}
+
+/**
+ * Вертикальная геометрия rowspan-блока: верх (`y`) и полная высота диапазона
+ * `[startRow, endRow]`, отсчитанные от текущей строки `currentRow` с её экранным
+ * верхом `currentDrawY`. `startRow` может быть выше вьюпорта — тогда `y` уходит
+ * в минус, канва клипует (scroll-safe).
+ */
+export function getRowSpanBounds(
+    spanRows: readonly [startRow: number, endRow: number],
+    currentRow: number,
+    currentDrawY: number,
+    getRowHeight: (row: number) => number
+): { y: number; height: number } {
+    const [startRow, endRow] = spanRows;
+    let y = currentDrawY;
+    for (let r = currentRow - 1; r >= startRow; r--) {
+        y -= getRowHeight(r);
+    }
+    let height = 0;
+    for (let r = startRow; r <= endRow; r++) {
+        height += getRowHeight(r);
+    }
+    return { y, height };
+}

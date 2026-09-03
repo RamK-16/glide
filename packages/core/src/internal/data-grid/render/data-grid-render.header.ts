@@ -262,7 +262,7 @@ export function drawGroups(
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
-    _hoverValues: HoverValues,
+    hoverValues: HoverValues,
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
@@ -344,7 +344,7 @@ export function drawGroups(
             hovered,
             theme,
             spriteManager,
-            _hoverValues,
+            hoverValues,
             verticalBorder,
             getGroupDetails,
             damage,
@@ -366,7 +366,8 @@ export function drawGroups(
  * иначе → bgGroupHeader. Единый источник для заливки фона (drawGroupLevel) и градиента
  * action-иконок (drawGroupHeaderInner).
  */
-function resolveGroupHeaderFillColor(
+// Экспортируется для юнит-теста приоритета выделение > ховер > фон.
+export function resolveGroupHeaderFillColor(
     isSelected: boolean,
     isHovered: boolean,
     groupTheme: FullTheme,
@@ -388,9 +389,6 @@ function drawGroupHeaderInner(
     span: readonly [number, number],
     isSelected: boolean,
     isHovered: boolean,
-    // Фон (и его hover-fade) теперь заливает drawGroupLevel до контент-колбэка —
-    // здесь hoverAmount больше не нужен, но параметр сохраняем для совместимости вызовов.
-    _hoverAmount: number,
     theme: FullTheme,
     groupTheme: FullTheme,
     group: GroupDetails,
@@ -525,7 +523,7 @@ function drawGroupLevel(
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
-    _hoverValues: HoverValues,
+    hoverValues: HoverValues,
     verticalBorder: (col: number) => boolean,
     getGroupDetails: GroupDetailsCallback,
     damage: CellSet | undefined,
@@ -608,7 +606,7 @@ function drawGroupLevel(
                 ? 0
                 : Math.min(
                       1,
-                      _hoverValues.reduce(
+                      hoverValues.reduce(
                           (sum, s) =>
                               s.item[1] === targetRow && s.item[0] >= spanMinCol && s.item[0] <= spanMaxCol
                                   ? sum + s.hoverAmount
@@ -622,22 +620,24 @@ function drawGroupLevel(
         // и иначе остался бы без фона/подсветки). topInset: у верхнего уровня (level 0)
         // разделителя над ним нет — заливаем от края; у под-групп 1px сверху сохраняет
         // разграничительную линию между уровнями.
-        const groupFillColor = resolveGroupHeaderFillColor(isSelected, isHovered, groupTheme, theme);
-        if (groupFillColor !== theme.bgHeader) {
-            const topInset = level === 0 ? 0 : 1;
-            ctx.fillStyle = groupFillColor;
-            if (hoverAmount > 0) {
-                // Ховер набирается по alpha от нуля (плавный фейд).
-                ctx.globalAlpha = hoverAmount;
-                ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
-                ctx.globalAlpha = 1;
-            } else if (isSelected || !isHovered) {
-                // Непрозрачно: выделение (accentColor) и обычный фон группы
-                // (bgGroupHeader). НЕ красим только кадр «ховер до старта анимации»
-                // (isHovered && hoverAmount === 0) — иначе виден проблеск hover-цвета
-                // на полной насыщенности до того, как начнётся фейд.
-                ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
-            }
+        // БАЗОВЫЙ (не-hover) цвет группы красим ВСЕГДА непрозрачно, а hover-цвет
+        // накладываем сверху с alpha = hoverAmount. Причина: на hover-damage групп-ячейка
+        // сперва очищается в bgHeader (самый светлый), и если на кадре ha=0 (hover начался,
+        // анимация ещё не стартовала) ничего не красить — проступает яркий bgHeader (вспышка).
+        // А красить hover-цвет непрозрачно на ha=0 — это старый «проблеск». Base + overlay
+        // убирает оба: при ha=0 виден базовый фон, при ha=1 — полный hover.
+        const baseFillColor = resolveGroupHeaderFillColor(isSelected, false, groupTheme, theme);
+        const topInset = level === 0 ? 0 : 1;
+        if (baseFillColor !== theme.bgHeader) {
+            ctx.fillStyle = baseFillColor;
+            ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
+        }
+        if (isHovered && !isSelected && hoverAmount > 0) {
+            const hoverFillColor = groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered;
+            ctx.globalAlpha = hoverAmount;
+            ctx.fillStyle = hoverFillColor;
+            ctx.fillRect(x, y + yOffset + topInset, w, cellH - topInset);
+            ctx.globalAlpha = 1;
         }
 
         if (drawGroupHeaderCallback !== undefined) {
@@ -685,7 +685,6 @@ function drawGroupLevel(
                         span,
                         isSelected,
                         isHovered,
-                        hoverAmount,
                         theme,
                         groupTheme,
                         group,
@@ -722,7 +721,6 @@ function drawGroupLevel(
                 span,
                 isSelected,
                 isHovered,
-                hoverAmount,
                 theme,
                 groupTheme,
                 group,

@@ -42,6 +42,35 @@ export function resolveSpanAlignment(
 }
 
 /**
+ * Покрытая ячейка слитого блока (span/spanRows), но НЕ его origin. Используется
+ * в fill/paste/delete, чтобы писать только в origin, а покрытые координаты
+ * пропускать — иначе запись летит в середину блока.
+ */
+export function isCoveredSpanCell(
+    cell: Pick<BaseGridCell, "span" | "spanRows">,
+    col: number,
+    row: number
+): boolean {
+    return (
+        (cell.span !== undefined && cell.span[0] !== col) ||
+        (cell.spanRows !== undefined && cell.spanRows[0] !== row)
+    );
+}
+
+/**
+ * Origin (левый верхний угол) слитого блока для любой его ячейки. span/spanRows
+ * одинаковы на всех ячейках блока, поэтому берём [span[0], spanRows[0]] с
+ * фолбэком на исходные координаты. Нормализует клик и навигацию к origin.
+ */
+export function getSpanOrigin(
+    cell: Pick<BaseGridCell, "span" | "spanRows">,
+    col: number,
+    row: number
+): readonly [number, number] {
+    return [cell.span?.[0] ?? col, cell.spanRows?.[0] ?? row];
+}
+
+/**
  * Считает Y текста и baseline по вертикальному выравниванию внутри ячейки высотой height.
  * middleBias — сдвиг для центрирования (из getMiddleCenterBias); padY — отступ сверху/снизу.
  */
@@ -188,13 +217,20 @@ export function isGroupEqual(
 export function cellIsSelected(location: Item, cell: InnerGridCell, selection: GridSelection): boolean {
     if (selection.current === undefined) return false;
 
-    if (location[1] !== selection.current.cell[1]) return false;
+    const selCol = selection.current.cell[0];
+    const selRow = selection.current.cell[1];
+
+    // Строка: точное совпадение, либо (для rowspan) выбранная строка попадает в диапазон
+    // spanRows ячейки — тогда весь объединённый блок считается выделенным.
+    const rowMatch =
+        cell.spanRows === undefined ? location[1] === selRow : selRow >= cell.spanRows[0] && selRow <= cell.spanRows[1];
+    if (!rowMatch) return false;
 
     if (cell.span === undefined) {
-        return selection.current.cell[0] === location[0];
+        return selCol === location[0];
     }
 
-    return selection.current.cell[0] >= cell.span[0] && selection.current.cell[0] <= cell.span[1];
+    return selCol >= cell.span[0] && selCol <= cell.span[1];
 }
 
 export function itemIsInRect(location: Item, rect: Rectangle): boolean {
@@ -211,14 +247,26 @@ export function rectBottomRight(rect: Rectangle): Item {
     return [rect.x + rect.width - 1, rect.y + rect.height - 1];
 }
 
-function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boolean {
+// Экспортируется для юнит-теста перекрытий span/spanRows с прямоугольником выделения.
+export function cellIsInRect(location: Item, cell: InnerGridCell, rect: Rectangle): boolean {
     const startX = rect.x;
     const endX = rect.x + rect.width - 1;
     const startY = rect.y;
     const endY = rect.y + rect.height - 1;
 
     const [cellCol, cellRow] = location;
-    if (cellRow < startY || cellRow > endY) return false;
+    // Rowspan-перекрытие — дословное зеркало колоночной ветки ниже, включая её
+    // quirk (`rowSpanStart <= endY` во втором условии). Менять обе ветки или ни одной.
+    if (cell.spanRows === undefined) {
+        if (cellRow < startY || cellRow > endY) return false;
+    } else {
+        const [rowSpanStart, rowSpanEnd] = cell.spanRows;
+        const rowOverlap =
+            (rowSpanStart >= startY && rowSpanStart <= endY) ||
+            (rowSpanEnd >= startY && rowSpanStart <= endY) ||
+            (rowSpanStart < startY && rowSpanEnd > endY);
+        if (!rowOverlap) return false;
+    }
 
     if (cell.span === undefined) {
         return cellCol >= startX && cellCol <= endX;
@@ -682,7 +730,7 @@ function drawMultiLineText(
 
 /** @category Drawing */
 export function drawTextCell(
-    args: Pick<BaseDrawArgs, "rect" | "ctx" | "theme">,
+    args: Pick<BaseDrawArgs, "rect" | "ctx" | "theme"> & { readonly cell?: BaseGridCell },
     data: string,
     contentAlign?: BaseGridCell["contentAlign"],
     allowWrapping?: boolean,
@@ -711,6 +759,24 @@ export function drawTextCell(
     }
 
     if (data.length > 0) {
+        // Слитая ячейка (rowspan/colspan c явным spanAlign): выравниваем по 2 осям через
+        // общий примитив drawSpanAlignedText. Горизонталь по умолчанию — из contentAlign
+        // (иначе left), вертикаль — center. Чистый colspan без spanAlign идёт прежним путём.
+        const spanCell = args.cell;
+        if (
+            !allowWrapping &&
+            spanCell !== undefined &&
+            (spanCell.spanAlign !== undefined || spanCell.spanRows !== undefined)
+        ) {
+            const resolved = resolveSpanAlignment(spanCell.spanAlign, contentAlign ?? "left");
+            const boxLeft = x + theme.cellHorizontalPadding + 0.5;
+            const boxRight = x + w - (theme.cellHorizontalPadding + 0.5);
+            drawSpanAlignedText(ctx, data, boxLeft, boxRight, y, h, resolved, bias, theme.cellVerticalPadding);
+            if (isRtl) {
+                ctx.direction = "inherit";
+            }
+            return;
+        }
         let changed = false;
         if (contentAlign === "right") {
             // Use right alignment as default for RTL text
@@ -919,7 +985,7 @@ export function computeBounds(
         return result;
     }
 
-    const groupHeights = Array.isArray(groupHeaderHeight) 
+    const groupHeights = Array.isArray(groupHeaderHeight)
         ? groupHeaderHeight.reduce((sum, h) => sum + h, 0)
         : groupHeaderHeight;
     const headerHeight = totalHeaderHeight - groupHeights;

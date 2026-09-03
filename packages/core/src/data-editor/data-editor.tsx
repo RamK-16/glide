@@ -52,13 +52,15 @@ import {
     itemIsInRect,
     gridSelectionHasItem,
     getFreezeTrailingHeight,
+    isCoveredSpanCell,
+    getSpanOrigin,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { GroupRename } from "./group-rename.js";
 import { measureColumn, useColumnSizer } from "./use-column-sizer.js";
 import { isHotkey } from "../common/is-hotkey.js";
 import { type SelectionBlending, useSelectionBehavior } from "../internal/data-grid/use-selection-behavior.js";
 import { useCellsForSelection } from "./use-cells-for-selection.js";
-import { unquote, expandSelection, copyToClipboard, toggleBoolean } from "./data-editor-fns.js";
+import { unquote, expandSelection, expandRectToSpans, copyToClipboard, toggleBoolean } from "./data-editor-fns.js";
 import { DataEditorContainer } from "../internal/data-editor-container/data-grid-container.js";
 import { useAutoscroll } from "./use-autoscroll.js";
 import type { CustomRenderer, CellRenderer, InternalCellRenderer } from "../cells/cell-types.js";
@@ -1041,6 +1043,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         [onGridSelectionChange, getCellsForSelection, rowMarkerOffset, spanRangeBehavior]
     );
 
+
     const onColumnResize = whenDefined(
         onColumnResizeIn,
         React.useCallback<NonNullable<typeof onColumnResizeIn>>(
@@ -1311,14 +1314,29 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         }
 
         if (highlightFocusCol !== undefined && highlightFocusRow !== undefined) {
+            // Объединённая ячейка (span/spanRows): рамку фокуса рисуем на весь блок,
+            // а не на одну ячейку. Само выделение (current.cell) не трогаем — это
+            // только рамка. span у ячейки считается без служебных колонок, поэтому
+            // добавляем rowMarkerOffset; spanRows — это индексы строк, смещение не нужно.
+            let fx = highlightFocusCol;
+            let fy = highlightFocusRow;
+            let fw = 1;
+            let fh = 1;
+            const focusDataCol = highlightFocusCol - rowMarkerOffset;
+            if (highlightFocusRow >= 0 && highlightFocusRow < rows && focusDataCol >= 0) {
+                const focusCell = getCellContent([focusDataCol, highlightFocusRow]);
+                if (focusCell.span !== undefined) {
+                    fx = focusCell.span[0] + rowMarkerOffset;
+                    fw = focusCell.span[1] - focusCell.span[0] + 1;
+                }
+                if (focusCell.spanRows !== undefined) {
+                    fy = focusCell.spanRows[0];
+                    fh = focusCell.spanRows[1] - focusCell.spanRows[0] + 1;
+                }
+            }
             regions.push({
                 color: mergedTheme.accentColor,
-                range: {
-                    x: highlightFocusCol,
-                    y: highlightFocusRow,
-                    width: 1,
-                    height: 1,
-                },
+                range: { x: fx, y: fy, width: fw, height: fh },
                 style: "solid-outline",
             });
         }
@@ -1333,6 +1351,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         mangledCols.length,
         mergedTheme.accentColor,
         rowMarkerOffset,
+        getCellContent,
+        rows,
     ]);
 
     const mangledColsRef = React.useRef(mangledCols);
@@ -1429,6 +1449,45 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         ]
     );
 
+    // Правка данных может пересобрать объединённые блоки: значение ячейки стало
+    // равно соседнему, блок вырос, а выделенный диапазон остался старым — блок
+    // рисуется выделенным частично. Поэтому при смене данных расширяем диапазон
+    // до границ блока фокус-ячейки (только расширяем, как клик; повторный прогон
+    // ничего не меняет, цикла нет). span тут уже со смещением служебных колонок.
+    React.useEffect(() => {
+        if (spanRangeBehavior === "allowPartial") return;
+        const sel = gridSelection.current;
+        if (sel === undefined) return;
+        const [col, row] = sel.cell;
+        if (col < rowMarkerOffset || row < 0 || row >= rows) return;
+        const content = getMangledCellContent([col, row]);
+        const span = "span" in content ? content.span : undefined;
+        const spanRows = "spanRows" in content ? content.spanRows : undefined;
+        if (span === undefined && spanRows === undefined) return;
+        const blockLeft = span === undefined ? col : span[0];
+        const blockRight = span === undefined ? col : span[1];
+        const blockTop = spanRows === undefined ? row : spanRows[0];
+        const blockBottom = spanRows === undefined ? row : spanRows[1];
+        const r = sel.range;
+        const left = Math.min(r.x, blockLeft);
+        const top = Math.min(r.y, blockTop);
+        const right = Math.max(r.x + r.width - 1, blockRight);
+        const bottom = Math.max(r.y + r.height - 1, blockBottom);
+        if (left === r.x && top === r.y && right === r.x + r.width - 1 && bottom === r.y + r.height - 1) {
+            return;
+        }
+        setGridSelection(
+            {
+                ...gridSelection,
+                current: {
+                    ...sel,
+                    range: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 },
+                },
+            },
+            false
+        );
+    }, [getMangledCellContent, gridSelection, rows, rowMarkerOffset, spanRangeBehavior, setGridSelection]);
+
     const mangledGetGroupDetails = React.useCallback<NonNullable<DataEditorProps["getGroupDetails"]>>(
         group => {
             const base = getGroupDetails?.(group) ?? { name: group };
@@ -1480,8 +1539,31 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
+            // Объединённая ячейка (spanRows): редактор/превью открываем по вертикали
+            // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
+            // даёт верх блока (val.target), нижняя строка — низ.
+            let target = val.target;
+            const { spanRows, spanAlign: blockSpanAlign } = val.content;
+            if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
+                const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
+                if (bottomBounds !== undefined) {
+                    const blockTop = target.y;
+                    const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
+                    const editorHeight = target.height;
+                    const vertical = blockSpanAlign?.vertical ?? "center";
+                    let y = blockTop;
+                    if (vertical === "center") {
+                        y = blockTop + (blockHeight - editorHeight) / 2;
+                    } else if (vertical === "bottom") {
+                        y = blockTop + blockHeight - editorHeight;
+                    }
+                    target = { ...target, y };
+                }
+            }
+
             setOverlay({
                 ...val,
+                target,
                 theme: mergeAndRealizeTheme(mergedTheme, groupTheme, colTheme, rowTheme, val.content.themeOverride),
             });
         },
@@ -1895,6 +1977,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 lastSelectedColRef.current = undefined;
 
                 lastMouseSelectLocation.current = [col, row];
+                arrowLaneRef.current = {};
 
                 if (col === 0 && hasRowMarkers) {
                     if (
@@ -2133,6 +2216,10 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     );
     const isActivelyDraggingHeader = React.useRef(false);
     const lastMouseSelectLocation = React.useRef<readonly [number, number] | undefined>(undefined);
+    // Память полосы для стрелочной навигации сквозь объединённые блоки: помним
+    // строку и колонку входа и при выходе из блока возвращаемся на них, а не на
+    // верхнюю-левую ячейку блока (как в Excel). Клик мышью память сбрасывает.
+    const arrowLaneRef = React.useRef<{ row?: number; col?: number }>({});
     const touchDownArgs = React.useRef(visibleRegion);
     const mouseDownData = React.useRef<{
         time: number;
@@ -2402,6 +2489,12 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 for (let y = 0; y < currentRange.height; y++) {
                     const cell: Item = [currentRange.x + x, currentRange.y + y];
                     if (itemIsInRect(cell, patternRange)) continue;
+                    // Не пишем в покрытые ячейки слитого блока — значение получит только origin
+                    // (когда цикл дойдёт до его координаты). Иначе запись летит в середину блока.
+                    const targetCell = getMangledCellContent(cell);
+                    if (isCoveredSpanCell(targetCell, cell[0], cell[1])) {
+                        continue;
+                    }
                     const patternCell = pattern[y % patternRange.height][x % patternRange.width];
                     if (isInnerOnlyCell(patternCell) || !isReadWriteCell(patternCell)) continue;
                     editItemList.push({
@@ -2418,7 +2511,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }))
             );
         },
-        [getCellsForSelection, mangledOnCellsEdited, onFillPattern, rowMarkerOffset]
+        [getCellsForSelection, getMangledCellContent, mangledOnCellsEdited, onFillPattern, rowMarkerOffset]
     );
 
     const fillRight = React.useCallback(() => {
@@ -2892,7 +2985,13 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     const prevRange = mouseState.previousSelection.current.range;
                     row = Math.min(row, showTrailingBlankRow ? rows - 1 : rows);
                     const rect = getClosestRect(prevRange, col, row, allowedFillDirections);
-                    setFillHighlightRegion(rect);
+                    // Пунктир протяжки прилипает к границам слитых блоков: частично
+                    // задетый блок захватывается целиком (как и последующая запись).
+                    const snapped =
+                        rect === undefined
+                            ? rect
+                            : expandRectToSpans(rect, getCellsForSelection, rowMarkerOffset, abortControllerRef.current);
+                    setFillHighlightRegion(snapped);
                 } else {
                     const startedFromLastStickyRow = showTrailingBlankRow && selectedRow === rows;
                     if (startedFromLastStickyRow) return;
@@ -2946,6 +3045,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             allowedFillDirections,
             getSelectionRowLimits,
             setCurrent,
+            getCellsForSelection,
         ]
     );
 
@@ -3278,6 +3378,11 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             for (let x = r.x; x < r.x + r.width; x++) {
                 for (let y = r.y; y < r.y + r.height; y++) {
                     const cellValue = getCellContent([x - rowMarkerOffset, y]);
+                    // Покрытая ячейка слитого блока: очистку выполнит origin (если он в диапазоне),
+                    // здесь пропускаем — иначе onCellEdited летит в середину блока.
+                    if (isCoveredSpanCell(cellValue, x - rowMarkerOffset, y)) {
+                        continue;
+                    }
                     if (!cellValue.allowOverlay && cellValue.kind !== GridCellKind.Boolean) continue;
                     let newVal: InnerGridCell | undefined = undefined;
                     if (cellValue.kind === GridCellKind.Custom) {
@@ -3397,9 +3502,12 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
 
             if (gridSelection.current === undefined) return false;
             let [col, row] = gridSelection.current.cell;
-            const [, startRow] = gridSelection.current.cell;
+            const [startCol, startRow] = gridSelection.current.cell;
             let freeMove = false;
             let cancelOnlyOnMove = false;
+            // Направление одиночного шага стрелкой ([dx, dy]); задаётся только клавишами
+            // перехода на соседнюю ячейку. Нужен для merged-aware навигации ниже.
+            let arrowStep: readonly [number, number] | undefined = undefined;
 
             if (isHotkey(keys.scrollToSelectedCell, event, details)) {
                 scrollToRef.current(col - rowMarkerOffset, row);
@@ -3462,31 +3570,44 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             } else if (!overlayOpen) {
                 if (isHotkey(keys.goDownCell, event, details)) {
                     row += 1;
+                    arrowStep = [0, 1];
                 } else if (isHotkey(keys.goUpCell, event, details)) {
                     row -= 1;
+                    arrowStep = [0, -1];
                 } else if (isHotkey(keys.goRightCell, event, details)) {
                     col += 1;
+                    arrowStep = [1, 0];
                 } else if (isHotkey(keys.goLeftCell, event, details)) {
                     col -= 1;
+                    arrowStep = [-1, 0];
                 } else if (isHotkey(keys.goDownCellRetainSelection, event, details)) {
                     row += 1;
                     freeMove = true;
+                    arrowStep = [0, 1];
                 } else if (isHotkey(keys.goUpCellRetainSelection, event, details)) {
                     row -= 1;
                     freeMove = true;
+                    arrowStep = [0, -1];
                 } else if (isHotkey(keys.goRightCellRetainSelection, event, details)) {
                     col += 1;
                     freeMove = true;
+                    arrowStep = [1, 0];
                 } else if (isHotkey(keys.goLeftCellRetainSelection, event, details)) {
                     col -= 1;
                     freeMove = true;
+                    arrowStep = [-1, 0];
                 } else if (isHotkey(keys.goToLastRow, event, details)) {
+                    // Прыжок в начало или конец сбрасывает память полосы, как клик.
+                    arrowLaneRef.current = {};
                     row = rows - 1;
                 } else if (isHotkey(keys.goToFirstRow, event, details)) {
+                    arrowLaneRef.current = {};
                     row = Number.MIN_SAFE_INTEGER;
                 } else if (isHotkey(keys.goToLastColumn, event, details)) {
+                    arrowLaneRef.current = {};
                     col = Number.MAX_SAFE_INTEGER;
                 } else if (isHotkey(keys.goToFirstColumn, event, details)) {
+                    arrowLaneRef.current = {};
                     col = Number.MIN_SAFE_INTEGER;
                 } else if (rangeSelect === "rect" || rangeSelect === "multi-rect") {
                     if (isHotkey(keys.selectGrowDown, event, details)) {
@@ -3535,6 +3656,44 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             // #endregion
 
+            // Стрелочная навигация с учётом объединений: один шаг перепрыгивает весь
+            // блок, а не идёт по его покрытым ячейкам. По оси движения берём дальнюю
+            // грань блока и шагаем за неё. Поперёк движения работает память полосы:
+            // строку и колонку входа помним и выходим на них, а не на верх блока.
+            if (arrowStep !== undefined) {
+                const startCell = getMangledCellContent([startCol, startRow]);
+                const [blockLeft, blockRight] = startCell.span ?? [startCol, startCol];
+                const [blockTop, blockBottom] = startCell.spanRows ?? [startRow, startRow];
+                const [dx, dy] = arrowStep;
+                const lane = arrowLaneRef.current;
+                if (dy !== 0) {
+                    row = dy > 0 ? blockBottom + 1 : blockTop - 1;
+                    // Колонка входа: на обычной ячейке запоминаем текущую; внутри
+                    // широкого блока используем запомненную, если она внутри блока.
+                    if (
+                        startCell.span === undefined ||
+                        lane.col === undefined ||
+                        lane.col < blockLeft ||
+                        lane.col > blockRight
+                    ) {
+                        lane.col = startCol;
+                    }
+                    col = lane.col;
+                } else if (dx !== 0) {
+                    col = dx > 0 ? blockRight + 1 : blockLeft - 1;
+                    // Строка входа: то же самое для высокого блока.
+                    if (
+                        startCell.spanRows === undefined ||
+                        lane.row === undefined ||
+                        lane.row < blockTop ||
+                        lane.row > blockBottom
+                    ) {
+                        lane.row = startRow;
+                    }
+                    row = lane.row;
+                }
+            }
+
             const mustRestrictRow = rowGroupingNavBehavior !== undefined && rowGroupingNavBehavior !== "normal";
 
             if (mustRestrictRow && row !== startRow) {
@@ -3566,6 +3725,31 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }
             }
 
+            // Ход по оси задаёт полосу этой оси заново: вертикальный шаг запоминает
+            // строку уже после пропуска строк-заголовков групп, горизонтальный — колонку.
+            if (arrowStep !== undefined) {
+                const [dx, dy] = arrowStep;
+                if (dy !== 0) {
+                    arrowLaneRef.current.row = row;
+                } else if (dx !== 0) {
+                    arrowLaneRef.current.col = col;
+                }
+            }
+
+            // Приземление нормализуем к origin блока-соседа (как это делает клик), чтобы
+            // фокус всегда стоял на origin и следующий шаг стрелкой был корректным.
+            if (arrowStep !== undefined) {
+                const inBounds =
+                    row >= 0 &&
+                    row < rows &&
+                    col >= rowMarkerOffset &&
+                    col <= columns.length - 1 + rowMarkerOffset;
+                if (inBounds) {
+                    const landed = getMangledCellContent([col, row]);
+                    [col, row] = getSpanOrigin(landed, col, row);
+                }
+            }
+
             const moved = updateSelectedCell(col, row, false, freeMove);
 
             const didMatch = details.didMatch;
@@ -3587,6 +3771,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             rowMarkerOffset,
             mapper,
             rows,
+            columns.length,
+            getMangledCellContent,
             updateSelectedCell,
             setGridSelection,
             onSelectionCleared,
@@ -3856,6 +4042,11 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                             if (writeCol >= mangledCols.length) continue;
                             if (writeRow >= mangledRows) continue;
                             const cellData = getMangledCellContent(index);
+                            // Покрытая ячейка слитого блока: пишем только в origin, покрытые
+                            // координаты пропускаем — иначе вставка попадёт в середину блока.
+                            if (isCoveredSpanCell(cellData, writeCol, writeRow)) {
+                                continue;
+                            }
                             const newVal = pasteToCell(cellData, index, dataItem.rawValue, dataItem.formatted);
                             if (newVal !== undefined) {
                                 editList.push(newVal);

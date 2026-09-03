@@ -5,6 +5,7 @@ import {
     getColumnIndexForX,
     getEffectiveColumns,
     getRowIndexForY,
+    getSpanOrigin,
     getStickyWidth,
     rectBottomRight,
     useMappedColumns,
@@ -727,7 +728,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     };
                 }
             } else {
-                const bounds = getBoundsForItem(canvas, col, row);
+                // Объединённая ячейка тела (colspan/rowspan/прямоугольник): попадание в любую
+                // точку блока трактуем как origin [startCol, startRow], чтобы клик/выделение/
+                // редактирование/hover работали по всему блоку.
+                const spanCell = getCellContent([col, row]);
+                const [cellCol, cellRow] = getSpanOrigin(spanCell, col, row);
+                const bounds = getBoundsForItem(canvas, cellCol, cellRow);
                 assert(bounds !== undefined);
                 const isEdge = bounds !== undefined && bounds.x + bounds.width - posX < edgeDetectionBuffer;
 
@@ -760,7 +766,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
                 result = {
                     kind: "cell",
-                    location: [col, row],
+                    location: [cellCol, cellRow],
                     bounds: bounds,
                     isEdge,
                     shiftKey,
@@ -793,6 +799,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             translateY,
             freezeTrailingRows,
             getBoundsForItem,
+            getCellContent,
             fillHandle,
             selection,
             totalHeaderHeight,
