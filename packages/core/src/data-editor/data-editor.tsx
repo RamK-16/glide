@@ -1543,14 +1543,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
             // даёт верх блока (val.target), нижняя строка — низ.
             let target = val.target;
-            const { spanRows, spanAlign } = val.content;
+            const { spanRows, spanAlign: blockSpanAlign } = val.content;
             if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
                 const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
                 if (bottomBounds !== undefined) {
                     const blockTop = target.y;
                     const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
                     const editorHeight = target.height;
-                    const vertical = spanAlign?.vertical ?? "center";
+                    const vertical = blockSpanAlign?.vertical ?? "center";
                     let y = blockTop;
                     if (vertical === "center") {
                         y = blockTop + (blockHeight - editorHeight) / 2;
