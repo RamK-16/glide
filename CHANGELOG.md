@@ -1,3 +1,43 @@
+# [6.2.0](https://github.com/RamK-16/glide/compare/v6.1.8...v6.2.0) (2026-09-04)
+
+
+### Bug Fixes
+
+* **copy-paste:** затирание покрытых колонок блока в многострочном копировании ([68e8ffc](https://github.com/RamK-16/glide/commit/68e8ffc008522e2ecf1ed142d2e8772b6bc5f34f))
+* **core:** expand hover damage region to full merged block (hairline path) ([e38e7ad](https://github.com/RamK-16/glide/commit/e38e7adc50bc96c152f24a1d04ff51579f756f88))
+* **core:** keep selection ring on the true cell edge unless clipped by canvas ([ff0dc4b](https://github.com/RamK-16/glide/commit/ff0dc4bb321745083a93570a96f2b808e7f9ef2b))
+* **core:** normalize covered-cell clicks to block origin ([77f7769](https://github.com/RamK-16/glide/commit/77f776928e6a09ca3617f59cc55426f0ef3e95f3))
+* **core:** partial merged-block tint also for native range accents ([20058b2](https://github.com/RamK-16/glide/commit/20058b29e1d2decf688bb38e6c53a6785d005b15))
+* **core:** restore selection outline and fill handle over merged block on hover ([1e73f75](https://github.com/RamK-16/glide/commit/1e73f7579915a2d9b4c5ec2de76b1b2f9e7f770e))
+* **data-editor:** память полосы учитывает пропуск строк-заголовков групп ([3de43f9](https://github.com/RamK-16/glide/commit/3de43f9b6d178049705a80ecc7b6ea31cfff61f6))
+* **data-editor:** расширяем выделение до нового блока при смене данных ([0e4675f](https://github.com/RamK-16/glide/commit/0e4675fd6cbe56f25253e1d6122dc469589872f0))
+* **data-editor:** убираем затенение имени spanAlign ([2a4a575](https://github.com/RamK-16/glide/commit/2a4a5751cae237afa7ac520e8d02ae70080784b0))
+* **data-grid:** keep merged-cell borders on hover regardless of enableLowDprHairline ([7bd38e1](https://github.com/RamK-16/glide/commit/7bd38e114201e27f3e652712f76eed22214bb4f9))
+* **data-grid:** remove group-header hover flash on selection by base-then-overlay fill ([8ecfddf](https://github.com/RamK-16/glide/commit/8ecfddfcdd3861a546b923106794a6d07f10a811))
+* **data-grid:** scope body-cell span normalization to the cell branch ([575e6bd](https://github.com/RamK-16/glide/commit/575e6bd41f6a6fad0c13a4751f8ba8b4a28f1106))
+* **data-grid:** stop header damage clip bleeding into neighbor group row ([dee4f02](https://github.com/RamK-16/glide/commit/dee4f02dfec7dcfc274f5c3809394383e2244286))
+* **data-grid:** полоса выделения в блоке через границу закрепления ([385bec6](https://github.com/RamK-16/glide/commit/385bec6b5d6fae36f9794a87bae936fc15bb242c))
+* **render:** reflect origin-row selection in merged cell fill color ([4f53f73](https://github.com/RamK-16/glide/commit/4f53f73ed55a738fdf5d773d8ba17339f878ffac))
+* **render:** tint merged-cell selection per row/column, not whole block ([f93a493](https://github.com/RamK-16/glide/commit/f93a493667a6e51501e93a301ce58fa408280350))
+
+
+### Features
+
+* **core:** snap fill handle drag preview to merged block boundaries ([66e8ac8](https://github.com/RamK-16/glide/commit/66e8ac868d7fcc3f1f2b3db0d0b35cb39858ddac))
+* **core:** tint only the intersection of highlight regions with merged blocks ([94bb341](https://github.com/RamK-16/glide/commit/94bb341a56e825bb1535152fa58f69a73ffc06d8))
+* **data-editor:** merged-cell interactions for nav, fill, copy, paste, delete ([35c6b00](https://github.com/RamK-16/glide/commit/35c6b000062867b2fadec009bcd4bd4717a7bbd0))
+* **data-editor:** память строки и колонки входа при навигации сквозь блоки ([ff0df36](https://github.com/RamK-16/glide/commit/ff0df36661d3eb32bf943036459fc3e381006f22))
+* **data-grid:** cell rowspan + rectangular merge with 2D align (WIP) ([f7ea578](https://github.com/RamK-16/glide/commit/f7ea57874b5d56ee5257a5fc193b0792d1349979))
+* **data-grid:** cell rowspan hit-test + selection awareness + tests (WIP) ([3706c3c](https://github.com/RamK-16/glide/commit/3706c3cbad9d68954581aa6436a59cf3d7aff64a))
+* **data-grid:** draw the selection focus ring around the whole merged cell (WIP) ([bb9ab2a](https://github.com/RamK-16/glide/commit/bb9ab2a4b67f6d1cc99f00d2462a1cceb1c69b92))
+* **data-grid:** expandSelection widens range over rowspan blocks (WIP) ([5f2ff74](https://github.com/RamK-16/glide/commit/5f2ff744a958423f9e1bbb9936dbb5aab40f68bf))
+* **overlay:** позиционируем оверлей редактора по вертикали объединения ([58ef399](https://github.com/RamK-16/glide/commit/58ef3991dee67e97b8d669918b27435a4eab5704))
+
+
+### Performance Improvements
+
+* **data-grid:** убираем лишнюю перерисовку и создание массивов ([3293751](https://github.com/RamK-16/glide/commit/329375180276c3885fa5de35e56241516fe99cdd))
+
 ## [6.1.8](https://github.com/RamK-16/glide/compare/v6.1.7...v6.1.8) (2026-08-15)
 
 
