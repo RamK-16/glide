@@ -1,3 +1,10 @@
+# [6.3.0](https://github.com/RamK-16/glide/compare/v6.2.0...v6.3.0) (2026-09-09)
+
+
+### Features
+
+* **data-grid:** индикатор скрытых колонок в шапке ([6718a5a](https://github.com/RamK-16/glide/commit/6718a5a2b4f300679f9b9152b59f0c42d1c43651))
+
 # [6.2.0](https://github.com/RamK-16/glide/compare/v6.1.8...v6.2.0) (2026-09-04)
 
 
