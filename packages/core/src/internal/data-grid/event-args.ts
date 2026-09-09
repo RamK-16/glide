@@ -35,6 +35,8 @@ export interface GridMouseHeaderEventArgs extends BaseGridMouseEventArgs, Positi
     readonly location: readonly [number, -1];
     readonly bounds: Rectangle;
     readonly group: string;
+    /** Курсор над индикатором скрытых колонок: индекс колонки, на левой границе которой он нарисован. */
+    readonly hiddenIndicatorCol?: number;
 }
 
 /** @category Types */
@@ -45,6 +47,8 @@ export interface GridMouseGroupHeaderEventArgs extends BaseGridMouseEventArgs, P
     readonly location: Item;
     readonly bounds: Rectangle;
     readonly group: string;
+    /** Курсор над индикатором скрытых колонок: индекс колонки, на левой границе которой он нарисован. */
+    readonly hiddenIndicatorCol?: number;
 }
 
 /** @category Types */
@@ -136,6 +140,13 @@ export interface DragHandler {
 /** @category Types */
 export type GridDragEventArgs = GridMouseEventArgs & DragHandler;
 
+// Индикатор скрытых колонок живёт ВНУТРИ ячейки шапки, не меняя [col,row]. Чтобы
+// вход/выход в его зону порождал новое hover-событие (иначе тултип не приходит: hover
+// дедупится по ячейке), учитываем hiddenIndicatorCol в сравнении.
+function getHiddenIndicatorCol(a: GridMouseEventArgs | undefined): number | undefined {
+    return a?.kind === headerKind || a?.kind === groupHeaderKind ? a.hiddenIndicatorCol : undefined;
+}
+
 export function mouseEventArgsAreEqual(args: GridMouseEventArgs | undefined, other: GridMouseEventArgs | undefined) {
     if (args === other) return true;
 
@@ -152,6 +163,7 @@ export function mouseEventArgsAreEqual(args: GridMouseEventArgs | undefined, oth
     return (
         args?.kind === other?.kind &&
         args?.location[0] === other?.location[0] &&
-        args?.location[1] === other?.location[1]
+        args?.location[1] === other?.location[1] &&
+        getHiddenIndicatorCol(args) === getHiddenIndicatorCol(other)
     );
 }

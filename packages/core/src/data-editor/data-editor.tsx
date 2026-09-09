@@ -259,6 +259,23 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * @group Style
      */
     readonly spanGroupHeader?: boolean;
+    /**
+     * Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col.
+     * col === columns.length означает «справа от последней». 0 или undefined значит,
+     * что индикатора нет. Полоска одна независимо от числа скрытых. Ресайз на этой границе работает
+     * как обычно, а двойной клик вместо автосайза зовёт onHiddenColumnsIndicatorClicked.
+     * Полоса рисуется только в обычном (листовом) ряду шапки, не залезая на групп-ряды.
+     * @group Style
+     */
+    readonly hiddenColumnsIndicator?: (col: number) => number;
+    /**
+     * Двойной клик по индикатору скрытых колонок раскрывает промежуток.
+     * @group Events
+     */
+    readonly onHiddenColumnsIndicatorClicked?: (
+        col: number,
+        event: HeaderClickedEventArgs | GroupHeaderClickedEventArgs
+    ) => void;
     /** Emitted when a cell is clicked.
      * @group Events
      */
@@ -879,6 +896,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         spanShallowGroups,
         spanAlign,
         spanGroupHeader,
+        hiddenColumnsIndicator,
+        onHiddenColumnsIndicatorClicked,
         rowGrouping,
         onSearchClose: onSearchCloseIn,
         onItemHovered,
@@ -2242,6 +2261,17 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 location: args.location,
             };
 
+            // Индикатор скрытых колонок: не начинаем выделение шапки/группы, если курсор
+            // на полосе. В колоночной зоне полоса может стоять там, где нет resize-грани
+            // (край таблицы, колонка с выключенным ресайзом), поэтому ранний return по
+            // isEdge ниже её не покрывает, поэтому подавляем выделение явно.
+            if (
+                (args.kind === groupHeaderKind || args.kind === "header") &&
+                args.hiddenIndicatorCol !== undefined
+            ) {
+                return;
+            }
+
             if (args?.kind === "header") {
                 isActivelyDraggingHeader.current = true;
             }
@@ -2654,6 +2684,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             };
 
             const clickLocation = args.location[0] - rowMarkerOffset;
+
             if (args.isTouch) {
                 const vr = visibleRegionRef.current;
                 const touchVr = touchDownArgs.current;
@@ -2705,7 +2736,18 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     return;
                 }
 
-                if (args.isEdge) {
+                // Индикатор скрытых колонок раскрывается двойным кликом независимо от
+                // resize-грани: полоса бывает на краю таблицы и у колонок с выключенным
+                // ресайзом, где isEdge=false. Одиночный клик по полосе глотаем (колонку
+                // не выделяем). Автосайз по двойному клику по грани оставляем как был.
+                if (args.hiddenIndicatorCol !== undefined) {
+                    if (args.isDoubleClick === true) {
+                        onHiddenColumnsIndicatorClicked?.(args.hiddenIndicatorCol - rowMarkerOffset, {
+                            ...args,
+                            preventDefault,
+                        });
+                    }
+                } else if (args.isEdge) {
                     if (args.isDoubleClick === true) {
                         void normalSizeColumn(col);
                     }
@@ -2719,7 +2761,16 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     return;
                 }
 
-                if (args.button === 0 && col === lastMouseDownCol && row === lastMouseDownRow) {
+                // Индикатор скрытых колонок в групповой зоне: одиночный клик глотаем
+                // (группу не выделяем), двойной раскрывает промежуток.
+                if (args.hiddenIndicatorCol !== undefined) {
+                    if (args.isDoubleClick === true) {
+                        onHiddenColumnsIndicatorClicked?.(args.hiddenIndicatorCol - rowMarkerOffset, {
+                            ...args,
+                            preventDefault,
+                        });
+                    }
+                } else if (args.button === 0 && col === lastMouseDownCol && row === lastMouseDownRow) {
                     onGroupHeaderClicked?.(clickLocation, { ...args, preventDefault });
                     if (!isPrevented.current) {
                         handleGroupHeaderSelection(args);
@@ -2754,6 +2805,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             handleSelect,
             onGroupHeaderClicked,
             onHeaderClicked,
+            onHiddenColumnsIndicatorClicked,
             normalSizeColumn,
             handleGroupHeaderSelection,
         ]
@@ -4290,6 +4342,18 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         [rowMarkerOffset, verticalBorder]
     );
 
+    // Индикатор скрытых колонок: переводим границы из пользовательских индексов во
+    // внутренние (со сдвигом на служебную rowMarker-колонку). На границах служебной
+    // зоны (col <= rowMarkerOffset слева) индикатор не рисуем.
+    const mangledHiddenColumnsIndicator = React.useMemo(() => {
+        if (hiddenColumnsIndicator === undefined) return undefined;
+        return (col: number) => {
+            const userCol = col - rowMarkerOffset;
+            if (userCol < 0) return 0;
+            return hiddenColumnsIndicator(userCol);
+        };
+    }, [hiddenColumnsIndicator, rowMarkerOffset]);
+
     const renameGroupNode = React.useMemo(() => {
         if (renameGroup === undefined || canvasRef.current === null) return null;
         const { bounds, group } = renameGroup;
@@ -4628,6 +4692,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     translateX={visibleRegion.tx}
                     translateY={visibleRegion.ty}
                     verticalBorder={mangledVerticalBorder}
+                    hiddenColumnsIndicator={mangledHiddenColumnsIndicator}
                     gridRef={gridRef}
                     getCellRenderer={getCellRenderer}
                     resizeIndicator={resizeIndicator}

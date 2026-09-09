@@ -49,6 +49,8 @@ export interface DrawGridArg {
     readonly disabledRows: CompactSelection;
     readonly rowHeight: number | ((index: number) => number);
     readonly verticalBorder: (col: number) => boolean;
+    /** Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col. */
+    readonly hiddenColumnsIndicator?: (col: number) => number;
     readonly isResizing: boolean;
     readonly resizeCol: number | undefined;
     readonly isFocused: boolean;
