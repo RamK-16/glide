@@ -419,6 +419,7 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             getGroupDetails={p.getGroupDetails}
             spanGroupHeader={p.spanGroupHeader}
             spanAlign={p.spanAlign}
+            hiddenColumnsIndicator={p.hiddenColumnsIndicator}
             getRowThemeOverride={p.getRowThemeOverride}
             groupHeaderHeight={p.groupHeaderHeight}
             headerHeight={p.headerHeight}

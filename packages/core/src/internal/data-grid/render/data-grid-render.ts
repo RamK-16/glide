@@ -18,7 +18,7 @@ import {
     getRowSpanBounds,
 } from "./data-grid-render.walk.js";
 import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
-import { drawGridHeaders } from "./data-grid-render.header.js";
+import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
@@ -348,6 +348,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         disabledRows,
         rowHeight,
         verticalBorder,
+        hiddenColumnsIndicator,
         overrideCursor,
         isResizing,
         selection,
@@ -545,6 +546,21 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         overlayCtx.lineWidth = getHairlineWidth(enableLowDprHairline);
         overlayCtx.stroke();
         overlayCtx.lineWidth = previousLineWidth;
+
+        // Индикатор скрытых колонок рисуем последним, чтобы он перекрыл ячейки шапки,
+        // вертикальные линии и нижнюю границу.
+        if (hiddenColumnsIndicator !== undefined) {
+            drawHiddenColumnsIndicators(
+                overlayCtx,
+                effectiveCols,
+                mappedColumns.length,
+                translateX,
+                totalHeaderHeight,
+                groupHeaderHeight,
+                theme,
+                hiddenColumnsIndicator
+            );
+        }
 
         if (mustDrawHighlightRingsOnHeader) {
             drawHighlightRings(
@@ -1168,13 +1184,20 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     if (isResizing && resizeIndicator !== "none") {
         walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
             if (c.sourceIndex === resizeCol) {
-                drawColumnResizeOutline(
-                    overlayCtx,
-                    x + c.width,
-                    0,
-                    totalHeaderHeight + 1,
-                    blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
-                );
+                // Если на правой границе тянущейся колонки стоит индикатор скрытых колонок,
+                // линию ресайза в ШАПКЕ не рисуем, она перекрывала бы полосу. Полоса сама
+                // помечает эту границу; в теле линия (режим full) остаётся.
+                const boundaryHasIndicator =
+                    hiddenColumnsIndicator !== undefined && hiddenColumnsIndicator(c.sourceIndex + 1) > 0;
+                if (!boundaryHasIndicator) {
+                    drawColumnResizeOutline(
+                        overlayCtx,
+                        x + c.width,
+                        0,
+                        totalHeaderHeight + 1,
+                        blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
+                    );
+                }
                 if (resizeIndicator === "full") {
                     drawColumnResizeOutline(
                         targetCtx,

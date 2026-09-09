@@ -34,6 +34,11 @@ import {
 } from "./data-grid-render.walk.js";
 import { drawCheckbox } from "./draw-checkbox.js";
 import type { DragAndDropState, HoverInfo } from "./draw-grid-arg.js";
+import {
+    getHiddenIndicatorAnchor,
+    getHiddenIndicatorXBounds,
+    hiddenIndicatorDefaultColor,
+} from "../hidden-columns-indicator.js";
 
 export function drawGridHeaders(
     ctx: CanvasRenderingContext2D,
@@ -207,6 +212,76 @@ export function drawGridHeaders(
             enableLowDprHairline
         );
     }
+}
+
+/**
+ * Индикатор скрытых колонок: полосатая линия на границе между двумя видимыми
+ * колонками, за которой есть скрытые (одна полоска, сколько бы их ни было подряд).
+ * Рисуется ПОВЕРХ всей шапки (ячейки, вертикальные линии, нижняя граница), на всю
+ * её высоту, включая групп-уровни. Узор из диагональных штрихов цветом фона шапки
+ * поверх сплошной заливки, как лента, накрученная на столб.
+ */
+export function drawHiddenColumnsIndicators(
+    ctx: CanvasRenderingContext2D,
+    effectiveCols: readonly MappedGridColumn[],
+    totalColumns: number,
+    translateX: number,
+    totalHeaderHeight: number,
+    groupHeaderHeight: number | number[],
+    theme: FullTheme,
+    hiddenColumnsIndicator: (col: number) => number
+): void {
+    if (totalHeaderHeight <= 0) return;
+
+    const fillColor = theme.hiddenColumnsIndicatorColor ?? hiddenIndicatorDefaultColor;
+    // Полосу рисуем только в обычном (листовом) ряду шапки, не залезая на групповые
+    // ряды: фича относится только к колонкам, группы не скрываются. Верх полосы стоит
+    // под всеми групп-рядами (для несгруппированной шапки это 0, т.е. вся шапка).
+    const topY = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
+    const drawHeight = totalHeaderHeight - topY;
+    if (drawHeight <= 0) return;
+
+    const drawOne = (boundary: number, borderX: number, clipX: number) => {
+        if (hiddenColumnsIndicator(boundary) <= 0) return;
+        const anchor = getHiddenIndicatorAnchor(boundary, totalColumns);
+        const geometry = getHiddenIndicatorXBounds(borderX, anchor);
+        // Полосу рисуем целиком, пока колонка стоит на месте (по центру границы). Когда
+        // при скролле колонка уходит под закреплённые (borderX < clipX), обрезаем её
+        // левую часть по шву заморозки, чтобы она не наезжала на закреплённую зону.
+        const clipLeft = borderX < clipX ? clipX : 0;
+        const visibleX = Math.max(geometry.x, clipLeft);
+        const visibleWidth = geometry.x + geometry.width - visibleX;
+        if (visibleWidth <= 0) return;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(visibleX, topY, visibleWidth, drawHeight);
+        ctx.clip();
+
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(geometry.x, topY, geometry.width, drawHeight);
+
+        ctx.strokeStyle = theme.bgHeader;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Диагонали под 45 градусов, шаг подобран так, чтобы штрих и просвет чередовались.
+        const run = geometry.width + 2;
+        for (let y = topY - run; y < totalHeaderHeight + run; y += 7) {
+            ctx.moveTo(geometry.x - 1, y);
+            ctx.lineTo(geometry.x + geometry.width + 1, y + run);
+        }
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x, _y, clipX) => {
+        // Левая граница каждой видимой колонки; правый край таблицы отдельной границей
+        // totalColumns после последней колонки.
+        drawOne(c.sourceIndex, x, clipX);
+        if (c.sourceIndex === totalColumns - 1) {
+            drawOne(totalColumns, x + c.width, clipX);
+        }
+    });
 }
 
 /**

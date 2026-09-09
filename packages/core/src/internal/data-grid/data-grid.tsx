@@ -68,6 +68,7 @@ import {
     drawCell,
 } from "./render/data-grid-render.cells.js";
 import { getActionBoundsForGroup, drawHeader, computeHeaderLayout } from "./render/data-grid-render.header.js";
+import { getHiddenIndicatorAnchor, getHiddenIndicatorXBounds } from "./hidden-columns-indicator.js";
 
 export interface DataGridProps {
     readonly width: number;
@@ -89,6 +90,11 @@ export interface DataGridProps {
      * группы) сразу. Колонка перекрывает точечно своим `spanGroupHeader: true/false`.
      */
     readonly spanGroupHeader?: boolean;
+    /**
+     * Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col.
+     * col === columns.length означает «справа от последней». 0 или undefined значит, что индикатора нет.
+     */
+    readonly hiddenColumnsIndicator?: (col: number) => number;
     readonly freezeTrailingRows: number;
     readonly hasAppendRow: boolean;
     readonly firstColAccessible: boolean;
@@ -393,6 +399,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         freezeColumns,
         spanAlign,
         spanGroupHeader,
+        hiddenColumnsIndicator,
         onContextMenu,
         freezeTrailingRows,
         fixedShadowX = true,
@@ -678,6 +685,33 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             } else if (row <= -1) {
                 let bounds = getBoundsForItem(canvas, col, row);
                 assert(bounds !== undefined);
+
+                // Индикатор скрытых колонок: если курсор на полосе, кладём её границу в args
+                // (hiddenIndicatorCol) для подсказки и двойного клика. Ресайз перетаскиванием
+                // тут работает как обычно. Геометрию берём по колоночной ячейке шапки (ряд -1),
+                // а не по групп-ряду: у группы bounds шире, охватывает всю группу.
+                let hiddenIndicatorCol: number | undefined;
+                if (hiddenColumnsIndicator !== undefined) {
+                    const colHeaderBounds = row === -1 ? bounds : getBoundsForItem(canvas, col, -1);
+                    assert(colHeaderBounds !== undefined);
+                    const checkBoundary = (boundary: number, borderX: number) => {
+                        if (hiddenColumnsIndicator(boundary) <= 0) return undefined;
+                        // Полоса живёт только в обычном (листовом) ряду шапки, не на групп-рядах.
+                        // Зону попадания ограничиваем так же: над листовым рядом (в групповой
+                        // зоне) индикатор не ловим. posY отсчитывается от верха шапки.
+                        if (posY < totalGroupHeaderHeight) return undefined;
+                        const anchor = getHiddenIndicatorAnchor(boundary, mappedColumns.length);
+                        const geometry = getHiddenIndicatorXBounds(borderX, anchor);
+                        // Зона попадания не уже resize-зоны, чтобы в узкую полоску было легко попасть.
+                        const pad = Math.max(edgeDetectionBuffer - geometry.width / 2, 0);
+                        if (posX < geometry.x - pad || posX > geometry.x + geometry.width + pad) return undefined;
+                        return boundary;
+                    };
+                    hiddenIndicatorCol =
+                        checkBoundary(col, colHeaderBounds.x) ??
+                        checkBoundary(col + 1, colHeaderBounds.x + colHeaderBounds.width);
+                }
+
                 let isEdge = bounds !== undefined && bounds.x + bounds.width - posX <= edgeDetectionBuffer;
 
                 const previousCol = col - 1;
@@ -704,6 +738,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                         button,
                         buttons,
                         scrollEdge,
+                        hiddenIndicatorCol,
                     };
                 } else {
                     result = {
@@ -725,6 +760,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                         button,
                         buttons,
                         scrollEdge,
+                        hiddenIndicatorCol,
                     };
                 }
             } else {
@@ -803,7 +839,9 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             fillHandle,
             selection,
             totalHeaderHeight,
+            totalGroupHeaderHeight,
             spannedGroupRegions,
+            hiddenColumnsIndicator,
         ]
     );
 
@@ -895,6 +933,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             disabledRows: disabledRows ?? CompactSelection.empty(),
             rowHeight,
             verticalBorder,
+            hiddenColumnsIndicator,
             isResizing,
             resizeCol,
             isFocused,
@@ -969,6 +1008,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         disabledRows,
         rowHeight,
         verticalBorder,
+        hiddenColumnsIndicator,
         isResizing,
         hasAppendRow,
         resizeCol,
