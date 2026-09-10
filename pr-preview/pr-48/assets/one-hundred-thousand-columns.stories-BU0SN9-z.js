@@ -1,7 +1,0 @@
-import{R as e}from"./iframe-Kg9IYTCB.js";import{D as l}from"./data-editor-all-ChForpnd.js";import{B as m,D as i,u,d}from"./utils-MdlBzUIZ.js";import{S as p}from"./story-utils-Bj0_QPxs.js";import"./preload-helper-C1FmrZbK.js";import"./image-window-loader-BV1LwiaE.js";import"./throttle-CVbytFHq.js";import"./marked.esm-Ch6bmoxH.js";import"./flatten-D0FSpzD3.js";import"./scrolling-data-grid-ka5GD6Xa.js";import"./index-D_kXk1yT.js";import"./useResizeDetector-BZROPe21.js";const _={title:"Glide-Data-Grid/DataEditor Demos",decorators:[o=>e.createElement(p,null,e.createElement(m,{title:"One Hundred Thousand Columns",description:e.createElement(i,null,"Data grid supports way more columns than you will ever need. Also this is rendering 10 million cells but that's not important.")},e.createElement(o,null)))]},t=()=>{const{cols:o,getCellContent:a}=u(1e5);return e.createElement(l,{...d,getCellContent:a,columns:o,rows:1e3})};var r,n,s;t.parameters={...t.parameters,docs:{...(r=t.parameters)==null?void 0:r.docs,source:{originalSource:`() => {
-  const {
-    cols,
-    getCellContent
-  } = useMockDataGenerator(100_000);
-  return <DataEditor {...defaultProps} getCellContent={getCellContent} columns={cols} rows={1000} />;
-}`,...(s=(n=t.parameters)==null?void 0:n.docs)==null?void 0:s.source}}};const S=["OneHundredThousandCols"];export{t as OneHundredThousandCols,S as __namedExportsOrder,_ as default};
