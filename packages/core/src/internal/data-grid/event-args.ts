@@ -37,6 +37,8 @@ export interface GridMouseHeaderEventArgs extends BaseGridMouseEventArgs, Positi
     readonly group: string;
     /** Курсор над индикатором скрытых колонок: индекс колонки, на левой границе которой он нарисован. */
     readonly hiddenIndicatorCol?: number;
+    /** На сколько пикселей полоса индикатора выступает над листовым рядом: по нему потребитель ставит подсказку наверх полосы. */
+    readonly hiddenIndicatorAboveLeaf?: number;
 }
 
 /** @category Types */
@@ -49,6 +51,8 @@ export interface GridMouseGroupHeaderEventArgs extends BaseGridMouseEventArgs, P
     readonly group: string;
     /** Курсор над индикатором скрытых колонок: индекс колонки, на левой границе которой он нарисован. */
     readonly hiddenIndicatorCol?: number;
+    /** На сколько пикселей полоса индикатора выступает над листовым рядом: по нему потребитель ставит подсказку наверх полосы. */
+    readonly hiddenIndicatorAboveLeaf?: number;
 }
 
 /** @category Types */

@@ -239,41 +239,102 @@ describe("data-grid hidden-indicator hit-test", () => {
         );
     });
 
-    test("индикатор ловится только в листовом ряду шапки, не в групповой зоне", () => {
-        // Фича относится к колонкам, полоса не залезает на групп-ряды. Хит-тест зеркалит:
-        // в групповой зоне индикатор не ловим, в листовом ряду ловим.
+    const groupedCols = [
+        { title: "A", width: 150, group: "P" },
+        { title: "B", width: 160, group: "P" },
+        { title: "C", width: 170, group: "Q" },
+    ];
+
+    test("число (groupDepth 0): полоса на всю высоту, ловим и в групп-ряду, и в листовом", () => {
         const spy = vi.fn();
         render(
             <DataGrid
                 {...basicProps}
                 enableGroups={true}
                 groupHeaderHeight={30}
-                columns={[
-                    { title: "A", width: 150, group: "P" },
-                    { title: "B", width: 160, group: "P" },
-                    { title: "C", width: 170, group: "Q" },
-                ]}
+                columns={groupedCols}
                 hiddenColumnsIndicator={col => (col === 1 ? 1 : 0)}
                 onMouseDown={spy}
             />
         );
 
-        // Групповой ряд (y 0..30): индикатор НЕ ловим.
-        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), {
-            clientX: 150, // граница A|B
-            clientY: 15,
-        });
+        // Групповой ряд (y 0..30): ловим (полоса на всю высоту).
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 15 });
+        expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ hiddenIndicatorCol: 1 }));
+
+        // Листовой ряд (y >= 30): тоже ловим.
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 45 });
+        expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "header", hiddenIndicatorCol: 1 }));
+    });
+
+    test("groupDepth пропускает верхние групп-ряды: ловим только в листовом", () => {
+        const spy = vi.fn();
+        render(
+            <DataGrid
+                {...basicProps}
+                enableGroups={true}
+                groupHeaderHeight={30}
+                columns={groupedCols}
+                // groupDepth 1: пропустить 1 групп-ряд, полоса только в листовом ряду.
+                hiddenColumnsIndicator={col => (col === 1 ? { count: 1, groupDepth: 1 } : 0)}
+                onMouseDown={spy}
+            />
+        );
+
+        // Групповой ряд (y 0..30): НЕ ловим.
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 15 });
         expect(spy.mock.calls[0][0].hiddenIndicatorCol).toBeUndefined();
 
-        // Листовой ряд (y >= 30, шапка колонок 36px): индикатор ловим.
-        spy.mockClear();
-        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), {
-            clientX: 150,
-            clientY: 45,
-        });
-        expect(spy).toHaveBeenCalledWith(
-            expect.objectContaining({ kind: "header", hiddenIndicatorCol: 1 })
+        // Листовой ряд (y >= 30): ловим.
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 45 });
+        expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "header", hiddenIndicatorCol: 1 }));
+    });
+
+    test("большая полоса даёт грань ресайза левой колонки в групп-ряду", () => {
+        const spy = vi.fn();
+        render(
+            <DataGrid
+                {...basicProps}
+                enableGroups={true}
+                groupHeaderHeight={30}
+                columns={groupedCols}
+                hiddenColumnsIndicator={col => (col === 1 ? 1 : 0)}
+                onMouseDown={spy}
+            />
         );
+
+        // Групп-ряд (y 0..30) на границе A|B (x 150): в групп-ряду ресайза обычно нет,
+        // но большая полоса отдаёт грань ресайза левой колонки.
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 15 });
+        expect(spy).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                kind: "header",
+                location: [0, -1],
+                isEdge: true,
+                hiddenIndicatorCol: 1,
+            })
+        );
+    });
+
+    test("маленькая полоса грань ресайза в групп-ряду не даёт", () => {
+        const spy = vi.fn();
+        render(
+            <DataGrid
+                {...basicProps}
+                enableGroups={true}
+                groupHeaderHeight={30}
+                columns={groupedCols}
+                // groupDepth 1: полоса только в листовом ряду, в групп-ряду её нет.
+                hiddenColumnsIndicator={col => (col === 1 ? { count: 1, groupDepth: 1 } : 0)}
+                onMouseDown={spy}
+            />
+        );
+
+        // Групп-ряд: полосы тут нет, поэтому обычный групповой хит без грани ресайза.
+        fireEvent.pointerDown(screen.getByTestId(dataGridCanvasId), { clientX: 150, clientY: 15 });
+        const args = spy.mock.calls[0][0];
+        expect(args.hiddenIndicatorCol).toBeUndefined();
+        expect(args.kind).toBe("group-header");
     });
 
     test("клик по ячейке тела на той же вертикали индикатор не задевает", () => {

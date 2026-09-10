@@ -3,6 +3,7 @@ import type { RenderStateProvider } from "../../../common/render-state-provider.
 import type { FullTheme } from "../../../common/styles.js";
 import type { HoverValues } from "../animation-manager.js";
 import type { MappedGridColumn } from "./data-grid-lib.js";
+import type { HiddenColumnsIndicatorInfo } from "../hidden-columns-indicator.js";
 import type { BlitData } from "./data-grid-render.blit.js";
 import type { SpriteManager } from "../data-grid-sprites.js";
 import type {
@@ -50,7 +51,7 @@ export interface DrawGridArg {
     readonly rowHeight: number | ((index: number) => number);
     readonly verticalBorder: (col: number) => boolean;
     /** Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col. */
-    readonly hiddenColumnsIndicator?: (col: number) => number;
+    readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     readonly isResizing: boolean;
     readonly resizeCol: number | undefined;
     readonly isFocused: boolean;
