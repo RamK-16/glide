@@ -183,6 +183,41 @@ export function clipHeaderDamage(
     ctx.clip();
 }
 
+// Часть линии ресайза, что идёт по шапке (канва шапки). Вынесена, чтобы рисовать её и в
+// полном проходе, и при частичной перерисовке шапки: там ранний выход не доходит до
+// блока ресайза, поэтому перерисованный фон шапки затирает левую половину линии и она
+// худеет.
+function drawResizeHeaderOutline(
+    overlayCtx: CanvasRenderingContext2D,
+    effectiveCols: readonly MappedGridColumn[],
+    translateX: number,
+    totalHeaderHeight: number,
+    resizeCol: number | undefined,
+    hiddenColumnsIndicator: DrawGridArg["hiddenColumnsIndicator"],
+    theme: DrawGridArg["theme"]
+) {
+    walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+        if (c.sourceIndex === resizeCol) {
+            // Если на правой границе тянущейся колонки стоит индикатор скрытых колонок,
+            // линию ресайза в ШАПКЕ не рисуем, она перекрывала бы полосу.
+            const boundaryHasIndicator =
+                hiddenColumnsIndicator !== undefined &&
+                normalizeHiddenIndicator(hiddenColumnsIndicator(c.sourceIndex + 1)).count > 0;
+            if (!boundaryHasIndicator) {
+                drawColumnResizeOutline(
+                    overlayCtx,
+                    x + c.width,
+                    0,
+                    totalHeaderHeight + 1,
+                    blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
+                );
+            }
+            return true;
+        }
+        return false;
+    });
+}
+
 // Экспортируется для юнит-тестов damage-регионов (plain/colspan/rowspan).
 export function getDamageDrawRegions(
     effectiveColumns: readonly MappedGridColumn[],
@@ -936,6 +971,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
             const doHeaders = damage.hasHeader();
             if (doHeaders) {
+                // Отсечение по области перерисовки оборачиваем в свою пару save/restore:
+                // после перерисовки фона шапки снимаем его и дорисовываем линию ресайза уже
+                // без отсечения.
+                overlayCtx.save();
                 clipHeaderDamage(
                     overlayCtx,
                     effectiveCols,
@@ -950,6 +989,23 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     getGroupDetails
                 );
                 drawHeaderTexture();
+                overlayCtx.restore();
+
+                // Во время ресайза частичная перерисовка обновляет фон шапки, но линия
+                // ресайза рисуется только в полном проходе, поэтому фон затирал её левую
+                // половину. Дорисовываем линию шапки и здесь (отсечение уже снято, масштаб
+                // dpr на месте).
+                if (isResizing && resizeIndicator !== "none") {
+                    drawResizeHeaderOutline(
+                        overlayCtx,
+                        effectiveCols,
+                        translateX,
+                        totalHeaderHeight,
+                        resizeCol,
+                        hiddenColumnsIndicator,
+                        theme
+                    );
+                }
             }
         }
 
@@ -1183,24 +1239,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     focusRedraw?.();
 
     if (isResizing && resizeIndicator !== "none") {
-        walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
-            if (c.sourceIndex === resizeCol) {
-                // Если на правой границе тянущейся колонки стоит индикатор скрытых колонок,
-                // линию ресайза в ШАПКЕ не рисуем, она перекрывала бы полосу. Полоса сама
-                // помечает эту границу; в теле линия (режим full) остаётся.
-                const boundaryHasIndicator =
-                    hiddenColumnsIndicator !== undefined &&
-                    normalizeHiddenIndicator(hiddenColumnsIndicator(c.sourceIndex + 1)).count > 0;
-                if (!boundaryHasIndicator) {
-                    drawColumnResizeOutline(
-                        overlayCtx,
-                        x + c.width,
-                        0,
-                        totalHeaderHeight + 1,
-                        blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
-                    );
-                }
-                if (resizeIndicator === "full") {
+        // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),
+        // а по телу (режим full) на основной канве.
+        drawResizeHeaderOutline(overlayCtx, effectiveCols, translateX, totalHeaderHeight, resizeCol, hiddenColumnsIndicator, theme);
+        if (resizeIndicator === "full") {
+            walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+                if (c.sourceIndex === resizeCol) {
                     drawColumnResizeOutline(
                         targetCtx,
                         x + c.width,
@@ -1208,11 +1252,11 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                         height,
                         blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
                     );
+                    return true;
                 }
-                return true;
-            }
-            return false;
-        });
+                return false;
+            });
+        }
     }
 
     if (mainCtx !== null) {
