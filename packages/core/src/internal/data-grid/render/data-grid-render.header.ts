@@ -181,10 +181,16 @@ export function drawGridHeaders(
         // в нижней полосе граница красится ДВАЖДЫ, и т.к. borderColor полупрозрачный
         // (alpha 0.16), нижняя половина разделителя выходит заметно жирнее верхней.
         // Обе линии гейтятся одним verticalBorder(sourceIndex) — поведение консистентно.
-        if (spanFull && x !== 0 && verticalBorder(c.sourceIndex)) {
+        // Границу прижимаем к шву заморозки (clipX): если колонка уехала под
+        // закреплённые при горизонтальном скролле, рисуем линию на шве, а не на её x
+        // под закреплёнными. Иначе граница либо просвечивает сквозь закреплённую
+        // колонку в групп-полосе, либо шов остаётся без границы. Для frozen-колонок
+        // clipX === 0, их границы рисуются как раньше.
+        const borderX = Math.max(x, clipX);
+        if (spanFull && borderX !== 0 && verticalBorder(c.sourceIndex)) {
             ctx.beginPath();
-            ctx.moveTo(x + 0.5, 0);
-            ctx.lineTo(x + 0.5, totalGroupHeaderHeight);
+            ctx.moveTo(borderX + 0.5, 0);
+            ctx.lineTo(borderX + 0.5, totalGroupHeaderHeight);
             ctx.strokeStyle = outerTheme.borderColor;
             const previousLineWidth = ctx.lineWidth;
             ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
