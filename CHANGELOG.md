@@ -1,3 +1,15 @@
+# [6.4.0](https://github.com/RamK-16/glide/compare/v6.3.0...v6.4.0) (2026-09-10)
+
+
+### Bug Fixes
+
+* **data-grid:** граница сквош-колонки не просвечивает под закреплёнными при скролле ([9daf540](https://github.com/RamK-16/glide/commit/9daf540d42d227e49c785de62fde92a3e59d5e7f))
+
+
+### Features
+
+* **data-grid:** переменная высота полосы индикатора скрытых колонок ([44571b8](https://github.com/RamK-16/glide/commit/44571b863456f17d6d4c522f1f4fd2e0ec4d0ee0))
+
 # [6.3.0](https://github.com/RamK-16/glide/compare/v6.2.0...v6.3.0) (2026-09-09)
 
 
