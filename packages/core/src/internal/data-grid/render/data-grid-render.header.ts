@@ -36,8 +36,11 @@ import { drawCheckbox } from "./draw-checkbox.js";
 import type { DragAndDropState, HoverInfo } from "./draw-grid-arg.js";
 import {
     getHiddenIndicatorAnchor,
+    getHiddenIndicatorTopY,
     getHiddenIndicatorXBounds,
     hiddenIndicatorDefaultColor,
+    normalizeHiddenIndicator,
+    type HiddenColumnsIndicatorInfo,
 } from "../hidden-columns-indicator.js";
 
 export function drawGridHeaders(
@@ -229,20 +232,22 @@ export function drawHiddenColumnsIndicators(
     totalHeaderHeight: number,
     groupHeaderHeight: number | number[],
     theme: FullTheme,
-    hiddenColumnsIndicator: (col: number) => number
+    hiddenColumnsIndicator: (col: number) => number | HiddenColumnsIndicatorInfo
 ): void {
     if (totalHeaderHeight <= 0) return;
 
     const fillColor = theme.hiddenColumnsIndicatorColor ?? hiddenIndicatorDefaultColor;
-    // Полосу рисуем только в обычном (листовом) ряду шапки, не залезая на групповые
-    // ряды: фича относится только к колонкам, группы не скрываются. Верх полосы стоит
-    // под всеми групп-рядами (для несгруппированной шапки это 0, т.е. вся шапка).
-    const topY = getTotalGroupHeaderHeight(groupHeaderHeight, effectiveCols);
-    const drawHeight = totalHeaderHeight - topY;
-    if (drawHeight <= 0) return;
+    const groupLevels = getGroupLevels(effectiveCols);
 
     const drawOne = (boundary: number, borderX: number, clipX: number) => {
-        if (hiddenColumnsIndicator(boundary) <= 0) return;
+        const info = normalizeHiddenIndicator(hiddenColumnsIndicator(boundary));
+        if (info.count <= 0) return;
+        // Верх полосы: потребитель говорит, сколько верхних групп-рядов пропустить
+        // (groupDepth). Скрыт лист внутри группы → пропускаем все групп-ряды (полоса в
+        // листовом ряду); большая колонка, разрывающая группы → 0 (на всю высоту).
+        const topY = getHiddenIndicatorTopY(info.groupDepth, groupHeaderHeight, groupLevels);
+        const drawHeight = totalHeaderHeight - topY;
+        if (drawHeight <= 0) return;
         const anchor = getHiddenIndicatorAnchor(boundary, totalColumns);
         const geometry = getHiddenIndicatorXBounds(borderX, anchor);
         // Полосу рисуем целиком, пока колонка стоит на месте (по центру границы). Когда

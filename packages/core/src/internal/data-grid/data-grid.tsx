@@ -68,7 +68,13 @@ import {
     drawCell,
 } from "./render/data-grid-render.cells.js";
 import { getActionBoundsForGroup, drawHeader, computeHeaderLayout } from "./render/data-grid-render.header.js";
-import { getHiddenIndicatorAnchor, getHiddenIndicatorXBounds } from "./hidden-columns-indicator.js";
+import {
+    getHiddenIndicatorAnchor,
+    getHiddenIndicatorTopY,
+    getHiddenIndicatorXBounds,
+    normalizeHiddenIndicator,
+    type HiddenColumnsIndicatorInfo,
+} from "./hidden-columns-indicator.js";
 
 export interface DataGridProps {
     readonly width: number;
@@ -94,7 +100,7 @@ export interface DataGridProps {
      * Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col.
      * col === columns.length означает «справа от последней». 0 или undefined значит, что индикатора нет.
      */
-    readonly hiddenColumnsIndicator?: (col: number) => number;
+    readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     readonly freezeTrailingRows: number;
     readonly hasAppendRow: boolean;
     readonly firstColAccessible: boolean;
@@ -691,25 +697,35 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 // тут работает как обычно. Геометрию берём по колоночной ячейке шапки (ряд -1),
                 // а не по групп-ряду: у группы bounds шире, охватывает всю группу.
                 let hiddenIndicatorCol: number | undefined;
+                let hiddenIndicatorAboveLeaf: number | undefined;
                 if (hiddenColumnsIndicator !== undefined) {
                     const colHeaderBounds = row === -1 ? bounds : getBoundsForItem(canvas, col, -1);
                     assert(colHeaderBounds !== undefined);
+                    const groupLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
                     const checkBoundary = (boundary: number, borderX: number) => {
-                        if (hiddenColumnsIndicator(boundary) <= 0) return undefined;
-                        // Полоса живёт только в обычном (листовом) ряду шапки, не на групп-рядах.
-                        // Зону попадания ограничиваем так же: над листовым рядом (в групповой
-                        // зоне) индикатор не ловим. posY отсчитывается от верха шапки.
-                        if (posY < totalGroupHeaderHeight) return undefined;
+                        const info = normalizeHiddenIndicator(hiddenColumnsIndicator(boundary));
+                        if (info.count <= 0) return undefined;
+                        // Верх полосы по groupDepth (сколько верхних групп-рядов пропустить).
+                        // Зона попадания совпадает с полосой: выше её (в пропущенных групп-рядах)
+                        // индикатор не ловим. posY отсчитывается от верха шапки.
+                        const topY = getHiddenIndicatorTopY(info.groupDepth, groupHeaderHeight, groupLevels);
+                        if (posY < topY) return undefined;
                         const anchor = getHiddenIndicatorAnchor(boundary, mappedColumns.length);
                         const geometry = getHiddenIndicatorXBounds(borderX, anchor);
-                        // Зона попадания не уже resize-зоны, чтобы в узкую полоску было легко попасть.
+                        // Зона попадания не уже зоны ресайза, чтобы в узкую полоску было легко попасть.
                         const pad = Math.max(edgeDetectionBuffer - geometry.width / 2, 0);
                         if (posX < geometry.x - pad || posX > geometry.x + geometry.width + pad) return undefined;
-                        return boundary;
+                        return { boundary, topY };
                     };
-                    hiddenIndicatorCol =
+                    const hit =
                         checkBoundary(col, colHeaderBounds.x) ??
                         checkBoundary(col + 1, colHeaderBounds.x + colHeaderBounds.width);
+                    if (hit !== undefined) {
+                        hiddenIndicatorCol = hit.boundary;
+                        // На сколько полоса выступает над листовым рядом (по нему потребитель
+                        // ставит подсказку на верх полосы). Ноль значит полоса только в листовом ряду.
+                        hiddenIndicatorAboveLeaf = Math.max(0, totalGroupHeaderHeight - hit.topY);
+                    }
                 }
 
                 let isEdge = bounds !== undefined && bounds.x + bounds.width - posX <= edgeDetectionBuffer;
@@ -739,6 +755,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                         buttons,
                         scrollEdge,
                         hiddenIndicatorCol,
+                        hiddenIndicatorAboveLeaf,
                     };
                 } else {
                     result = {
@@ -761,7 +778,39 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                         buttons,
                         scrollEdge,
                         hiddenIndicatorCol,
+                        hiddenIndicatorAboveLeaf,
                     };
+                }
+
+                // Высокую полосу можно тянуть за ресайз по всей высоте. В групп-рядах
+                // (row меньше или равно -2) ресайз обычно не работает, он есть только у
+                // листового ряда. Поэтому если курсор на полосе, отдаём грань колонки слева
+                // от неё (её правый край и есть полоса), как будто курсор в листовом ряду
+                // (-1). Двойной клик по полосе по-прежнему раскрывает промежуток, а одиночное
+                // перетаскивание меняет ширину этой левой колонки.
+                if (hiddenIndicatorCol !== undefined && row <= -2 && hiddenIndicatorCol - 1 >= 0) {
+                    const resizeTargetCol = hiddenIndicatorCol - 1;
+                    const resizeBounds = getBoundsForItem(canvas, resizeTargetCol, -1);
+                    if (resizeBounds !== undefined) {
+                        result = {
+                            kind: headerKind,
+                            location: [resizeTargetCol, -1] as any,
+                            bounds: resizeBounds,
+                            group: "",
+                            isEdge: true,
+                            shiftKey,
+                            ctrlKey,
+                            metaKey,
+                            isTouch,
+                            localEventX: posX - resizeBounds.x,
+                            localEventY: posY - resizeBounds.y,
+                            button,
+                            buttons,
+                            scrollEdge,
+                            hiddenIndicatorCol,
+                            hiddenIndicatorAboveLeaf,
+                        };
+                    }
                 }
             } else {
                 // Объединённая ячейка тела (colspan/rowspan/прямоугольник): попадание в любую

@@ -124,8 +124,7 @@ describe("data-editor hidden-indicator", () => {
         expect(resizeSpy).toHaveBeenCalledWith(expect.objectContaining({ title: "A" }), 200, 0, 200);
     });
 
-    test("сгруппированная шапка: раскрытие двойным кликом только в листовом ряду", () => {
-        // Полоса живёт только в листовом ряду шапки (не на групп-ряду), хит-тест зеркалит.
+    test("сгруппированная шапка, число = полная высота: двойной клик в групп-ряду раскрывает", () => {
         const spy = vi.fn();
         vi.useFakeTimers();
         render(
@@ -139,7 +138,28 @@ describe("data-editor hidden-indicator", () => {
         prep(false);
         const canvas = screen.getByTestId("data-grid-canvas");
 
-        // Групповой ряд (y<32) на границе A|B=150: по индикатору не реагируем.
+        // Число (полная высота): двойной клик в групп-ряду (y<32) раскрывает промежуток.
+        clickAt(canvas, 150, 16);
+        clickAt(canvas, 150, 16);
+        expect(spy).toHaveBeenCalledWith(1, expect.objectContaining({ isDoubleClick: true }));
+    });
+
+    test("сгруппированная шапка, groupDepth: полоса в листовом ряду, в групп-ряду не реагируем", () => {
+        const spy = vi.fn();
+        vi.useFakeTimers();
+        render(
+            <EventedDataEditor
+                {...basicProps}
+                columns={basicProps.columns.map(c => ({ ...c, group: "G" }))}
+                hiddenColumnsIndicator={(col: number) => (col === 1 ? { count: 2, groupDepth: 1 } : 0)}
+                onHiddenColumnsIndicatorClicked={spy}
+            />,
+            { wrapper: Context }
+        );
+        prep(false);
+        const canvas = screen.getByTestId("data-grid-canvas");
+
+        // Групповой ряд (y<32): по индикатору не реагируем.
         clickAt(canvas, 150, 16);
         clickAt(canvas, 150, 16);
         expect(spy).not.toHaveBeenCalled();

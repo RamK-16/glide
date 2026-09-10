@@ -45,6 +45,7 @@ import {
     mergeAndRealizeTheme,
 } from "../common/styles.js";
 import type { DataGridRef } from "../internal/data-grid/data-grid.js";
+import type { HiddenColumnsIndicatorInfo } from "../internal/data-grid/hidden-columns-indicator.js";
 import { getScrollBarWidth, useEventListener, whenDefined } from "../common/utils.js";
 import {
     isGroupEqual,
@@ -264,10 +265,12 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
      * col === columns.length означает «справа от последней». 0 или undefined значит,
      * что индикатора нет. Полоска одна независимо от числа скрытых. Ресайз на этой границе работает
      * как обычно, а двойной клик вместо автосайза зовёт onHiddenColumnsIndicatorClicked.
-     * Полоса рисуется только в обычном (листовом) ряду шапки, не залезая на групп-ряды.
+     * Можно вернуть { count, groupDepth }, где groupDepth задаёт, сколько верхних
+     * групп-рядов пропустить (высота полосы под сгруппированную шапку). Просто число
+     * означает полосу на всю высоту.
      * @group Style
      */
-    readonly hiddenColumnsIndicator?: (col: number) => number;
+    readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     /**
      * Двойной клик по индикатору скрытых колонок раскрывает промежуток.
      * @group Events

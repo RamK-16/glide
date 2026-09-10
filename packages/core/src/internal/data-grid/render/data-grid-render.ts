@@ -23,6 +23,7 @@ import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
 
 export function getDamageRepairPad(enableLowDprHairline: boolean): number {
     // repairPad привязан к фактической hairline-ширине: damage clip приходит в точных bounds ячейки,
@@ -1188,7 +1189,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 // линию ресайза в ШАПКЕ не рисуем, она перекрывала бы полосу. Полоса сама
                 // помечает эту границу; в теле линия (режим full) остаётся.
                 const boundaryHasIndicator =
-                    hiddenColumnsIndicator !== undefined && hiddenColumnsIndicator(c.sourceIndex + 1) > 0;
+                    hiddenColumnsIndicator !== undefined &&
+                    normalizeHiddenIndicator(hiddenColumnsIndicator(c.sourceIndex + 1)).count > 0;
                 if (!boundaryHasIndicator) {
                     drawColumnResizeOutline(
                         overlayCtx,
