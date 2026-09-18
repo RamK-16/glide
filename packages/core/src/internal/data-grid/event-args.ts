@@ -25,6 +25,14 @@ export interface GridMouseCellEventArgs extends BaseGridMouseEventArgs, Position
     readonly location: Item;
     readonly bounds: Rectangle;
     readonly isFillHandle: boolean;
+    /**
+     * Физическая ячейка под курсором ДО нормализации к origin слитого блока.
+     * location у блока всегда указывает на origin (клик, выделение и
+     * редактирование работают по блоку целиком), а rawLocation хранит реальную
+     * строку и колонку под мышью, это нужно построчным hover-эффектам.
+     * Вне слитых блоков совпадает с location.
+     */
+    readonly rawLocation?: Item;
 }
 
 /** @category Types */
@@ -164,10 +172,18 @@ export function mouseEventArgsAreEqual(args: GridMouseEventArgs | undefined, oth
         );
     }
 
+    // rawLocation различает физические ячейки внутри слитого блока: location у всего
+    // блока один (origin), и без этого сравнения движение мыши внутри блока не
+    // считалось бы сменой ховера (построчный hover-эффект замирал бы на старой строке).
+    const argsRaw = args?.kind === "cell" ? args.rawLocation : undefined;
+    const otherRaw = other?.kind === "cell" ? other.rawLocation : undefined;
+
     return (
         args?.kind === other?.kind &&
         args?.location[0] === other?.location[0] &&
         args?.location[1] === other?.location[1] &&
+        argsRaw?.[0] === otherRaw?.[0] &&
+        argsRaw?.[1] === otherRaw?.[1] &&
         getHiddenIndicatorCol(args) === getHiddenIndicatorCol(other)
     );
 }

@@ -565,7 +565,30 @@ export function drawCells(
                             fill = blend(theme.bgHeader, fill);
                         }
                         for (let i = 0; i < accentCount; i++) {
-                            fill = blend(theme.accentLight, fill);
+                            if (drawingSpan && spanGeom !== undefined) {
+                                // Слитый блок: accent полного выделения кладём полосой ПОВЕРХ
+                                // строковых полос (hover и checkbox из getRowThemeOverride), а не
+                                // blend в базовую заливку. Порядок как у обычных ячеек: hover
+                                // внизу, выделение сверху. Иначе транзиентная hover-полоса
+                                // светлила выделенный блок (и мигала на гонке кадров).
+                                const strip = spanPartialFillRect(
+                                    {
+                                        c0: spanGeom.cols[0],
+                                        c1: spanGeom.cols[1],
+                                        r0: spanGeom.rows[0],
+                                        r1: spanGeom.rows[1],
+                                        full: true,
+                                    },
+                                    spanGeom,
+                                    theme.accentLight
+                                );
+                                if (strip !== null) {
+                                    if (spanPartialFills === undefined) spanPartialFills = [];
+                                    spanPartialFills.push(strip);
+                                }
+                            } else {
+                                fill = blend(theme.accentLight, fill);
+                            }
                         }
                     } else if (prelightCells !== undefined) {
                         for (const pre of prelightCells) {
@@ -592,18 +615,15 @@ export function drawCells(
                         }
                     }
 
-                    // Слитый блок: fill-регион красит только своё пересечение с блоком;
-                    // полный охват идёт обычным blend всей заливки.
+                    // Слитый блок: highlight-регион красит своё пересечение с блоком полосой.
+                    // Полный охват - тоже полосой (поверх строковых полос hover/checkbox),
+                    // чтобы порядок слоёв совпадал с обычными ячейками: выделение сверху.
                     if (highlightRegions !== undefined && spanGeom !== undefined) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
                             const hit = intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows);
                             if (hit === null) continue;
-                            if (hit.full) {
-                                fill = blend(region.color, fill);
-                                continue;
-                            }
                             const strip = spanPartialFillRect(hit, spanGeom, region.color);
                             if (strip !== null) {
                                 if (spanPartialFills === undefined) spanPartialFills = [];

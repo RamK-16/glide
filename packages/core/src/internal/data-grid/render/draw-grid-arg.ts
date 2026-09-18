@@ -16,6 +16,7 @@ import type {
     CellList,
     DrawCellCallback,
     FillHandle,
+    CellBorderResolver,
 } from "../data-grid-types.js";
 import type { CellSet } from "../cell-set.js";
 import type { EnqueueCallback } from "../use-animation-queue.js";
@@ -50,6 +51,10 @@ export interface DrawGridArg {
     readonly disabledRows: CompactSelection;
     readonly rowHeight: number | ((index: number) => number);
     readonly verticalBorder: (col: number) => boolean;
+    /** Рисовать ли горизонтальную линию сверху строки row. Если не задано, линия рисуется. */
+    readonly horizontalBorder?: (row: number) => boolean;
+    /** Рамки отдельных ячеек. Если не задано, линии рисуются сплошными без разбивки по ячейкам. */
+    readonly getCellBorder?: CellBorderResolver;
     /** Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col. */
     readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     readonly isResizing: boolean;

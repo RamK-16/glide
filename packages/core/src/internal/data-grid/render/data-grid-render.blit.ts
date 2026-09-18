@@ -244,6 +244,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.isFocused !== last.isFocused ||
         current.isResizing !== last.isResizing ||
         current.verticalBorder !== last.verticalBorder ||
+        current.horizontalBorder !== last.horizontalBorder ||
+        current.getCellBorder !== last.getCellBorder ||
         current.hiddenColumnsIndicator !== last.hiddenColumnsIndicator ||
         current.getCellContent !== last.getCellContent ||
         current.highlightRegions !== last.highlightRegions ||

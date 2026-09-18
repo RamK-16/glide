@@ -37,6 +37,38 @@ export type BooleanEmpty = null;
 /** @category Types */
 export type BooleanIndeterminate = undefined;
 
+/**
+ * Настройка одной стороны рамки ячейки: false значит линию не рисовать, true
+ * значит рисовать цветом темы, объект значит рисовать заданным цветом.
+ * undefined значит сторона не переопределена и действует поведение по умолчанию
+ * (verticalBorder, horizontalBorder или тема).
+ * @category Types
+ */
+export type BorderSideSpec = boolean | { color?: string };
+
+/**
+ * Настройка рамок отдельной ячейки. Любая из сторон необязательна; заданная
+ * сторона перекрывает настройки колонки, строки и тему. Правая сторона ячейки
+ * и левая сторона её правого соседа это одна и та же физическая линия: при
+ * конфликте приоритет у явно заданной стороны, а если заданы обе, побеждает
+ * правая (для вертикали) или нижняя (для горизонтали).
+ * @category Types
+ */
+export interface CellBorders {
+    top?: BorderSideSpec;
+    right?: BorderSideSpec;
+    bottom?: BorderSideSpec;
+    left?: BorderSideSpec;
+}
+
+/**
+ * Функция рамок ячейки. Вызывается для видимых ячеек тела при отрисовке линий
+ * сетки. Если вернула undefined, у ячейки нет переопределений и работает
+ * обычная отрисовка.
+ * @category Types
+ */
+export type CellBorderResolver = (col: number, row: number) => CellBorders | undefined;
+
 /** @category Types */
 export type DrawHeaderCallback = (
     args: {

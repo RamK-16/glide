@@ -455,6 +455,8 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             translateY={p.translateY}
             resizeIndicator={p.resizeIndicator}
             verticalBorder={p.verticalBorder}
+            horizontalBorder={p.horizontalBorder}
+            getCellBorder={p.getCellBorder}
             width={p.width}
             getCellContent={getMangledCellContent}
             isResizing={resizeCol !== undefined}

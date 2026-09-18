@@ -1,8 +1,10 @@
-import "vitest-canvas-mock";
 import { vi } from "vitest";
 
-// this is needed to make the canvas mock work for some reason
+// jest-canvas-mock (внутри vitest-canvas-mock) обращается к global.jest при
+// загрузке, поэтому ставим его ДО импорта canvas-mock. Импорт динамический:
+// обычный import поднялся бы наверх и сработал раньше этой строки.
 global.jest = vi;
+await import("vitest-canvas-mock");
 
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
     observe: jest.fn(),

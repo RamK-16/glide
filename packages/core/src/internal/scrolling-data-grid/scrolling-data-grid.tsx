@@ -317,6 +317,8 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
                 translateY={p.translateY}
                 onColumnProposeMove={p.onColumnProposeMove}
                 verticalBorder={p.verticalBorder}
+                horizontalBorder={p.horizontalBorder}
+                getCellBorder={p.getCellBorder}
                 drawFocusRing={p.drawFocusRing}
                 drawHeader={p.drawHeader}
                 drawGroupHeader={p.drawGroupHeader}

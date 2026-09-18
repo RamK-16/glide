@@ -1,6 +1,11 @@
 /* eslint-disable sonarjs/no-duplicate-string */
 /* eslint-disable unicorn/no-for-loop */
-import { type Rectangle, CompactSelection } from "../data-grid-types.js";
+import {
+    type Rectangle,
+    CompactSelection,
+    type CellBorderResolver,
+    type BorderSideSpec,
+} from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
 import groupBy from "lodash/groupBy.js";
 import { getStickyWidth, type MappedGridColumn, getFreezeTrailingHeight } from "./data-grid-lib.js";
@@ -284,6 +289,37 @@ export function drawExtraRowThemes(
     ctx.beginPath();
 }
 
+interface ResolvedBorder {
+    visible: boolean;
+    color: string;
+}
+
+// Решает, рисовать ли одну сторону рамки и каким цветом. Если сторона не задана
+// (undefined), берётся значение по умолчанию (от колонки, строки или темы).
+function resolveBorderSide(
+    spec: BorderSideSpec | undefined,
+    defaultVisible: boolean,
+    defaultColor: string
+): ResolvedBorder {
+    if (spec === undefined) return { visible: defaultVisible, color: defaultColor };
+    if (spec === false) return { visible: false, color: defaultColor };
+    if (spec === true) return { visible: true, color: defaultColor };
+    return { visible: true, color: spec.color ?? defaultColor };
+}
+
+// Одну и ту же линию делят две соседние ячейки. Побеждает настройка «ранней»
+// ячейки: для вертикальной линии это правая сторона левой ячейки, для
+// горизонтальной нижняя сторона верхней ячейки.
+function pickBorderSide(early: BorderSideSpec | undefined, late: BorderSideSpec | undefined) {
+    return early !== undefined ? early : late;
+}
+
+// Рисует линии сетки. Считает только видимую область (сколько колонок и строк
+// сейчас на экране), поэтому от общего размера таблицы скорость не зависит.
+// Работает в двух режимах:
+//   быстрый, когда getCellBorder не задан: сплошные линии, как в обычном glide;
+//   поклеточный, когда getCellBorder задан: линия дробится по ячейкам, у каждой
+//   можно включить или выключить свою сторону.
 // lines are effectively drawn on the top left edge of a cell.
 export function drawGridLines(
     ctx: CanvasRenderingContext2D,
@@ -304,7 +340,9 @@ export function drawGridLines(
     rows: number,
     theme: FullTheme,
     verticalOnly: boolean = false,
-    enableLowDprHairline: boolean = false
+    enableLowDprHairline: boolean = false,
+    horizontalBorder?: (row: number) => boolean,
+    getCellBorder?: CellBorderResolver
 ) {
     const previousLineWidth = ctx.lineWidth;
 
@@ -312,6 +350,8 @@ export function drawGridLines(
     // Low-DPR hairline делает их стабильными при zoom ниже 100%, не меняя геометрию самих ячеек.
     ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
+    // Объединённые ячейки (spans): вырезаем их нутро из области рисования, чтобы
+    // линии не попадали внутрь слитого блока. Остаётся только его внешний контур.
     if (spans !== undefined) {
         ctx.beginPath();
         ctx.save();
@@ -326,28 +366,18 @@ export function drawGridLines(
 
     const { minX, maxX, minY, maxY } = getMinMaxXY(drawRegions, width, height);
 
+    // Сюда складываем все отрезки линий, которые надо нарисовать в этом кадре.
+    // Рисуем их не по одному, а в самом конце: группируем по цвету и на каждый
+    // цвет делаем один общий проход кистью (см. groupBy внизу) - так быстрее и
+    // стыки не двоятся.
     const toDraw: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
 
     ctx.beginPath();
 
-    // vertical lines
-    let x = 0.5;
-    for (let index = 0; index < effectiveCols.length; index++) {
-        const c = effectiveCols[index];
-        if (c.width === 0) continue;
-        x += c.width;
-        const tx = c.sticky ? x : x + translateX;
-        if (tx >= minX && tx <= maxX && verticalBorder(index + 1)) {
-            toDraw.push({
-                x1: tx,
-                y1: Math.max(getTotalGroupHeaderHeight(groupHeaderHeight), minY),
-                x2: tx,
-                y2: Math.min(height, maxY),
-                color: vColor,
-            });
-        }
-    }
+    const bodyTop = Math.max(getTotalGroupHeaderHeight(groupHeaderHeight), minY);
+    const bodyBottom = Math.min(height, maxY);
 
+    // Закреплённые снизу строки (freeze): их верхние линии рисуем всегда.
     let freezeY = height + 0.5;
     for (let i = rows - freezeTrailingRows; i < rows; i++) {
         const rh = getRowHeight(i);
@@ -355,29 +385,152 @@ export function drawGridLines(
         toDraw.push({ x1: minX, y1: freezeY, x2: maxX, y2: freezeY, color: hColor });
     }
 
-    if (verticalOnly !== true) {
-        // horizontal lines
-        let y = totalHeaderHeight + 0.5;
-        let row = cellYOffset;
-        const target = freezeY;
-        while (y + translateY < target) {
-            const ty = y + translateY;
-            if (ty >= minY && ty <= maxY - 1) {
-                const rowTheme = getRowThemeOverride?.(row);
+    if (getCellBorder === undefined) {
+        // Быстрый путь: сплошные линии, как в обычном glide. Добавлены только две
+        // возможности: выключить горизонтали по строке (horizontalBorder) и задать
+        // цвет вертикали у колонки (через её тему).
+        let x = 0.5;
+        for (let index = 0; index < effectiveCols.length; index++) {
+            const c = effectiveCols[index];
+            if (c.width === 0) continue;
+            x += c.width;
+            const tx = c.sticky ? x : x + translateX;
+            if (tx >= minX && tx <= maxX && verticalBorder(index + 1)) {
                 toDraw.push({
-                    x1: minX,
-                    y1: ty,
-                    x2: maxX,
-                    y2: ty,
-                    color: rowTheme?.horizontalBorderColor ?? rowTheme?.borderColor ?? hColor,
+                    x1: tx,
+                    y1: bodyTop,
+                    x2: tx,
+                    y2: bodyBottom,
+                    color: c.themeOverride?.borderColor ?? vColor,
                 });
             }
+        }
 
-            y += getRowHeight(row);
-            row++;
+        if (verticalOnly !== true) {
+            let y = totalHeaderHeight + 0.5;
+            let row = cellYOffset;
+            const target = freezeY;
+            while (y + translateY < target) {
+                const ty = y + translateY;
+                if (ty >= minY && ty <= maxY - 1 && (horizontalBorder?.(row) ?? true)) {
+                    const rowTheme = getRowThemeOverride?.(row);
+                    toDraw.push({
+                        x1: minX,
+                        y1: ty,
+                        x2: maxX,
+                        y2: ty,
+                        color: rowTheme?.horizontalBorderColor ?? rowTheme?.borderColor ?? hColor,
+                    });
+                }
+
+                y += getRowHeight(row);
+                row++;
+            }
+        }
+    } else {
+        // Поклеточный путь: линия делится на кусочки по ячейкам, и для каждого
+        // кусочка отдельно решается, рисовать ли его и каким цветом. Приоритет:
+        // настройка ячейки сильнее колонки и строки, те сильнее темы. Включается
+        // только когда задан getCellBorder.
+
+        // Заранее считаем положение видимых колонок: левый и правый край по x и
+        // два индекса (source - в данных, effIndex - среди видимых на экране).
+        const cols: { effIndex: number; source: number; xLeft: number; xRight: number }[] = [];
+        {
+            let x = 0.5;
+            for (let index = 0; index < effectiveCols.length; index++) {
+                const c = effectiveCols[index];
+                if (c.width === 0) continue;
+                x += c.width;
+                const xRight = c.sticky ? x : x + translateX;
+                cols.push({ effIndex: index, source: c.sourceIndex, xLeft: xRight - c.width, xRight });
+            }
+        }
+
+        // Заранее считаем видимые строки прокручиваемой области (без закреплённого
+        // снизу хвоста): номер строки, её верх по y и высоту.
+        const rowsGeom: { row: number; ty: number; rh: number }[] = [];
+        {
+            let y = totalHeaderHeight + 0.5;
+            let row = cellYOffset;
+            while (y + translateY < freezeY) {
+                const rh = getRowHeight(row);
+                rowsGeom.push({ row, ty: y + translateY, rh });
+                y += rh;
+                row++;
+            }
+        }
+
+        // Вертикальные линии. Внешний цикл по видимым колонкам, внутренний по
+        // видимым строкам, то есть проходов примерно «колонок на экране умножить
+        // на строк на экране» (обычно пара тысяч), а не по всей таблице. На правой
+        // границе каждой колонки рисуем отрезок для каждой строки.
+        for (let k = 0; k < cols.length; k++) {
+            const left = cols[k];
+            const tx = left.xRight;
+            if (tx < minX || tx > maxX) continue;
+            const rightSource = cols[k + 1]?.source;
+            const columnDefaultVisible = verticalBorder(left.effIndex + 1);
+            const columnDefaultColor = effectiveCols[left.effIndex].themeOverride?.borderColor ?? vColor;
+
+            for (const rg of rowsGeom) {
+                const spec = pickBorderSide(
+                    getCellBorder(left.source, rg.row)?.right,
+                    rightSource !== undefined ? getCellBorder(rightSource, rg.row)?.left : undefined
+                );
+                const resolved = resolveBorderSide(spec, columnDefaultVisible, columnDefaultColor);
+                if (!resolved.visible) continue;
+                const y1 = Math.max(bodyTop, rg.ty);
+                const y2 = Math.min(freezeY, rg.ty + rg.rh);
+                if (y2 <= y1) continue;
+                toDraw.push({ x1: tx, y1, x2: tx, y2, color: resolved.color });
+            }
+
+            // У закреплённого снизу хвоста рисуем линию по настройке колонки
+            // (поклеточная настройка там не поддержана).
+            if (columnDefaultVisible && freezeY < bodyBottom) {
+                toDraw.push({
+                    x1: tx,
+                    y1: Math.max(bodyTop, freezeY),
+                    x2: tx,
+                    y2: bodyBottom,
+                    color: columnDefaultColor,
+                });
+            }
+        }
+
+        // Горизонтальные линии. Здесь наоборот: внешний цикл по видимым строкам,
+        // внутренний по видимым колонкам (тот же порядок величины проходов). На
+        // верхней границе каждой строки рисуем отрезок для каждой колонки.
+        if (verticalOnly !== true) {
+            for (const rg of rowsGeom) {
+                const ty = rg.ty;
+                if (ty < minY || ty > maxY - 1) continue;
+                const rowTheme = getRowThemeOverride?.(rg.row);
+                const rowDefaultVisible = horizontalBorder?.(rg.row) ?? true;
+                const rowDefaultColor =
+                    rowTheme?.horizontalBorderColor ?? rowTheme?.borderColor ?? hColor;
+
+                for (const col of cols) {
+                    const spec = pickBorderSide(
+                        getCellBorder(col.source, rg.row - 1)?.bottom,
+                        getCellBorder(col.source, rg.row)?.top
+                    );
+                    const resolved = resolveBorderSide(spec, rowDefaultVisible, rowDefaultColor);
+                    if (!resolved.visible) continue;
+                    const x1 = Math.max(minX, col.xLeft);
+                    const x2 = Math.min(maxX, col.xRight);
+                    if (x2 <= x1) continue;
+                    toDraw.push({ x1, y1: ty, x2, y2: ty, color: resolved.color });
+                }
+            }
         }
     }
 
+    // Все накопленные отрезки группируем по цвету и на каждый цвет делаем один
+    // проход кистью: задаём цвет, прокладываем все линии этого цвета и рисуем их
+    // разом. Так вместо сотен отдельных штрихов получается несколько (по числу
+    // цветов), и стыки не двоятся.
     const groups = groupBy(toDraw, line => line.color);
     for (const g of Object.keys(groups)) {
         ctx.strokeStyle = g;
@@ -389,6 +542,7 @@ export function drawGridLines(
         ctx.beginPath();
     }
 
+    // Снимаем вырез по объединённым ячейкам, который поставили в начале.
     if (spans !== undefined) {
         ctx.restore();
     }

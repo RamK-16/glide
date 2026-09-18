@@ -34,6 +34,7 @@ import {
     type FillHandle,
     DEFAULT_FILL_HANDLE,
     type SpanAlignment,
+    type CellBorderResolver,
 } from "./data-grid-types.js";
 import { CellSet } from "./cell-set.js";
 import { SpriteManager, type SpriteMap } from "./data-grid-sprites.js";
@@ -212,6 +213,10 @@ export interface DataGridProps {
     readonly onKeyUp: ((event: GridKeyEventArgs) => void) | undefined;
 
     readonly verticalBorder: (col: number) => boolean;
+    /** Рисовать ли горизонтальную линию сверху строки row. Если не задано, линия рисуется как раньше. */
+    readonly horizontalBorder?: (row: number) => boolean;
+    /** Рамки отдельных ячеек. Если не задано, линии рисуются сплошными без разбивки по ячейкам. */
+    readonly getCellBorder?: CellBorderResolver;
 
     /**
      * Determines what can be dragged using HTML drag and drop
@@ -437,6 +442,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         prelightCells,
         headerIcons,
         verticalBorder,
+        horizontalBorder,
+        getCellBorder,
         drawCell: drawCellCallback,
         drawHeader: drawHeaderCallback,
         drawGroupHeader: drawGroupHeaderCallback,
@@ -852,6 +859,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 result = {
                     kind: "cell",
                     location: [cellCol, cellRow],
+                    rawLocation: [col, row],
                     bounds: bounds,
                     isEdge,
                     shiftKey,
@@ -982,6 +990,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             disabledRows: disabledRows ?? CompactSelection.empty(),
             rowHeight,
             verticalBorder,
+            horizontalBorder,
+            getCellBorder,
             hiddenColumnsIndicator,
             isResizing,
             resizeCol,
@@ -1057,6 +1067,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         disabledRows,
         rowHeight,
         verticalBorder,
+        horizontalBorder,
+        getCellBorder,
         hiddenColumnsIndicator,
         isResizing,
         hasAppendRow,

@@ -384,6 +384,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         disabledRows,
         rowHeight,
         verticalBorder,
+        horizontalBorder,
+        getCellBorder,
         hiddenColumnsIndicator,
         overrideCursor,
         isResizing,
@@ -846,6 +848,23 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 const lineRepairRegions =
                     spans === undefined ? visualDamageRegions : [...visualDamageRegions, ...spans];
 
+                // Разделитель закреплённых колонок рисуем ДО линий сетки, как в полном
+                // рендере. Иначе при частичной перерисовке (ховер) он ложился поверх
+                // рамок getCellBorder на границе закреплённых колонок, и рамка мигала:
+                // серый разделитель перекрывал цвет рамки при каждом ховере.
+                overdrawStickyBoundaries(
+                    ctx,
+                    effectiveCols,
+                    width,
+                    height,
+                    freezeTrailingRows,
+                    rows,
+                    verticalBorder,
+                    getRowHeight,
+                    theme,
+                    enableLowDprHairline
+                );
+
                 drawGridLines(
                     ctx,
                     effectiveCols,
@@ -865,20 +884,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     rows,
                     theme,
                     false,
-                    enableLowDprHairline
-                );
-
-                overdrawStickyBoundaries(
-                    ctx,
-                    effectiveCols,
-                    width,
-                    height,
-                    freezeTrailingRows,
-                    rows,
-                    verticalBorder,
-                    getRowHeight,
-                    theme,
-                    enableLowDprHairline
+                    enableLowDprHairline,
+                    horizontalBorder,
+                    getCellBorder
                 );
 
                 highlightRedraw?.();
@@ -1066,6 +1074,20 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
     }
 
+    // При скролле (drawRegions от блита) с рамками отдельных ячеек разделитель
+    // закреплённых колонок рисуем только в новых полосах: остальная канва
+    // скопирована блитом вместе с цветными кусками рамок, и перерисовка серым на
+    // всю высоту их затирала (дальше весь рендер идёт под клипом по drawRegions
+    // и восстановить их не может).
+    const clipStickyToRegions = getCellBorder !== undefined && drawRegions.length > 0;
+    if (clipStickyToRegions) {
+        targetCtx.save();
+        targetCtx.beginPath();
+        for (const r of drawRegions) {
+            targetCtx.rect(r.x, r.y, r.width, r.height);
+        }
+        targetCtx.clip();
+    }
     overdrawStickyBoundaries(
         targetCtx,
         effectiveCols,
@@ -1078,6 +1100,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         theme,
         enableLowDprHairline
     );
+    if (clipStickyToRegions) {
+        targetCtx.restore();
+    }
 
     const highlightRedraw = drawHighlightRings(
         targetCtx,
@@ -1232,7 +1257,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         rows,
         theme,
         false,
-        enableLowDprHairline
+        enableLowDprHairline,
+        horizontalBorder,
+        getCellBorder
     );
 
     highlightRedraw?.();
