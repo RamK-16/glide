@@ -1,3 +1,10 @@
+# [6.5.0](https://github.com/RamK-16/glide/compare/v6.4.0...v6.5.0) (2026-09-18)
+
+
+### Features
+
+* **data-grid:** управление линиями сетки — колонка, строка, ячейка ([49c4060](https://github.com/RamK-16/glide/commit/49c406049fcbec5184175765ab29f85c64230034))
+
 # [6.4.0](https://github.com/RamK-16/glide/compare/v6.3.0...v6.4.0) (2026-09-10)
 
 
