@@ -1,3 +1,10 @@
+## [6.5.1](https://github.com/RamK-16/glide/compare/v6.5.0...v6.5.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **data-grid:** центрируем текст шапки по вертикали ([6ac4658](https://github.com/RamK-16/glide/commit/6ac4658eb430658c652da8c4b9895057ba149430))
+
 # [6.5.0](https://github.com/RamK-16/glide/compare/v6.4.0...v6.5.0) (2026-09-18)
 
 
