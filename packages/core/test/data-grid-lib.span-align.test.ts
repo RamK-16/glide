@@ -70,10 +70,10 @@ describe("getSpanTextY — Y базовой линии и textBaseline по ве
         expect(getSpanTextY(y, height, "top", bias, pad)).toEqual({ y: y + pad, baseline: "top" });
     });
 
-    it("center → прежняя формула (центр + bias), baseline alphabetic", () => {
+    it("center → формула (центр + bias), baseline middle", () => {
         expect(getSpanTextY(y, height, "center", bias, pad)).toEqual({
             y: y + height / 2 + bias,
-            baseline: "alphabetic",
+            baseline: "middle",
         });
     });
 
@@ -86,7 +86,7 @@ describe("getSpanTextY — Y базовой линии и textBaseline по ве
     });
 
     it("отрицательный bias для center учитывается", () => {
-        expect(getSpanTextY(0, 40, "center", -5, 8)).toEqual({ y: 15, baseline: "alphabetic" });
+        expect(getSpanTextY(0, 40, "center", -5, 8)).toEqual({ y: 15, baseline: "middle" });
     });
 
     it("padY больше высоты: формула не переворачивается, просто уходит за границу (фиксируем поведение)", () => {
@@ -95,9 +95,9 @@ describe("getSpanTextY — Y базовой линии и textBaseline по ве
 });
 
 describe("drawSpanAlignedText — позиция текста и восстановление состояния canvas", () => {
-    it("left: x у левого края, baseline alphabetic (center по вертикали)", () => {
+    it("left: x у левого края, baseline middle (center по вертикали)", () => {
         const { call } = draw({ horizontal: "left", vertical: "center" });
-        expect(call).toMatchObject({ x: 100, align: "left", baseline: "alphabetic", y: 23 }); // 40/2 + bias(3)
+        expect(call).toMatchObject({ x: 100, align: "left", baseline: "middle", y: 23 }); // 40/2 + bias(3)
     });
 
     it("center: x в середине бокса, textAlign center", () => {
