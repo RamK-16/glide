@@ -83,7 +83,10 @@ export function getSpanTextY(
 ): { y: number; baseline: CanvasTextBaseline } {
     if (vertical === "top") return { y: y + padY, baseline: "top" };
     if (vertical === "bottom") return { y: y + height - padY, baseline: "bottom" };
-    return { y: y + height / 2 + middleBias, baseline: "alphabetic" };
+    // middleBias из getMiddleCenterBias рассчитан под baseline "middle": он двигает
+    // текст от середины шрифта к оптическому центру. С baseline "alphabetic" эта
+    // поправка не центрирует, и текст сидит выше центра, поэтому используем "middle".
+    return { y: y + height / 2 + middleBias, baseline: "middle" };
 }
 
 /**
