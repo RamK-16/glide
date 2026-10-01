@@ -767,6 +767,27 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                       )
                     : undefined;
 
+                const highlightAboveRedraw = drawHighlightRings(
+                    ctx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    "above"
+                );
+
                 const spans = drawCells(
                     ctx,
                     effectiveCols,
@@ -891,6 +912,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
                 highlightRedraw?.();
                 focusRedraw?.();
+                highlightAboveRedraw?.();
                 ctx.restore();
                 return;
             }
@@ -1147,6 +1169,27 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
           )
         : undefined;
 
+    const highlightAboveRedraw = drawHighlightRings(
+        targetCtx,
+        width,
+        height,
+        cellXOffset,
+        cellYOffset,
+        translateX,
+        translateY,
+        mappedColumns,
+        freezeColumns,
+        headerHeight,
+        groupHeaderHeight,
+        rowHeight,
+        freezeTrailingRows,
+        rows,
+        highlightRegions,
+        theme,
+        enableLowDprHairline,
+        "above"
+    );
+
     targetCtx.fillStyle = theme.bgCell;
     if (drawRegions.length > 0) {
         targetCtx.beginPath();
@@ -1264,6 +1307,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
     highlightRedraw?.();
     focusRedraw?.();
+    highlightAboveRedraw?.();
 
     if (isResizing && resizeIndicator !== "none") {
         // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),

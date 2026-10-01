@@ -72,7 +72,11 @@ export type GetRowThemeCallback = (row: number) => Partial<Theme> | undefined;
 export interface Highlight {
     readonly color: string;
     readonly range: Rectangle;
-    readonly style?: "dashed" | "solid" | "no-outline" | "solid-outline";
+    /** "accent" — заливка берёт accentLight из смерженной темы ячейки (как
+     * нативное выделение, с учётом cell/row themeOverride), а не `color`; без обводки. */
+    readonly style?: "dashed" | "solid" | "no-outline" | "solid-outline" | "accent";
+    /** Рисовать обводку поверх нативной рамки выделения (например, рамки ошибок). */
+    readonly drawAboveSelection?: boolean;
 }
 
 interface SpanIntersection {
@@ -610,7 +614,7 @@ export function drawCells(
                                 r.y <= row &&
                                 row < r.y + r.height
                             ) {
-                                fill = blend(region.color, fill);
+                                fill = blend(region.style === "accent" ? theme.accentLight : region.color, fill);
                             }
                         }
                     }
@@ -624,7 +628,11 @@ export function drawCells(
                             if (region.style === "solid-outline") continue;
                             const hit = intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows);
                             if (hit === null) continue;
-                            const strip = spanPartialFillRect(hit, spanGeom, region.color);
+                            const strip = spanPartialFillRect(
+                                hit,
+                                spanGeom,
+                                region.style === "accent" ? theme.accentLight : region.color
+                            );
                             if (strip !== null) {
                                 if (spanPartialFills === undefined) spanPartialFills = [];
                                 spanPartialFills.push(strip);
