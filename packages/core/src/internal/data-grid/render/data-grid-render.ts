@@ -643,6 +643,31 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 rows
             );
         }
+
+        if (mustDrawHighlightRingsOnHeader) {
+            // Фаза "above" и на канве шапки: иначе у регионов с drawAboveSelection
+            // пропадает верхняя линия первой видимой строки (перекрыта overlay-канвой).
+            drawHighlightRings(
+                overlayCtx,
+                width,
+                height,
+                cellXOffset,
+                cellYOffset,
+                translateX,
+                translateY,
+                mappedColumns,
+                freezeColumns,
+                headerHeight,
+                groupHeaderHeight,
+                rowHeight,
+                freezeTrailingRows,
+                rows,
+                highlightRegions,
+                theme,
+                enableLowDprHairline,
+                "above"
+            );
+        }
     };
 
     // handle damage updates by directly drawing to the target to avoid large blits
