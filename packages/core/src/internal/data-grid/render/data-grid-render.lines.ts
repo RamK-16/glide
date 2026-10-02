@@ -15,6 +15,69 @@ import { intersectRect } from "../../../common/math.js";
 import { getSkipPoint, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type GetRowThemeCallback } from "./data-grid-render.cells.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { columnLayoutOf, rowAxisOf } from "./data-grid-freeze.js";
+
+/**
+ * Левые края колонок кадра на экране. С раскладкой липких колонок — из неё, иначе апстримное
+ * накопление ширин (закреплённые с нуля, прокручиваемые со сдвигом translateX).
+ */
+function getColumnLefts(effectiveCols: readonly MappedGridColumn[], translateX: number): number[] {
+    const layout = columnLayoutOf(effectiveCols);
+    const lefts: number[] = [];
+    let accumulatedX = 0;
+    for (const column of effectiveCols) {
+        if (layout !== undefined) {
+            lefts.push(layout.drawX(column.sourceIndex));
+        } else {
+            lefts.push(column.sticky ? accumulatedX : accumulatedX + translateX);
+        }
+        accumulatedX += column.width;
+    }
+    return lefts;
+}
+
+interface BodyRowGeom {
+    readonly row: number;
+    readonly ty: number;
+    readonly rh: number;
+    /** Выше этой y строку не видно: для прокручиваемых — низ полосы прилипших строк. */
+    readonly clipTop: number;
+}
+
+/**
+ * Видимые строки тела для линий сетки: прокручиваемые до закреплённых снизу (кроме прилипших
+ * и целиком ушедших под полосу) и прилипшие строки в своих слотах.
+ */
+function getBodyRowsGeom(
+    effectiveCols: readonly MappedGridColumn[],
+    cellYOffset: number,
+    translateY: number,
+    totalHeaderHeight: number,
+    freezeY: number,
+    getRowHeight: (row: number) => number
+): BodyRowGeom[] {
+    const rowAxis = rowAxisOf(effectiveCols);
+    const hasPinned = rowAxis !== undefined && rowAxis.pinnedCount > 0;
+    const clipTop = hasPinned ? rowAxis.pinnedEnd + 0.5 : Number.NEGATIVE_INFINITY;
+    const bodyRows: BodyRowGeom[] = [];
+    let accumulatedY = totalHeaderHeight + 0.5;
+    let row = cellYOffset;
+    while (accumulatedY + translateY < freezeY) {
+        const rowHeight = getRowHeight(row);
+        const lineY = accumulatedY + translateY;
+        if (!hasPinned || (lineY + rowHeight > clipTop && !rowAxis.isPinned(row))) {
+            bodyRows.push({ row, ty: lineY, rh: rowHeight, clipTop });
+        }
+        accumulatedY += rowHeight;
+        row++;
+    }
+    if (hasPinned) {
+        rowAxis.forEachPinned((pinnedRow, pinnedY, pinnedHeight) => {
+            bodyRows.push({ row: pinnedRow, ty: pinnedY + 0.5, rh: pinnedHeight, clipTop: Number.NEGATIVE_INFINITY });
+        });
+    }
+    return bodyRows;
+}
 
 export function drawBlanks(
     ctx: CanvasRenderingContext2D,
@@ -44,6 +107,7 @@ export function drawBlanks(
         return;
 
     const skipPoint = getSkipPoint(drawRegions);
+    const rowAxis = rowAxisOf(effectiveColumns);
 
     walkColumns(
         effectiveColumns,
@@ -90,7 +154,9 @@ export function drawBlanks(
 
                     const blankTheme = rowTheme === undefined ? theme : mergeAndRealizeTheme(theme, rowTheme);
 
-                    if (blankTheme.bgCell !== theme.bgCell) {
+                    // Прилипшая строка закрывает то, что прокрутилось под неё, поэтому фон заливаем всегда.
+                    const isPinnedRow = isSticky && rowAxis?.isPinned(row) === true;
+                    if (isPinnedRow || blankTheme.bgCell !== theme.bgCell) {
                         ctx.fillStyle = blankTheme.bgCell;
                         ctx.fillRect(drawX, drawY, 10_000, rh);
                     }
@@ -102,7 +168,8 @@ export function drawBlanks(
                         ctx.fillStyle = blankTheme.accentLight;
                         ctx.fillRect(drawX, drawY, 10_000, rh);
                     }
-                }
+                },
+                rowAxis
             );
 
             ctx.restore();
@@ -236,13 +303,13 @@ export function drawExtraRowThemes(
     }
 
     // column overflow
-    let x = 0;
     const h = Math.min(freezeY, maxY) - extraRowsStartY;
     if (h > 0) {
+        const columnLefts = getColumnLefts(effectiveCols, translateX);
         for (let index = 0; index < effectiveCols.length; index++) {
             const c = effectiveCols[index];
             if (c.width === 0) continue;
-            const tx = c.sticky ? x : x + translateX;
+            const tx = columnLefts[index];
             const colThemeBgCell = c.themeOverride?.bgCell;
             if (
                 colThemeBgCell !== undefined &&
@@ -259,8 +326,6 @@ export function drawExtraRowThemes(
                     color: colThemeBgCell,
                 });
             }
-
-            x += c.width;
         }
     }
 
@@ -385,16 +450,26 @@ export function drawGridLines(
         toDraw.push({ x1: minX, y1: freezeY, x2: maxX, y2: freezeY, color: hColor });
     }
 
+    const rowAxis = rowAxisOf(effectiveCols);
+    if (rowAxis !== undefined && rowAxis.pinnedCount > 0) {
+        const pinnedBandBottomY = rowAxis.pinnedEnd + 0.5;
+        toDraw.push({ x1: minX, y1: pinnedBandBottomY, x2: maxX, y2: pinnedBandBottomY, color: hColor });
+    }
+
+    const bodyRows =
+        verticalOnly === true && getCellBorder === undefined
+            ? []
+            : getBodyRowsGeom(effectiveCols, cellYOffset, translateY, totalHeaderHeight, freezeY, getRowHeight);
+
     if (getCellBorder === undefined) {
         // Быстрый путь: сплошные линии, как в обычном glide. Добавлены только две
         // возможности: выключить горизонтали по строке (horizontalBorder) и задать
         // цвет вертикали у колонки (через её тему).
-        let x = 0.5;
+        const columnLefts = getColumnLefts(effectiveCols, translateX);
         for (let index = 0; index < effectiveCols.length; index++) {
             const c = effectiveCols[index];
             if (c.width === 0) continue;
-            x += c.width;
-            const tx = c.sticky ? x : x + translateX;
+            const tx = columnLefts[index] + c.width + 0.5;
             if (tx >= minX && tx <= maxX && verticalBorder(index + 1)) {
                 toDraw.push({
                     x1: tx,
@@ -407,12 +482,8 @@ export function drawGridLines(
         }
 
         if (verticalOnly !== true) {
-            let y = totalHeaderHeight + 0.5;
-            let row = cellYOffset;
-            const target = freezeY;
-            while (y + translateY < target) {
-                const ty = y + translateY;
-                if (ty >= minY && ty <= maxY - 1 && (horizontalBorder?.(row) ?? true)) {
+            for (const { row, ty, clipTop } of bodyRows) {
+                if (ty >= clipTop && ty >= minY && ty <= maxY - 1 && (horizontalBorder?.(row) ?? true)) {
                     const rowTheme = getRowThemeOverride?.(row);
                     toDraw.push({
                         x1: minX,
@@ -422,9 +493,6 @@ export function drawGridLines(
                         color: rowTheme?.horizontalBorderColor ?? rowTheme?.borderColor ?? hColor,
                     });
                 }
-
-                y += getRowHeight(row);
-                row++;
             }
         }
     } else {
@@ -437,29 +505,15 @@ export function drawGridLines(
         // два индекса (source - в данных, effIndex - среди видимых на экране).
         const cols: { effIndex: number; source: number; xLeft: number; xRight: number }[] = [];
         {
-            let x = 0.5;
+            const columnLefts = getColumnLefts(effectiveCols, translateX);
             for (let index = 0; index < effectiveCols.length; index++) {
                 const c = effectiveCols[index];
                 if (c.width === 0) continue;
-                x += c.width;
-                const xRight = c.sticky ? x : x + translateX;
+                const xRight = columnLefts[index] + c.width + 0.5;
                 cols.push({ effIndex: index, source: c.sourceIndex, xLeft: xRight - c.width, xRight });
             }
         }
 
-        // Заранее считаем видимые строки прокручиваемой области (без закреплённого
-        // снизу хвоста): номер строки, её верх по y и высоту.
-        const rowsGeom: { row: number; ty: number; rh: number }[] = [];
-        {
-            let y = totalHeaderHeight + 0.5;
-            let row = cellYOffset;
-            while (y + translateY < freezeY) {
-                const rh = getRowHeight(row);
-                rowsGeom.push({ row, ty: y + translateY, rh });
-                y += rh;
-                row++;
-            }
-        }
 
         // Вертикальные линии. Внешний цикл по видимым колонкам, внутренний по
         // видимым строкам, то есть проходов примерно «колонок на экране умножить
@@ -473,14 +527,14 @@ export function drawGridLines(
             const columnDefaultVisible = verticalBorder(left.effIndex + 1);
             const columnDefaultColor = effectiveCols[left.effIndex].themeOverride?.borderColor ?? vColor;
 
-            for (const rg of rowsGeom) {
+            for (const rg of bodyRows) {
                 const spec = pickBorderSide(
                     getCellBorder(left.source, rg.row)?.right,
                     rightSource !== undefined ? getCellBorder(rightSource, rg.row)?.left : undefined
                 );
                 const resolved = resolveBorderSide(spec, columnDefaultVisible, columnDefaultColor);
                 if (!resolved.visible) continue;
-                const y1 = Math.max(bodyTop, rg.ty);
+                const y1 = Math.max(bodyTop, rg.ty, rg.clipTop);
                 const y2 = Math.min(freezeY, rg.ty + rg.rh);
                 if (y2 <= y1) continue;
                 toDraw.push({ x1: tx, y1, x2: tx, y2, color: resolved.color });
@@ -503,9 +557,9 @@ export function drawGridLines(
         // внутренний по видимым колонкам (тот же порядок величины проходов). На
         // верхней границе каждой строки рисуем отрезок для каждой колонки.
         if (verticalOnly !== true) {
-            for (const rg of rowsGeom) {
+            for (const rg of bodyRows) {
                 const ty = rg.ty;
-                if (ty < minY || ty > maxY - 1) continue;
+                if (ty < rg.clipTop || ty < minY || ty > maxY - 1) continue;
                 const rowTheme = getRowThemeOverride?.(rg.row);
                 const rowDefaultVisible = horizontalBorder?.(rg.row) ?? true;
                 const rowDefaultColor =

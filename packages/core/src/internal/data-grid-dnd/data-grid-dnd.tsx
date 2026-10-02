@@ -450,6 +450,8 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             smoothScrollY={p.smoothScrollY}
             theme={p.theme}
             freezeTrailingRows={p.freezeTrailingRows}
+            stickyColumns={p.stickyColumns}
+            stickyRows={p.stickyRows}
             hasAppendRow={p.hasAppendRow}
             translateX={p.translateX}
             translateY={p.translateY}

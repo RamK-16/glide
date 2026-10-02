@@ -32,6 +32,7 @@ import type { EnqueueCallback } from "../use-animation-queue.js";
 import type { RenderStateProvider } from "../../../common/render-state-provider.js";
 import type { ImageWindowLoader } from "../image-window-loader-interface.js";
 import { intersectRect } from "../../../common/math.js";
+import { rowAxisOf } from "./data-grid-freeze.js";
 import type { GridMouseGroupHeaderEventArgs } from "../event-args.js";
 import {
     getRowSpanBounds,
@@ -299,6 +300,8 @@ export function drawCells(
     let handledSpans: Set<string> | undefined = undefined;
 
     const skipPoint = getSkipPoint(drawRegions);
+    const rowAxis = rowAxisOf(effectiveColumns);
+    const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined;
 
     walkColumns(
         effectiveColumns,
@@ -410,7 +413,14 @@ export function drawCells(
                         // даёт один ключ: первая встреченная рисует блок, остальные скипаются.
                         const [startCol, endCol] = cell.span ?? [c.sourceIndex, c.sourceIndex];
                         const [spanStartRow, spanEndRow] = cell.spanRows ?? [row, row];
-                        const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky}`; //alloc
+                        // Блок, задевающий прилипшие строки, режется на фрагменты: закреплённый (в полосе)
+                        // и прокручиваемый. Контент рисует закреплённый, прокручиваемый — только фон.
+                        const pinnedRun =
+                            isSticky && cell.spanRows !== undefined
+                                ? rowAxis?.pinnedRun(row, spanStartRow, spanEndRow)
+                                : undefined;
+                        const fragment = pinnedRun === undefined ? "scroll" : `pinned-${pinnedRun.position}`;
+                        const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky},${fragment}`; //alloc
                         if (handledSpans === undefined) handledSpans = new Set();
                         if (!handledSpans.has(spanKey)) {
                             // Горизонталь: colspan — через resolveHorizontalSpanArea (frozen/scrollable
@@ -422,10 +432,16 @@ export function drawCells(
                             if (horizontalOk) {
                                 // Вертикаль: rowspan — накопление высот строк блока; origin-строка может
                                 // быть выше вьюпорта → cellY уходит в минус (scroll-safe, канва клипует).
-                                if (cell.spanRows !== undefined) {
+                                if (pinnedRun !== undefined) {
+                                    cellY = pinnedRun.position;
+                                    cellHeight = pinnedRun.size;
+                                } else if (cell.spanRows !== undefined) {
                                     const v = getRowSpanBounds(cell.spanRows, row, drawY, getRowHeight);
                                     cellY = v.y;
                                     cellHeight = v.height;
+                                    if (rowAxis?.hasPinnedIn(spanStartRow, spanEndRow) === true) {
+                                        skipContents = true;
+                                    }
                                 }
                                 cellX = hx;
                                 cellWidth = hw;
@@ -439,11 +455,13 @@ export function drawCells(
                                 if (result === undefined) {
                                     result = [];
                                 }
+                                const spanTop =
+                                    !isSticky && pinnedRowsEnd !== undefined ? Math.max(cellY, pinnedRowsEnd) : cellY;
                                 result.push({
                                     x: cellX + d,
-                                    y: cellY,
+                                    y: spanTop,
                                     width: cellWidth - d,
-                                    height: cellHeight,
+                                    height: Math.max(0, cellY + cellHeight - spanTop),
                                 });
                                 ctx.clip();
                                 drawingSpan = true;
@@ -639,11 +657,11 @@ export function drawCells(
                         // allows us to damage a large number of cells at once without issue.
                         // Для слитой ячейки cellY/cellHeight = весь блок (иначе drawY/rh = одна строка),
                         // чтобы damage-перерисовка покрывала блок целиком, а не одну строку.
-                        const top = cellY + 1;
-                        const bottom = isSticky
-                            ? top + cellHeight - 1
-                            : Math.min(top + cellHeight - 1, height - freezeTrailingRowsHeight);
-                        const h = bottom - top;
+                        const top =
+                            !isSticky && pinnedRowsEnd !== undefined ? Math.max(cellY, pinnedRowsEnd) + 1 : cellY + 1;
+                        const cellBottom = cellY + cellHeight;
+                        const bottom = isSticky ? cellBottom : Math.min(cellBottom, height - freezeTrailingRowsHeight);
+                        const h = Math.max(0, bottom - top);
 
                         // however, not clipping at all is even better. We want to clip if we are the left most col
                         // or overlapping the bottom clip area.
@@ -779,7 +797,8 @@ export function drawCells(
                     }
 
                     return toDraw <= 0;
-                }
+                },
+                rowAxis
             );
 
             ctx.restore();

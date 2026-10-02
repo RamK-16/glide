@@ -2,7 +2,8 @@
 /* eslint-disable unicorn/no-for-loop */
 import { type Rectangle } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
-import { getEffectiveColumns, type MappedGridColumn, rectBottomRight } from "./data-grid-lib.js";
+import { type MappedGridColumn, rectBottomRight, remapForDnDState } from "./data-grid-lib.js";
+import { type StickyAxis, attachRowAxis, computeColumnLayout, computeRowAxis, rowAxisOf } from "./data-grid-freeze.js";
 import { blend } from "../color-parser.js";
 import { assert } from "../../../common/support.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
@@ -302,12 +303,33 @@ export function getDamageDrawRegions(
                             result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
                         }
                     }
-                }
+                },
+                rowAxisOf(effectiveColumns)
             );
         }
     );
 
     return result;
+}
+
+/** Прилипшие колонки и строки видны вне окна прокрутки: их damage тоже в кадре. */
+function getPinnedDamageRegions(
+    effectiveCols: readonly MappedGridColumn[],
+    rowAxis: StickyAxis,
+    cellYOffset: number,
+    columnCount: number
+): Rectangle[] {
+    // Та же высота окна строк, что у остальных регионов damageInView.
+    const visibleRowsWindow = 300;
+    const regions: Rectangle[] = [];
+    for (const column of effectiveCols) {
+        if (!column.sticky) break;
+        regions.push({ x: column.sourceIndex, y: cellYOffset, width: 1, height: visibleRowsWindow });
+    }
+    rowAxis.forEachPinned(pinnedRow => {
+        regions.push({ x: 0, y: pinnedRow, width: columnCount, height: 1 });
+    });
+    return regions;
 }
 
 function expandDamageDrawRegions(drawRegions: readonly Rectangle[], repairPad: number): Rectangle[] {
@@ -354,7 +376,8 @@ function getLastRow(
                     if (!isSticky) {
                         result = Math.max(row, result);
                     }
-                }
+                },
+                rowAxisOf(effectiveColumns)
             );
 
             return true;
@@ -376,6 +399,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         mappedColumns,
         enableGroups,
         freezeColumns,
+        stickyRows,
         dragAndDropState,
         theme,
         drawFocus,
@@ -428,7 +452,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const dpr = Math.min(maxScaleFactor, Math.ceil(window.devicePixelRatio ?? 1));
 
     // if we are double buffering we need to make sure we can blit. If we can't we need to redraw the whole thing
-    const canBlit = renderStrategy !== "direct" && computeCanBlit(arg, lastArg);
+    let canBlit = renderStrategy !== "direct" && computeCanBlit(arg, lastArg);
 
     const canvas = canvasCtx.canvas;
 
@@ -510,7 +534,34 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.scale(dpr, dpr);
     }
 
-    const effectiveCols = getEffectiveColumns(mappedColumns, cellXOffset, width, dragAndDropState, translateX);
+    const columnLayout = computeColumnLayout(
+        remapForDnDState(mappedColumns, dragAndDropState),
+        cellXOffset,
+        translateX,
+        width,
+        freezeColumns
+    );
+    const effectiveCols = columnLayout.effectiveCols;
+    const rowAxis = computeRowAxis(
+        stickyRows,
+        rows - freezeTrailingRows,
+        cellYOffset,
+        translateY,
+        totalHeaderHeight,
+        height,
+        getRowHeight
+    );
+    attachRowAxis(effectiveCols, rowAxis);
+    const pinnedColumnsEnd = columnLayout.axis.pinnedEnd;
+    const pinnedRowsCount = rowAxis.pinnedCount;
+    // Элемент прилип или отлип: меняется зона и то, какой фрагмент слитого блока рисует текст,
+    // поэтому сдвигать прошлый кадр нельзя.
+    if (
+        last !== undefined &&
+        (last.pinnedColumnsEnd !== pinnedColumnsEnd || last.pinnedRowsCount !== pinnedRowsCount)
+    ) {
+        canBlit = false;
+    }
 
     let drawRegions: Rectangle[] = [];
 
@@ -618,7 +669,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 rows,
                 highlightRegions,
                 theme,
-                enableLowDprHairline
+                enableLowDprHairline,
+                columnLayout,
+                rowAxis
             );
         }
 
@@ -683,6 +736,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 height: freezeTrailingRows,
                 when: freezeTrailingRows > 0,
             },
+            ...getPinnedDamageRegions(columnLayout.effectiveCols, rowAxis, cellYOffset, mappedColumns.length),
         ]);
 
         // span-repair НЕ зависит от enableLowDprHairline: ручной damage-путь нужен всегда,
@@ -742,7 +796,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     rows,
                     highlightRegions,
                     theme,
-                    enableLowDprHairline
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis
                 );
 
                 const focusRedraw = drawFocus
@@ -1054,7 +1110,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             mappedColumns,
             effectiveCols,
             rowHeight,
-            doubleBuffer
+            doubleBuffer,
+            rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight
         );
         drawRegions = regions;
     } else if (canBlit !== false) {
@@ -1121,7 +1178,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         rows,
         highlightRegions,
         theme,
-        enableLowDprHairline
+        enableLowDprHairline,
+        columnLayout,
+        rowAxis
     );
 
     // the overdraw may have nuked out our focus ring right edge.
@@ -1313,7 +1372,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             height: lastRowDrawn - cellYOffset,
         },
         freezeColumns,
-        Array.from({ length: freezeTrailingRows }, (_, i) => rows - 1 - i)
+        [
+            ...Array.from({ length: freezeTrailingRows }, (_, i) => rows - 1 - i),
+            ...rowAxis.items.slice(0, rowAxis.pinnedCount),
+        ],
+        effectiveCols
+            .filter(column => column.sticky && column.sourceIndex >= freezeColumns)
+            .map(column => column.sourceIndex)
     );
 
     const scrollX = last !== undefined && (cellXOffset !== last.cellXOffset || translateX !== last.translateX);
@@ -1326,6 +1391,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         translateY,
         mustDrawFocusOnHeader,
         mustDrawHighlightRingsOnHeader,
+        pinnedColumnsEnd,
+        pinnedRowsCount,
         lastBuffer: doubleBuffer ? (targetBuffer === bufferA ? "a" : "b") : undefined,
         aBufferScroll: targetBuffer === bufferA ? [scrollX, scrollY] : last?.aBufferScroll,
         bBufferScroll: targetBuffer === bufferB ? [scrollX, scrollY] : last?.bBufferScroll,

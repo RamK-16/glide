@@ -3,13 +3,14 @@ import type { FullTheme } from "../../common/styles.js";
 import {
     computeBounds,
     getColumnIndexForX,
-    getEffectiveColumns,
     getRowIndexForY,
     getSpanOrigin,
     getStickyWidth,
     rectBottomRight,
+    remapForDnDState,
     useMappedColumns,
 } from "./render/data-grid-lib.js";
+import { computeColumnLayout, computeRowAxis } from "./render/data-grid-freeze.js";
 import {
     findSpannedGroupRegion,
     getGroupLevels,
@@ -103,6 +104,13 @@ export interface DataGridProps {
      */
     readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     readonly freezeTrailingRows: number;
+    /**
+     * Липкие колонки (индексы колонок грида, по возрастанию): стоят на месте, пока при прокрутке
+     * не дойдут до закреплённой зоны, дальше остаются в ней, как `position: sticky`.
+     */
+    readonly stickyColumns?: readonly number[];
+    /** Липкие строки (индексы по возрастанию): прилипают под шапкой так же, как липкие колонки слева. */
+    readonly stickyRows?: readonly number[];
     readonly hasAppendRow: boolean;
     readonly firstColAccessible: boolean;
 
@@ -408,6 +416,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         isFocused,
         selection,
         freezeColumns,
+        stickyColumns,
+        stickyRows,
         spanAlign,
         spanGroupHeader,
         hiddenColumnsIndicator,
@@ -504,7 +514,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         }, 200);
     }, [cellYOffset, cellXOffset, translateX, translateY, enableFirefoxRescaling, enableSafariRescaling]);
 
-    const mappedColumns = useMappedColumns(columns, freezeColumns, spanAlign, spanGroupHeader);
+    const mappedColumns = useMappedColumns(columns, freezeColumns, spanAlign, spanGroupHeader, stickyColumns);
+    // Раскладка колонок для мыши, bounds и тени. Рендер считает свою (с учётом DnD) в drawGrid.
+    const columnLayout = React.useMemo(
+        () => computeColumnLayout(mappedColumns, cellXOffset, translateX, width, freezeColumns),
+        [mappedColumns, cellXOffset, translateX, width, freezeColumns]
+    );
     const groupHeaderLevels = enableGroups ? getGroupLevels(mappedColumns) : 0;
     // Слитые группы (rowspan) — единый расчёт регионов для hit-test и bounds, чтобы они
     // совпадали с рендером. Пусто, если групп нет или ни одна группа не помечена span.
@@ -517,10 +532,26 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     );
     const totalGroupHeaderHeight = enableGroups ? getTotalGroupHeaderHeight(groupHeaderHeight, mappedColumns) : 0;
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
-    const stickyX = React.useMemo(
-        () => (fixedShadowX ? getStickyWidth(mappedColumns, dragAndDropState) : 0),
-        [mappedColumns, dragAndDropState, fixedShadowX]
+    const rowAxis = React.useMemo(
+        () =>
+            computeRowAxis(
+                stickyRows,
+                rows - freezeTrailingRows,
+                cellYOffset,
+                translateY,
+                totalHeaderHeight,
+                height,
+                typeof rowHeight === "number" ? () => rowHeight : rowHeight
+            ),
+        [stickyRows, rows, freezeTrailingRows, cellYOffset, translateY, totalHeaderHeight, height, rowHeight]
     );
+    const stickyX = React.useMemo(() => {
+        if (!fixedShadowX) return 0;
+        // Во время DnD зона считается по переставленным колонкам, как в рендере.
+        return dragAndDropState === undefined
+            ? columnLayout.axis.pinnedEnd
+            : getStickyWidth(mappedColumns, dragAndDropState);
+    }, [fixedShadowX, dragAndDropState, columnLayout, mappedColumns]);
 
     // row: -1 === columnHeader, -2, -3, -4... === groupHeader levels (from top to bottom)
     const getBoundsForItem = React.useCallback(
@@ -549,7 +580,9 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 freezeTrailingRows,
                 mappedColumns,
                 rowHeight,
-                spannedGroupRegions
+                spannedGroupRegions,
+                columnLayout,
+                rowAxis
             );
 
             if (scale !== 1) {
@@ -579,6 +612,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             mappedColumns,
             rowHeight,
             spannedGroupRegions,
+            columnLayout,
+            rowAxis,
         ]
     );
 
@@ -595,7 +630,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             const y = (posY - rect.top) / scale;
             const edgeDetectionBuffer = 5;
 
-            const effectiveCols = getEffectiveColumns(mappedColumns, cellXOffset, width, undefined, translateX);
+            const effectiveCols = columnLayout.effectiveCols;
 
             let button = 0;
             let buttons = 0;
@@ -629,7 +664,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 cellYOffset,
                 translateY,
                 freezeTrailingRows,
-                groupHeaderLevels
+                groupHeaderLevels,
+                rowAxis
             );
 
             // spanGroupHeader: слитая КОЛОНКА — одна ячейка на всю высоту шапки; любое
@@ -653,7 +689,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
             const scrollEdge: GridMouseEventArgs["scrollEdge"] = [
                 x < 0 ? -1 : width < x ? 1 : 0,
-                y < totalHeaderHeight ? -1 : height < y ? 1 : 0,
+                y < Math.max(totalHeaderHeight, rowAxis.pinnedEnd) ? -1 : height < y ? 1 : 0,
             ];
 
             let result: GridMouseEventArgs;
@@ -877,9 +913,10 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             return result;
         },
         [
+            columnLayout,
+            rowAxis,
             width,
             mappedColumns,
-            cellXOffset,
             translateX,
             height,
             enableGroups,
@@ -1004,6 +1041,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             maxScaleFactor: maxDPR,
             enableLowDprHairline: experimental?.enableLowDprHairline === true,
             freezeTrailingRows,
+            stickyRows,
             rows,
             drawFocus: drawFocusRing,
             getCellContent,
@@ -1077,6 +1115,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         selection,
         fillHandle,
         freezeTrailingRows,
+        stickyRows,
         rows,
         drawFocusRing,
         maxDPR,
@@ -1923,7 +1962,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     const accessibilityTree = useDebouncedMemo(
         () => {
             if (width < 50 || experimental?.disableAccessibilityTree === true) return null;
-            let effectiveCols = getEffectiveColumns(mappedColumns, cellXOffset, width, dragAndDropState, translateX);
+            let effectiveCols = computeColumnLayout(
+                remapForDnDState(mappedColumns, dragAndDropState),
+                cellXOffset,
+                translateX,
+                width,
+                freezeColumns
+            ).effectiveCols;
             const colOffset = firstColAccessible ? 0 : -1;
             if (!firstColAccessible && effectiveCols[0]?.sourceIndex === 0) {
                 effectiveCols = effectiveCols.slice(1);
@@ -2062,11 +2107,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     );
 
     const opacityX =
-        freezeColumns === 0 || !fixedShadowX ? 0 : cellXOffset > freezeColumns ? 1 : clamp(-translateX / 100, 0, 1);
+        stickyX === 0 ? 0 : cellXOffset > freezeColumns ? 1 : clamp(-translateX / 100, 0, 1);
 
     const absoluteOffsetY = -cellYOffset * 32 + translateY;
     const opacityY = !fixedShadowY ? 0 : clamp(-absoluteOffsetY / 100, 0, 1);
 
+    const shadowTopY = Math.max(totalHeaderHeight, rowAxis.pinnedEnd);
     const stickyShadow = React.useMemo(() => {
         if (!opacityX && !opacityY) {
             return null;
@@ -2086,7 +2132,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
         const styleY: React.CSSProperties = {
             position: "absolute",
-            top: totalHeaderHeight,
+            top: shadowTopY,
             left: 0,
             width: width,
             height: height,
@@ -2102,7 +2148,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 {opacityY > 0 && <div id="shadow-y" style={styleY} />}
             </>
         );
-    }, [opacityX, opacityY, stickyX, width, smoothScrollX, totalHeaderHeight, height, smoothScrollY]);
+    }, [opacityX, opacityY, stickyX, width, smoothScrollX, shadowTopY, height, smoothScrollY]);
 
     const overlayStyle = React.useMemo<React.CSSProperties>(
         () => ({

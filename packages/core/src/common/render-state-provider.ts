@@ -37,31 +37,41 @@ export abstract class WindowingTrackerBase {
 
     public freezeCols: number = 0;
     public freezeRows: number[] = [];
+    /** Прилипшие колонки вне префикса freezeCols (по возрастанию). */
+    public stickyColumns: readonly number[] = [];
 
     protected isInWindow = (packed: number) => {
         const col = unpackCol(packed);
         const row = unpackRow(packed);
         const w = this.visibleWindow;
-        const colInWindow = (col >= w.x && col <= w.x + w.width) || col < this.freezeCols;
+        const colInWindow =
+            (col >= w.x && col <= w.x + w.width) || col < this.freezeCols || this.stickyColumns.includes(col);
         const rowInWindow = (row >= w.y && row <= w.y + w.height) || this.freezeRows.includes(row);
         return colInWindow && rowInWindow;
     };
 
     protected abstract clearOutOfWindow: () => void;
 
-    public setWindow(newWindow: Rectangle, freezeCols: number, freezeRows: number[]): void {
+    public setWindow(
+        newWindow: Rectangle,
+        freezeCols: number,
+        freezeRows: number[],
+        stickyColumns: readonly number[] = []
+    ): void {
         if (
             this.visibleWindow.x === newWindow.x &&
             this.visibleWindow.y === newWindow.y &&
             this.visibleWindow.width === newWindow.width &&
             this.visibleWindow.height === newWindow.height &&
             this.freezeCols === freezeCols &&
-            deepEqual(this.freezeRows, freezeRows)
+            deepEqual(this.freezeRows, freezeRows) &&
+            deepEqual(this.stickyColumns, stickyColumns)
         )
             return;
         this.visibleWindow = newWindow;
         this.freezeCols = freezeCols;
         this.freezeRows = freezeRows;
+        this.stickyColumns = stickyColumns;
         this.clearOutOfWindow();
     }
 }

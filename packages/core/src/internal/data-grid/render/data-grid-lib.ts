@@ -15,6 +15,7 @@ import type { BaseDrawArgs, PrepResult } from "../../../cells/cell-types.js";
 import { split as splitText, clearCache } from "canvas-hypertxt";
 import type { FullyDefined } from "../../../common/support.js";
 import type { SpannedGroupRegionCols } from "./data-grid-render.walk.js";
+import { type ColumnLayout, type StickyAxis, columnLayoutOf } from "./data-grid-freeze.js";
 
 export interface MappedGridColumn extends FullyDefined<InnerGridColumn> {
     sourceIndex: number;
@@ -129,11 +130,12 @@ export function useMappedColumns(
     columns: readonly InnerGridColumn[],
     freezeColumns: number,
     spanAlign?: SpanAlignment,
-    spanGroupHeaderDefault?: boolean
+    spanGroupHeaderDefault?: boolean,
+    stickyColumns?: readonly number[]
 ): readonly MappedGridColumn[] {
-    return React.useMemo(
-        () =>
-            columns.map(
+    return React.useMemo(() => {
+        const stickyColumnSet = stickyColumns === undefined ? undefined : new Set(stickyColumns);
+        return columns.map(
                 (c, i): MappedGridColumn => ({
                     group: c.group,
                     // Флаг слитной шапки имеет смысл только для колонки БЕЗ группы. Значение
@@ -155,7 +157,7 @@ export function useMappedColumns(
                     menuIcon: c.menuIcon,
                     overlayIcon: c.overlayIcon,
                     sourceIndex: i,
-                    sticky: i < freezeColumns,
+                    sticky: i < freezeColumns || stickyColumnSet?.has(i) === true,
                     indicatorIcon: c.indicatorIcon,
                     style: c.style,
                     themeOverride: c.themeOverride,
@@ -172,9 +174,8 @@ export function useMappedColumns(
                     headerRowMarkerAlwaysVisible: c.headerRowMarkerAlwaysVisible,
                     headerRowMarkerDisabled: c.headerRowMarkerDisabled,
                 })
-            ),
-        [columns, freezeColumns, spanAlign, spanGroupHeaderDefault]
-    );
+        );
+    }, [columns, freezeColumns, spanAlign, spanGroupHeaderDefault, stickyColumns]);
 }
 
 export function gridSelectionHasItem(sel: GridSelection, item: Item): boolean {
@@ -412,11 +413,13 @@ export function getEffectiveColumns(
 export function getColumnIndexForX(
     targetX: number,
     effectiveColumns: readonly MappedGridColumn[],
-    translateX?: number
+    translateX?: number,
+    layout: ColumnLayout | undefined = columnLayoutOf(effectiveColumns)
 ): number {
     let x = 0;
     for (const c of effectiveColumns) {
-        const cx = c.sticky ? x : x + (translateX ?? 0);
+        // Закреплённые идут первыми и занимают [0, pinnedEnd), поэтому выигрывают попадание в зону.
+        const cx = layout !== undefined ? layout.drawX(c.sourceIndex) : c.sticky ? x : x + (translateX ?? 0);
         if (targetX <= cx + c.width) {
             return c.sourceIndex;
         }
@@ -436,7 +439,8 @@ export function getRowIndexForY(
     cellYOffset: number,
     translateY: number,
     freezeTrailingRows: number,
-    groupHeaderLevels?: number
+    groupHeaderLevels?: number,
+    rowAxis?: StickyAxis
 ): number | undefined {
     const groupHeightsArray = Array.isArray(groupHeaderHeight) ? groupHeaderHeight : undefined;
     const groupHeaderHeightValue = typeof groupHeaderHeight === "number" ? groupHeaderHeight : undefined;
@@ -471,6 +475,9 @@ export function getRowIndexForY(
             return row;
         }
     }
+
+    const pinnedRow = rowAxis?.pinnedAt(targetY);
+    if (pinnedRow !== undefined) return pinnedRow;
 
     const effectiveRows = rows - freezeTrailingRows;
 
@@ -975,7 +982,9 @@ export function computeBounds(
     freezeTrailingRows: number,
     mappedColumns: readonly MappedGridColumn[],
     rowHeight: number | ((index: number) => number),
-    spannedGroupRegions?: readonly SpannedGroupRegionCols[]
+    spannedGroupRegions?: readonly SpannedGroupRegionCols[],
+    layout?: ColumnLayout,
+    rowAxis?: StickyAxis
 ): Rectangle {
     const result: Rectangle = {
         x: 0,
@@ -993,7 +1002,14 @@ export function computeBounds(
         : groupHeaderHeight;
     const headerHeight = totalHeaderHeight - groupHeights;
 
-    if (col >= freezeColumns) {
+    // С раскладкой «закреплена» — это закреплена в этом кадре, а не префикс freezeColumns.
+    const isPinned = (columnIndex: number) =>
+        layout === undefined ? mappedColumns[columnIndex].sticky : layout.isPinned(columnIndex);
+    const pinnedWidth = layout === undefined ? getStickyWidth(mappedColumns) : layout.axis.pinnedEnd;
+
+    if (layout !== undefined) {
+        result.x = layout.drawX(col);
+    } else if (col >= freezeColumns) {
         const dir = cellXOffset > col ? -1 : 1;
         const freezeWidth = getStickyWidth(mappedColumns);
         result.x += freezeWidth + translateX;
@@ -1043,11 +1059,11 @@ export function computeBounds(
 
         let start = col;
         const group = mappedColumns[col].group;
-        const sticky = mappedColumns[col].sticky;
+        const sticky = isPinned(col);
         while (
             start > 0 &&
             isGroupEqual(mappedColumns[start - 1].group, group, spanLevel) &&
-            mappedColumns[start - 1].sticky === sticky
+            isPinned(start - 1) === sticky
         ) {
             const c = mappedColumns[start - 1];
             result.x -= c.width;
@@ -1059,15 +1075,14 @@ export function computeBounds(
         while (
             end + 1 < mappedColumns.length &&
             isGroupEqual(mappedColumns[end + 1].group, group, spanLevel) &&
-            mappedColumns[end + 1].sticky === sticky
+            isPinned(end + 1) === sticky
         ) {
             const c = mappedColumns[end + 1];
             result.width += c.width;
             end++;
         }
         if (!sticky) {
-            const freezeWidth = getStickyWidth(mappedColumns);
-            const clip = result.x - freezeWidth;
+            const clip = result.x - pinnedWidth;
             if (clip < 0) {
                 result.x -= clip;
                 result.width += clip;
@@ -1077,6 +1092,9 @@ export function computeBounds(
                 result.width = width - result.x;
             }
         }
+    } else if (rowAxis?.isPinned(row) === true) {
+        result.y = rowAxis.stickyPosition(row) ?? result.y;
+        result.height = (rowAxis.stickySize(row) ?? 0) + 1;
     } else if (row >= rows - freezeTrailingRows) {
         let dy = rows - row;
         result.y = height;
