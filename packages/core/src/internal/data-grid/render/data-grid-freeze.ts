@@ -115,6 +115,27 @@ export class StickyAxis {
     }
 }
 
+/**
+ * Фрагмент слитого по строкам блока `[from, to]`, который рисуется для строки `row`.
+ * - `pinned` — строка прилипла: блок рисуется в полосе прилипших строк, на высоту подряд прилипших строк блока;
+ * - `scroll` — прокручиваемая часть; `hidesContent` — часть блока прилипла и контент показывает она.
+ */
+export type SpanRowsFragment =
+    | { readonly kind: "pinned"; readonly position: number; readonly size: number }
+    | { readonly kind: "scroll"; readonly hidesContent: boolean };
+
+export function spanRowsFragment(
+    rowAxis: StickyAxis | undefined,
+    row: number,
+    isPinnedRow: boolean,
+    from: number,
+    to: number
+): SpanRowsFragment {
+    const pinned = isPinnedRow ? rowAxis?.pinnedRun(row, from, to) : undefined;
+    if (pinned !== undefined) return { kind: "pinned", ...pinned };
+    return { kind: "scroll", hidesContent: rowAxis?.hasPinnedIn(from, to) === true };
+}
+
 export function emptyStickyAxis(base: number): StickyAxis {
     return new StickyAxis([], [], [], base);
 }

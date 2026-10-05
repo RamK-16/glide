@@ -4,6 +4,7 @@ import {
     computeColumnLayout,
     computeRowAxis,
     normalizeStickyIndexes,
+    spanRowsFragment,
 } from "../src/internal/data-grid/render/data-grid-freeze.js";
 import type { MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
 
@@ -131,5 +132,67 @@ describe("computeRowAxis", () => {
     test("индексы вне строк игнорируются", () => {
         const axis = computeRowAxis([5, 200], 100, 0, 0, 0, 300, rowHeight);
         expect(axis.items).toEqual([5]);
+    });
+});
+
+describe("StickyAxis.pinnedRun", () => {
+    // липкие 2, 3 и 7 по 10px, все прилипли: слоты 0, 10, 20
+    const axis = new StickyAxis(
+        [2, 3, 7],
+        [10, 10, 10],
+        [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY],
+        0
+    );
+
+    test("подряд прилипшие строки блока — одна полоса от первой до последней", () => {
+        expect(axis.pinnedRun(2, 0, 5)).toEqual({ position: 0, size: 20 });
+        expect(axis.pinnedRun(3, 0, 5)).toEqual({ position: 0, size: 20 });
+    });
+
+    test("прилипшие строки вне блока в полосу не входят", () => {
+        expect(axis.pinnedRun(3, 3, 6)).toEqual({ position: 10, size: 10 });
+        expect(axis.pinnedRun(7, 6, 9)).toEqual({ position: 20, size: 10 });
+    });
+
+    test("нелипкая или не прилипшая строка — undefined", () => {
+        expect(axis.pinnedRun(5, 0, 9)).toBeUndefined();
+        const notPinned = new StickyAxis([2], [10], [40], 0);
+        expect(notPinned.pinnedRun(2, 0, 9)).toBeUndefined();
+    });
+});
+
+describe("spanRowsFragment — слитый блок и липкие строки", () => {
+    // блок строк 0..9 (регион), липкая строка 3 — итог внутри блока; шапка 36px
+    test("начало блока уехало вверх, липкая строка прилипла: она рисует блок в полосе", () => {
+        const axis = computeRowAxis([3], 100, 5, 0, 36, 500, rowHeight);
+        expect(spanRowsFragment(axis, 3, true, 0, 9)).toEqual({ kind: "pinned", position: 36, size: 30 });
+    });
+
+    test("прокручиваемая часть того же блока — только фон, контент у прилипшей части", () => {
+        const axis = computeRowAxis([3], 100, 5, 0, 36, 500, rowHeight);
+        expect(spanRowsFragment(axis, 6, false, 0, 9)).toEqual({ kind: "scroll", hidesContent: true });
+    });
+
+    test("несколько прилипших строк блока подряд — один фрагмент на их общую высоту", () => {
+        const axis = computeRowAxis([3, 4], 100, 10, 0, 36, 500, rowHeight);
+        const fragment = { kind: "pinned", position: 36, size: 50 };
+        expect(spanRowsFragment(axis, 3, true, 0, 9)).toEqual(fragment);
+        expect(spanRowsFragment(axis, 4, true, 0, 9)).toEqual(fragment);
+    });
+
+    test("у соседних блоков свои фрагменты в полосе", () => {
+        const axis = computeRowAxis([3, 12], 100, 20, 0, 36, 500, rowHeight);
+        expect(spanRowsFragment(axis, 3, true, 0, 9)).toEqual({ kind: "pinned", position: 36, size: 30 });
+        expect(spanRowsFragment(axis, 12, true, 10, 15)).toEqual({ kind: "pinned", position: 66, size: 20 });
+    });
+
+    test("липкая строка блока ещё не дошла до шапки — блок рисуется целиком как обычно", () => {
+        const axis = computeRowAxis([3], 100, 0, 0, 36, 500, rowHeight);
+        expect(spanRowsFragment(axis, 3, true, 0, 9)).toEqual({ kind: "scroll", hidesContent: false });
+        expect(spanRowsFragment(axis, 0, false, 0, 9)).toEqual({ kind: "scroll", hidesContent: false });
+    });
+
+    test("без липких строк — обычный блок", () => {
+        expect(spanRowsFragment(undefined, 0, false, 0, 9)).toEqual({ kind: "scroll", hidesContent: false });
     });
 });

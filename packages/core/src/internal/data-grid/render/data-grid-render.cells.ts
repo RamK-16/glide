@@ -32,7 +32,7 @@ import type { EnqueueCallback } from "../use-animation-queue.js";
 import type { RenderStateProvider } from "../../../common/render-state-provider.js";
 import type { ImageWindowLoader } from "../image-window-loader-interface.js";
 import { intersectRect } from "../../../common/math.js";
-import { rowAxisOf } from "./data-grid-freeze.js";
+import { rowAxisOf, spanRowsFragment } from "./data-grid-freeze.js";
 import type { GridMouseGroupHeaderEventArgs } from "../event-args.js";
 import {
     getRowSpanBounds,
@@ -415,11 +415,12 @@ export function drawCells(
                         const [spanStartRow, spanEndRow] = cell.spanRows ?? [row, row];
                         // Блок, задевающий прилипшие строки, режется на фрагменты: закреплённый (в полосе)
                         // и прокручиваемый. Контент рисует закреплённый, прокручиваемый — только фон.
-                        const pinnedRun =
-                            isSticky && cell.spanRows !== undefined
-                                ? rowAxis?.pinnedRun(row, spanStartRow, spanEndRow)
-                                : undefined;
-                        const fragment = pinnedRun === undefined ? "scroll" : `pinned-${pinnedRun.position}`;
+                        const rowsFragment =
+                            cell.spanRows === undefined
+                                ? undefined
+                                : spanRowsFragment(rowAxis, row, isSticky, spanStartRow, spanEndRow);
+                        const fragment =
+                            rowsFragment?.kind === "pinned" ? `pinned-${rowsFragment.position}` : "scroll";
                         const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky},${fragment}`; //alloc
                         if (handledSpans === undefined) handledSpans = new Set();
                         if (!handledSpans.has(spanKey)) {
@@ -432,14 +433,14 @@ export function drawCells(
                             if (horizontalOk) {
                                 // Вертикаль: rowspan — накопление высот строк блока; origin-строка может
                                 // быть выше вьюпорта → cellY уходит в минус (scroll-safe, канва клипует).
-                                if (pinnedRun !== undefined) {
-                                    cellY = pinnedRun.position;
-                                    cellHeight = pinnedRun.size;
+                                if (rowsFragment?.kind === "pinned") {
+                                    cellY = rowsFragment.position;
+                                    cellHeight = rowsFragment.size;
                                 } else if (cell.spanRows !== undefined) {
                                     const v = getRowSpanBounds(cell.spanRows, row, drawY, getRowHeight);
                                     cellY = v.y;
                                     cellHeight = v.height;
-                                    if (rowAxis?.hasPinnedIn(spanStartRow, spanEndRow) === true) {
+                                    if (rowsFragment?.kind === "scroll" && rowsFragment.hidesContent) {
                                         skipContents = true;
                                     }
                                 }
