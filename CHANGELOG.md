@@ -1,3 +1,10 @@
+# [6.6.0](https://github.com/RamK-16/glide/compare/v6.5.1...v6.6.0) (2026-10-06)
+
+
+### Features
+
+* **data-grid:** липкие строки и колонки (stickyRows, stickyColumns) [#52](https://github.com/RamK-16/glide/issues/52) ([df2c19d](https://github.com/RamK-16/glide/commit/df2c19dcff838788c9950662cdbbd7ebfa2483b7))
+
 ## [6.5.1](https://github.com/RamK-16/glide/compare/v6.5.0...v6.5.1) (2026-09-24)
 
 
