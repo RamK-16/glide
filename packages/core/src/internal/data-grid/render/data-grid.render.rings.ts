@@ -5,6 +5,7 @@ import {
     type InnerGridCell,
     type Item,
     type FillHandle,
+    type Rectangle,
     DEFAULT_FILL_HANDLE,
 } from "../data-grid-types.js";
 import { getStickyWidth, type MappedGridColumn, computeBounds, getFreezeTrailingHeight } from "./data-grid-lib.js";
@@ -14,6 +15,52 @@ import { hugRectToTarget, intersectRect, rectContains, splitRectIntoRegions } fr
 import { getSpanBounds, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type Highlight } from "./data-grid-render.cells.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { type ColumnLayout, type StickyAxis, rowAxisOf } from "./data-grid-freeze.js";
+
+interface IndexRun {
+    readonly start: number;
+    readonly end: number;
+    readonly pinned: boolean;
+}
+
+/**
+ * Режет диапазон индексов [start, start + count) на экранно-непрерывные прогоны: закреплённые
+ * (по прогону на каждую цепочку соседних слотов) и одна прокручиваемая полоса. Элементы, скрытые
+ * под закреплённой зоной, входят в прокручиваемую полосу — её клип всё равно начинается от края зоны.
+ */
+function splitRuns(
+    start: number,
+    count: number,
+    isPinned: (index: number) => boolean,
+    isAdjacent: (left: number, right: number) => boolean
+): IndexRun[] {
+    const runs: IndexRun[] = [];
+    let scrollStart = -1;
+    let scrollEnd = -1;
+    let runStart = -1;
+    let runEnd = -1;
+    for (let index = start; index < start + count; index++) {
+        if (!isPinned(index)) {
+            if (scrollStart === -1) scrollStart = index;
+            scrollEnd = index;
+            continue;
+        }
+        if (runStart !== -1 && isAdjacent(runEnd, index)) {
+            runEnd = index;
+        } else {
+            if (runStart !== -1) runs.push({ start: runStart, end: runEnd, pinned: true });
+            runStart = index;
+            runEnd = index;
+        }
+    }
+    if (runStart !== -1) runs.push({ start: runStart, end: runEnd, pinned: true });
+    if (scrollStart !== -1) runs.push({ start: scrollStart, end: scrollEnd, pinned: false });
+    return runs;
+}
+
+function wholeRun(start: number, count: number): IndexRun[] {
+    return [{ start, end: start + count - 1, pinned: false }];
+}
 
 export function drawHighlightRings(
     ctx: CanvasRenderingContext2D,
@@ -32,22 +79,83 @@ export function drawHighlightRings(
     rows: number,
     allHighlightRegions: readonly Highlight[] | undefined,
     theme: FullTheme,
-    enableLowDprHairline: boolean = false
+    enableLowDprHairline: boolean = false,
+    columnLayout?: ColumnLayout,
+    rowAxis?: StickyAxis
 ): (() => void) | undefined {
     const highlightRegions = allHighlightRegions?.filter(x => x.style !== "no-outline");
 
     if (highlightRegions === undefined || highlightRegions.length === 0) return undefined;
 
-    const freezeLeft = getStickyWidth(mappedColumns);
+    const freezeLeft = columnLayout === undefined ? getStickyWidth(mappedColumns) : columnLayout.axis.pinnedEnd;
     const freezeBottom = getFreezeTrailingHeight(rows, freezeTrailingRows, rowHeight);
-    const splitIndicies = [freezeColumns, 0, mappedColumns.length, rows - freezeTrailingRows] as const;
-    const splitLocations = [freezeLeft, 0, width, height - freezeBottom] as const;
+    const bottomSplit = rows - freezeTrailingRows;
+
+    // Без раскладки — апстримный сплит по префиксу freezeColumns. С раскладкой диапазон режется на
+    // прогоны колонок и строк: закреплённый прогон целиком «левый»/«верхний» (клип до края зоны),
+    // прокручиваемый целиком «центральный» (клип от края зоны).
+    const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : 0;
+    const splitRegions = (range: Rectangle) => {
+        if (columnLayout === undefined && pinnedRowsEnd === 0) {
+            return splitRectIntoRegions(
+                range,
+                [freezeColumns, 0, mappedColumns.length, bottomSplit],
+                width,
+                height,
+                [freezeLeft, 0, width, height - freezeBottom]
+            );
+        }
+        const columnRuns =
+            columnLayout === undefined
+                ? wholeRun(range.x, range.width)
+                : splitRuns(
+                      range.x,
+                      Math.min(range.width, mappedColumns.length - range.x),
+                      column => columnLayout.isPinned(column),
+                      (leftColumn, rightColumn) =>
+                          Math.abs(
+                              columnLayout.drawX(leftColumn) +
+                                  mappedColumns[leftColumn].width -
+                                  columnLayout.drawX(rightColumn)
+                          ) < 0.5
+                  );
+        const rowRuns =
+            pinnedRowsEnd === 0 || rowAxis === undefined
+                ? wholeRun(range.y, range.height)
+                : splitRuns(
+                      range.y,
+                      range.height,
+                      row => rowAxis.isPinned(row),
+                      (upperRow, lowerRow) => rowAxis.positionOf(lowerRow) === rowAxis.positionOf(upperRow) + 1
+                  );
+        return columnRuns.flatMap(columnRun =>
+            rowRuns.flatMap(rowRun =>
+                splitRectIntoRegions(
+                    {
+                        x: columnRun.start,
+                        y: rowRun.start,
+                        width: columnRun.end - columnRun.start + 1,
+                        height: rowRun.end - rowRun.start + 1,
+                    },
+                    [
+                        columnLayout === undefined ? freezeColumns : columnRun.pinned ? mappedColumns.length : 0,
+                        rowRun.pinned ? rows : 0,
+                        mappedColumns.length,
+                        bottomSplit,
+                    ],
+                    width,
+                    height,
+                    [freezeLeft, pinnedRowsEnd, width, height - freezeBottom]
+                )
+            )
+        );
+    };
 
     const drawRects = highlightRegions.map(h => {
         const r = h.range;
         const style = h.style ?? "dashed";
 
-        return splitRectIntoRegions(r, splitIndicies, width, height, splitLocations).map(arg => {
+        return splitRegions(r).map(arg => {
             const rect = arg.rect;
             const topLeftBounds = computeBounds(
                 rect.x,
@@ -64,7 +172,10 @@ export function drawHighlightRings(
                 freezeColumns,
                 freezeTrailingRows,
                 mappedColumns,
-                rowHeight
+                rowHeight,
+                undefined,
+                columnLayout,
+                rowAxis
             );
             const bottomRightBounds =
                 rect.width === 1 && rect.height === 1
@@ -84,7 +195,10 @@ export function drawHighlightRings(
                           freezeColumns,
                           freezeTrailingRows,
                           mappedColumns,
-                          rowHeight
+                          rowHeight,
+                          undefined,
+                          columnLayout,
+                          rowAxis
                       );
 
             // Апстримный -1 задуман против подрезки рамки краем канвы. Применяем его
@@ -344,7 +458,8 @@ export function drawFillHandle(
                         };
                     }
                     return drawHandleCb !== undefined;
-                }
+                },
+                rowAxisOf(effectiveCols)
             );
 
             return drawHandleCb !== undefined;

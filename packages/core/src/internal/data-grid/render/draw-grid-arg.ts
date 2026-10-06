@@ -64,6 +64,8 @@ export interface DrawGridArg {
     readonly selection: GridSelection;
     readonly fillHandle: FillHandle;
     readonly freezeTrailingRows: number;
+    /** Липкие строки сверху (индексы по возрастанию). */
+    readonly stickyRows?: readonly number[];
     readonly hasAppendRow: boolean;
     readonly hyperWrapping: boolean;
     readonly rows: number;

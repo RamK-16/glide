@@ -58,6 +58,7 @@ import {
     isCoveredSpanCell,
     getSpanOrigin,
 } from "../internal/data-grid/render/data-grid-lib.js";
+import { normalizeStickyIndexes } from "../internal/data-grid/render/data-grid-freeze.js";
 import { GroupRename } from "./group-rename.js";
 import { measureColumn, useColumnSizer } from "./use-column-sizer.js";
 import { isHotkey } from "../common/is-hotkey.js";
@@ -659,6 +660,21 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
     readonly freezeColumns?: DataGridSearchProps["freezeColumns"];
 
     /**
+     * Липкие колонки, например `[0, 3, 10]`. Колонка стоит на своём месте, пока при прокрутке не дойдёт
+     * до закреплённой зоны слева, и дальше остаётся в ней, как `position: sticky`. Сочетается с
+     * `freezeColumns`. Индексы считаются без колонки маркеров строк.
+     * @group Style
+     */
+    readonly stickyColumns?: readonly number[];
+
+    /**
+     * Липкие строки, например `[0, 5, 40]`. Строка прилипает под шапкой (и под уже прилипшими строками),
+     * когда при прокрутке доходит до них, как `position: sticky`.
+     * @group Style
+     */
+    readonly stickyRows?: readonly number[];
+
+    /**
      * Controls the drawing of the left hand vertical border of a column. If set to a boolean value it controls all
      * borders.
      * @defaultValue `true`
@@ -835,6 +851,29 @@ export const emptyGridSelection: GridSelection = {
     current: undefined,
 };
 
+interface IndexRun {
+    readonly start: number;
+    readonly length: number;
+}
+
+/** Склеивает отсортированные индексы в прогоны соседних: [1, 2, 3, 7] → (1, 3), (7, 1). */
+function toRuns(indexes: readonly number[]): IndexRun[] {
+    const runs: IndexRun[] = [];
+    let start = 0;
+    let length = 0;
+    for (const index of indexes) {
+        if (length > 0 && index === start + length) {
+            length++;
+            continue;
+        }
+        if (length > 0) runs.push({ start, length });
+        start = index;
+        length = 1;
+    }
+    if (length > 0) runs.push({ start, length });
+    return runs;
+}
+
 const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorProps> = (p, forwardedRef) => {
     const [gridSelectionInner, setGridSelectionInner] = React.useState<GridSelection>(emptyGridSelection);
 
@@ -911,6 +950,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         onPaste,
         copyHeaders = false,
         freezeColumns = 0,
+        stickyColumns: stickyColumnsIn,
+        stickyRows: stickyRowsIn,
         cellActivationBehavior = "second-click",
         rowSelectionMode = "auto",
         columnSelectionMode = "auto",
@@ -1025,6 +1066,12 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     const rowMarkerWidth = rowMarkerWidthRaw ?? (rowsIn > 10_000 ? 48 : rowsIn > 1000 ? 44 : rowsIn > 100 ? 36 : 32);
     const hasRowMarkers = rowMarkers !== "none";
     const rowMarkerOffset = hasRowMarkers ? 1 : 0;
+
+    const stickyColumns = React.useMemo(
+        () => normalizeStickyIndexes(stickyColumnsIn, columnsIn.length, rowMarkerOffset),
+        [stickyColumnsIn, columnsIn.length, rowMarkerOffset]
+    );
+    const stickyRows = React.useMemo(() => normalizeStickyIndexes(stickyRowsIn, rows), [stickyRowsIn, rows]);
     const showTrailingBlankRow = trailingRowOptions !== undefined;
     const lastRowSticky = trailingRowOptions?.sticky === true;
 
@@ -1750,6 +1797,22 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                         for (let i = 0; i < freezeColumns; i++) {
                             frozenWidth += columns[i].width;
                         }
+                        // Когда цель встанет у края, все липкие левее и выше неё уже прилипнут:
+                        // безопасное окно начинается за ними (сама цель займёт следующий слот).
+                        if (stickyColumns !== undefined && trueCol !== undefined) {
+                            for (const stickyGridColumn of stickyColumns) {
+                                const stickyColumn = stickyGridColumn - rowMarkerOffset;
+                                if (stickyColumn >= trueCol) break;
+                                if (stickyColumn >= freezeColumns) frozenWidth += columns[stickyColumn].width;
+                            }
+                        }
+                        let stickyRowsHeight = 0;
+                        if (stickyRows !== undefined && trueRow !== undefined) {
+                            for (const stickyRow of stickyRows) {
+                                if (stickyRow >= trueRow) break;
+                                stickyRowsHeight += typeof rowHeight === "number" ? rowHeight : rowHeight(stickyRow);
+                            }
+                        }
                         let trailingRowHeight = 0;
                         const freezeTrailingRowsEffective = freezeTrailingRows + (lastRowSticky ? 1 : 0);
                         if (freezeTrailingRowsEffective > 0) {
@@ -1763,7 +1826,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                         // scrollBounds is already scaled
                         let sLeft = frozenWidth * scale + scrollBounds.left + rowMarkerOffset * rowMarkerWidth * scale;
                         let sRight = scrollBounds.right;
-                        let sTop = scrollBounds.top + totalHeaderHeight * scale;
+                        let sTop = scrollBounds.top + (totalHeaderHeight + stickyRowsHeight) * scale;
                         let sBottom = scrollBounds.bottom - trailingRowHeight * scale;
 
                         const minx = targetRect.width + paddingX * 2;
@@ -1838,6 +1901,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             scrollRef,
             totalHeaderHeight,
             freezeColumns,
+            stickyColumns,
+            stickyRows,
             columns,
             mangledRows,
             lastRowSticky,
@@ -2923,6 +2988,43 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }
             }
 
+            // Липкие колонки и строки видны вне окна прокрутки: отдаём их регионами, чтобы потребитель
+            // загрузил для них данные. Соседние индексы склеиваются в один регион.
+            // Колонки уже покрытые префиксом freezeColumns, повторно не отдаём.
+            const stickyColumnRuns = toRuns(
+                (stickyColumns ?? [])
+                    .map(stickyGridColumn => stickyGridColumn - rowMarkerOffset)
+                    .filter(stickyColumn => stickyColumn >= freezeColumns)
+            );
+            const stickyRowRuns = toRuns(stickyRows ?? []);
+            for (const columnRun of stickyColumnRuns) {
+                freezeRegions.push({
+                    x: columnRun.start,
+                    y: region.y,
+                    width: columnRun.length,
+                    height: region.height,
+                });
+            }
+            for (const rowRun of stickyRowRuns) {
+                freezeRegions.push({
+                    x: region.x - rowMarkerOffset,
+                    y: rowRun.start,
+                    width: region.width,
+                    height: rowRun.length,
+                });
+                if (freezeColumns > 0) {
+                    freezeRegions.push({ x: 0, y: rowRun.start, width: freezeColumns, height: rowRun.length });
+                }
+                for (const columnRun of stickyColumnRuns) {
+                    freezeRegions.push({
+                        x: columnRun.start,
+                        y: rowRun.start,
+                        width: columnRun.length,
+                        height: rowRun.length,
+                    });
+                }
+            }
+
             const newRegion = {
                 x: region.x - rowMarkerOffset,
                 y: region.y,
@@ -2948,6 +3050,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             rows,
             freezeColumns,
             freezeTrailingRows,
+            stickyColumns,
+            stickyRows,
             setVisibleRegion,
             onVisibleRegionChanged,
         ]
@@ -4697,6 +4801,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     drawCell={drawCell}
                     disabledRows={disabledRows}
                     freezeColumns={mangledFreezeColumns}
+                    stickyColumns={stickyColumns}
+                    stickyRows={stickyRows}
                     spanAlign={spanAlign}
                     spanGroupHeader={spanGroupHeader}
                     lockColumns={rowMarkerOffset}
