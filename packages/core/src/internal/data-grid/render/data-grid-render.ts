@@ -425,27 +425,16 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     } = arg;
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
-    // Дробный DPR > 1 (масштаб ОС 125/150%): штатно буфер рисуется в ceil(dpr)
-    // и браузер ужимает его (например 2x → 1.5x), размывая линии и края заливок
-    // (см. plans/header-cell-merge.md, п.4 «зазор 1px при дробном dpr»). При
-    // включённой hairline-компенсации рисуем в НАТИВНОМ масштабе без ужатия;
-    // линии кладёт на сетку физических пикселей getHairlineSnapper (lines.ts).
-    const rawDpr = window.devicePixelRatio ?? 1;
-    const useNativeFractionalDpr = enableLowDprHairline && rawDpr > 1 && !Number.isInteger(rawDpr);
-    const dpr = Math.min(maxScaleFactor, useNativeFractionalDpr ? rawDpr : Math.ceil(rawDpr));
-    // Размер канвы — целые физические пиксели (при целом dpr — как раньше).
-    const px = (v: number) => Math.round(v * dpr);
+    const dpr = Math.min(maxScaleFactor, Math.ceil(window.devicePixelRatio ?? 1));
 
     // if we are double buffering we need to make sure we can blit. If we can't we need to redraw the whole thing
-    // При нативном дробном dpr blit выключен: целочисленное копирование буфера
-    // по дробному сдвигу скролла размазало бы кадр — всегда полная перерисовка.
-    const canBlit = renderStrategy !== "direct" && !useNativeFractionalDpr && computeCanBlit(arg, lastArg);
+    const canBlit = renderStrategy !== "direct" && computeCanBlit(arg, lastArg);
 
     const canvas = canvasCtx.canvas;
 
-    if (canvas.width !== px(width) || canvas.height !== px(height)) {
-        canvas.width = px(width);
-        canvas.height = px(height);
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
 
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
@@ -456,9 +445,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
 
     const overlayHeight = totalHeaderHeight + 1; // border
-    if (overlayCanvas.width !== px(width) || overlayCanvas.height !== px(overlayHeight)) {
-        overlayCanvas.width = px(width);
-        overlayCanvas.height = px(overlayHeight);
+    if (overlayCanvas.width !== width * dpr || overlayCanvas.height !== overlayHeight * dpr) {
+        overlayCanvas.width = width * dpr;
+        overlayCanvas.height = overlayHeight * dpr;
 
         overlayCanvas.style.width = width + "px";
         overlayCanvas.style.height = overlayHeight + "px";
@@ -467,15 +456,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const bufferA = bufferACtx.canvas;
     const bufferB = bufferBCtx.canvas;
 
-    if (doubleBuffer && (bufferA.width !== px(width) || bufferA.height !== px(height))) {
-        bufferA.width = px(width);
-        bufferA.height = px(height);
+    if (doubleBuffer && (bufferA.width !== width * dpr || bufferA.height !== height * dpr)) {
+        bufferA.width = width * dpr;
+        bufferA.height = height * dpr;
         if (lastBlitData.current !== undefined) lastBlitData.current.aBufferScroll = undefined;
     }
 
-    if (doubleBuffer && (bufferB.width !== px(width) || bufferB.height !== px(height))) {
-        bufferB.width = px(width);
-        bufferB.height = px(height);
+    if (doubleBuffer && (bufferB.width !== width * dpr || bufferB.height !== height * dpr)) {
+        bufferB.width = width * dpr;
+        bufferB.height = height * dpr;
         if (lastBlitData.current !== undefined) lastBlitData.current.bBufferScroll = undefined;
     }
 
