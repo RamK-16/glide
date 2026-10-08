@@ -14,7 +14,7 @@ import { blendCache } from "../color-parser.js";
 import { intersectRect } from "../../../common/math.js";
 import { getSkipPoint, walkColumns, walkRowsInCol, getTotalGroupHeaderHeight } from "./data-grid-render.walk.js";
 import { type GetRowThemeCallback } from "./data-grid-render.cells.js";
-import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { getHairlineSnapper, getHairlineWidth } from "./data-grid-render.hairline.js";
 
 export function drawBlanks(
     ctx: CanvasRenderingContext2D,
@@ -136,13 +136,16 @@ export function overdrawStickyBoundaries(
     // Sticky/frozen boundaries дорисовываются отдельным overlay-проходом поверх ячеек.
     // На DPR < 1 используем hairline width, чтобы эти границы не становились тоньше физического пикселя.
     ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
+    // Дробный DPR: границы sticky-зон тоже кладём на сетку физических пикселей.
+    const snapBoundary = getHairlineSnapper(enableLowDprHairline, ctx.lineWidth);
 
     let vStroke: string | undefined;
     if (drawX !== 0) {
         vStroke = blendCache(vColor, theme.bgCell);
+        const x = snapBoundary?.(drawX + 0.5) ?? drawX + 0.5;
         ctx.beginPath();
-        ctx.moveTo(drawX + 0.5, 0);
-        ctx.lineTo(drawX + 0.5, height);
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
         ctx.strokeStyle = vStroke;
         ctx.stroke();
     }
@@ -150,9 +153,10 @@ export function overdrawStickyBoundaries(
     if (freezeTrailingRows > 0) {
         const hStroke = vColor === hColor && vStroke !== undefined ? vStroke : blendCache(hColor, theme.bgCell);
         const h = getFreezeTrailingHeight(rows, freezeTrailingRows, getRowHeight);
+        const y = snapBoundary?.(height - h + 0.5) ?? height - h + 0.5;
         ctx.beginPath();
-        ctx.moveTo(0, height - h + 0.5);
-        ctx.lineTo(width, height - h + 0.5);
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
         ctx.strokeStyle = hStroke;
         ctx.stroke();
     }
@@ -531,10 +535,25 @@ export function drawGridLines(
     // проход кистью: задаём цвет, прокладываем все линии этого цвета и рисуем их
     // разом. Так вместо сотен отдельных штрихов получается несколько (по числу
     // цветов), и стыки не двоятся.
+    // Дробный DPR: выравниваем каждую линию на сетку физических пикселей,
+    // иначе округление у каждой линии своё (разная толщина/светлость).
+    // Горизонталь — снэп по y, вертикаль — по x; при целом DPR snap=undefined.
+    const snap = getHairlineSnapper(enableLowDprHairline, ctx.lineWidth);
     const groups = groupBy(toDraw, line => line.color);
     for (const g of Object.keys(groups)) {
         ctx.strokeStyle = g;
         for (const line of groups[g]) {
+            if (snap !== undefined) {
+                if (line.y1 === line.y2) {
+                    const y = snap(line.y1);
+                    line.y1 = y;
+                    line.y2 = y;
+                } else if (line.x1 === line.x2) {
+                    const x = snap(line.x1);
+                    line.x1 = x;
+                    line.x2 = x;
+                }
+            }
             ctx.moveTo(line.x1, line.y1);
             ctx.lineTo(line.x2, line.y2);
         }
