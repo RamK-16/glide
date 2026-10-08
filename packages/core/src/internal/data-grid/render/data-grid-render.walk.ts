@@ -1,5 +1,6 @@
 import { type Item, type Rectangle } from "../data-grid-types.js";
 import { type MappedGridColumn, isGroupEqual } from "./data-grid-lib.js";
+import { type ColumnLayout, type StickyAxis, columnLayoutOf } from "./data-grid-freeze.js";
 
 export function getSkipPoint(drawRegions: readonly Rectangle[]): number | undefined {
     if (drawRegions.length === 0) return undefined;
@@ -18,6 +19,12 @@ export type WalkRowsCallback = (
     isTrailingRow: boolean
 ) => boolean | void;
 
+/**
+ * Обход строк колонки тремя секциями: прокручиваемые строки, закреплённые сверху липкие строки
+ * (`rowAxis`) и закреплённые снизу. Липкие строки рисуются после прокручиваемых и с `isSticky`,
+ * то есть с непрозрачным фоном поверх того, что прокрутилось под зону. Строки, целиком
+ * ушедшие под зону, не обходятся.
+ */
 export function walkRowsInCol(
     startRow: number,
     drawY: number,
@@ -27,16 +34,25 @@ export function walkRowsInCol(
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     skipToY: number | undefined,
-    cb: WalkRowsCallback
+    cb: WalkRowsCallback,
+    rowAxis?: StickyAxis
 ): void {
+    const pinnedCount = rowAxis?.pinnedCount ?? 0;
+    const pinnedRows: readonly number[] = rowAxis?.items ?? [];
     skipToY = skipToY ?? drawY;
+    if (rowAxis !== undefined && pinnedCount > 0) {
+        skipToY = Math.max(skipToY, rowAxis.pinnedEnd);
+    }
     let y = drawY;
     let row = startRow;
     const rowEnd = rows - freezeTrailingRows;
     let didBreak = false;
+    let nextPinnedPosition = 0;
     while (y < height && row < rowEnd) {
         const rh = getRowHeight(row);
-        if (y + rh > skipToY && cb(y, row, rh, false, hasAppendRow && row === rows - 1) === true) {
+        while (nextPinnedPosition < pinnedCount && pinnedRows[nextPinnedPosition] < row) nextPinnedPosition++;
+        const isPinned = nextPinnedPosition < pinnedCount && pinnedRows[nextPinnedPosition] === row;
+        if (!isPinned && y + rh > skipToY && cb(y, row, rh, false, hasAppendRow && row === rows - 1) === true) {
             didBreak = true;
             break;
         }
@@ -45,6 +61,16 @@ export function walkRowsInCol(
     }
 
     if (didBreak) return;
+
+    if (rowAxis !== undefined) {
+        for (let pinnedPosition = 0; pinnedPosition < pinnedCount; pinnedPosition++) {
+            const pinnedRow = pinnedRows[pinnedPosition];
+            const pinnedY = rowAxis.positions[pinnedPosition];
+            const pinnedHeight = rowAxis.sizes[pinnedPosition];
+            const isTrailingRow = hasAppendRow && pinnedRow === rows - 1;
+            if (cb(pinnedY, pinnedRow, pinnedHeight, true, isTrailingRow) === true) return;
+        }
+    }
 
     y = height;
     for (let fr = 0; fr < freezeTrailingRows; fr++) {
@@ -63,17 +89,33 @@ export type WalkColsCallback = (
     startRow: number
 ) => boolean | void;
 
+/**
+ * Обход колонок кадра. С `layout` позиции берутся из раскладки липких колонок (computeColumnLayout),
+ * без него — апстримное накопление ширин (только префикс freezeColumns).
+ */
 export function walkColumns(
     effectiveCols: readonly MappedGridColumn[],
     cellYOffset: number,
     translateX: number,
     translateY: number,
     totalHeaderHeight: number,
-    cb: WalkColsCallback
+    cb: WalkColsCallback,
+    layout: ColumnLayout | undefined = columnLayoutOf(effectiveCols)
 ): void {
+    const drawY = totalHeaderHeight + translateY;
+    if (layout !== undefined) {
+        const zoneEnd = layout.axis.pinnedEnd;
+        for (const column of effectiveCols) {
+            const clipX = column.sticky ? 0 : zoneEnd;
+            if (cb(column, layout.drawX(column.sourceIndex), drawY, clipX, cellYOffset) === true) {
+                break;
+            }
+        }
+        return;
+    }
+
     let x = 0;
     let clipX = 0; // this tracks the total width of sticky cols
-    const drawY = totalHeaderHeight + translateY;
     for (const c of effectiveCols) {
         const drawX = c.sticky ? clipX : x + translateX;
         if (cb(c, drawX, drawY, c.sticky ? 0 : clipX, cellYOffset) === true) {
@@ -150,7 +192,8 @@ export function walkGroups(
     translateX: number,
     groupHeaderHeights: number | number[],
     level: number,
-    cb: WalkGroupsCallback
+    cb: WalkGroupsCallback,
+    layout: ColumnLayout | undefined = columnLayoutOf(effectiveCols)
 ): void {
     const groupHeaderHeight = Array.isArray(groupHeaderHeights)
         ? groupHeaderHeights[level] ?? groupHeaderHeights[0] ?? 0
@@ -180,7 +223,9 @@ export function walkGroups(
             startCol.spanGroupHeader !== true &&
             effectiveCols[end].spanGroupHeader !== true &&
             isGroupEqual(effectiveCols[end].group, startCol.group, level) &&
-            effectiveCols[end].sticky === effectiveCols[index].sticky
+            effectiveCols[end].sticky === effectiveCols[index].sticky &&
+            // Закреплённые колонки идут первыми: соседи по списку могут быть не соседями на экране.
+            (layout === undefined || isScreenAdjacent(layout, effectiveCols[end - 1], effectiveCols[end]))
         ) {
             const endCol = effectiveCols[end];
             boxWidth += endCol.width;
@@ -196,8 +241,9 @@ export function walkGroups(
         }
 
         const t = startCol.sticky ? 0 : translateX;
-        const localX = x + t;
-        const delta = startCol.sticky ? 0 : Math.max(0, clipX - localX);
+        const localX = layout === undefined ? x + t : layout.drawX(startCol.sourceIndex);
+        const zoneEnd = layout === undefined ? clipX : layout.axis.pinnedEnd;
+        const delta = startCol.sticky ? 0 : Math.max(0, zoneEnd - localX);
         const w = Math.min(boxWidth - delta, width - (localX + delta));
         const groupName = getGroupAtLevel(startCol.group, level);
         cb(
@@ -216,6 +262,10 @@ export function walkGroups(
 
         x += boxWidth;
     }
+}
+
+function isScreenAdjacent(layout: ColumnLayout, left: MappedGridColumn, right: MappedGridColumn): boolean {
+    return Math.abs(layout.drawX(left.sourceIndex) + left.width - layout.drawX(right.sourceIndex)) < 0.5;
 }
 
 export interface SpannedGroupRegionCols {

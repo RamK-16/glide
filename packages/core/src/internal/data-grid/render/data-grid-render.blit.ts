@@ -13,6 +13,10 @@ export interface BlitData {
     readonly translateY: number;
     readonly mustDrawFocusOnHeader: boolean;
     readonly mustDrawHighlightRingsOnHeader: boolean;
+    /** Правый край закреплённой зоны колонок в кадре (меняется, когда липкая колонка прилипает). */
+    readonly pinnedColumnsEnd: number;
+    /** Сколько липких строк прилипло в кадре. */
+    readonly pinnedRowsCount: number;
     readonly lastBuffer: "a" | "b" | undefined;
     aBufferScroll: [boolean, boolean] | undefined;
     bBufferScroll: [boolean, boolean] | undefined;
@@ -37,7 +41,8 @@ export function blitLastFrame(
     mappedColumns: readonly MappedGridColumn[],
     effectiveCols: readonly MappedGridColumn[],
     getRowHeight: number | ((r: number) => number),
-    doubleBuffer: boolean
+    doubleBuffer: boolean,
+    stickyRowsBottom: number = totalHeaderHeight
 ): {
     regions: Rectangle[];
 } {
@@ -81,8 +86,10 @@ export function blitLastFrame(
     const freezeTrailingRowsHeight =
         freezeTrailingRows > 0 ? getFreezeTrailingHeight(rows, freezeTrailingRows, getRowHeight) : 0;
 
+    const bodyTop = deltaY !== 0 ? Math.max(totalHeaderHeight, stickyRowsBottom) : totalHeaderHeight;
+
     const blitWidth = width - stickyWidth - Math.abs(deltaX);
-    const blitHeight = height - totalHeaderHeight - freezeTrailingRowsHeight - Math.abs(deltaY) - 1;
+    const blitHeight = height - bodyTop - freezeTrailingRowsHeight - Math.abs(deltaY) - 1;
 
     if (blitWidth > 150 && blitHeight > 150) {
         const args = {
@@ -96,25 +103,34 @@ export function blitLastFrame(
             dh: height * dpr,
         };
 
+        if (bodyTop > totalHeaderHeight) {
+            drawRegions.push({
+                x: 0,
+                y: totalHeaderHeight,
+                width: width,
+                height: bodyTop - totalHeaderHeight + 1,
+            });
+        }
+
         // blit Y
         if (deltaY > 0) {
             // scrolling up
-            args.sy = (totalHeaderHeight + 1) * dpr;
+            args.sy = (bodyTop + 1) * dpr;
             args.sh = blitHeight * dpr;
-            args.dy = (deltaY + totalHeaderHeight + 1) * dpr;
+            args.dy = (deltaY + bodyTop + 1) * dpr;
             args.dh = blitHeight * dpr;
 
             drawRegions.push({
                 x: 0,
-                y: totalHeaderHeight,
+                y: bodyTop,
                 width: width,
                 height: deltaY + 1,
             });
         } else if (deltaY < 0) {
             // scrolling down
-            args.sy = (-deltaY + totalHeaderHeight + 1) * dpr;
+            args.sy = (-deltaY + bodyTop + 1) * dpr;
             args.sh = blitHeight * dpr;
-            args.dy = (totalHeaderHeight + 1) * dpr;
+            args.dy = (bodyTop + 1) * dpr;
             args.dh = blitHeight * dpr;
 
             drawRegions.push({
@@ -240,6 +256,7 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.rowHeight !== last.rowHeight ||
         current.rows !== last.rows ||
         current.freezeColumns !== last.freezeColumns ||
+        current.stickyRows !== last.stickyRows ||
         current.getRowThemeOverride !== last.getRowThemeOverride ||
         current.isFocused !== last.isFocused ||
         current.isResizing !== last.isResizing ||

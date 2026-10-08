@@ -312,6 +312,8 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
                 selection={p.selection}
                 theme={p.theme}
                 freezeTrailingRows={p.freezeTrailingRows}
+                stickyColumns={p.stickyColumns}
+                stickyRows={p.stickyRows}
                 hasAppendRow={p.hasAppendRow}
                 translateX={p.translateX}
                 translateY={p.translateY}
