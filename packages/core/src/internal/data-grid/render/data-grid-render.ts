@@ -696,6 +696,33 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 rows
             );
         }
+
+        if (mustDrawHighlightRingsOnHeader) {
+            // Фаза "above" и на канве шапки: иначе у регионов с drawAboveSelection
+            // пропадает верхняя линия первой видимой строки (перекрыта overlay-канвой).
+            drawHighlightRings(
+                overlayCtx,
+                width,
+                height,
+                cellXOffset,
+                cellYOffset,
+                translateX,
+                translateY,
+                mappedColumns,
+                freezeColumns,
+                headerHeight,
+                groupHeaderHeight,
+                rowHeight,
+                freezeTrailingRows,
+                rows,
+                highlightRegions,
+                theme,
+                enableLowDprHairline,
+                columnLayout,
+                rowAxis,
+                "above"
+            );
+        }
     };
 
     // handle damage updates by directly drawing to the target to avoid large blits
@@ -823,6 +850,29 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                       )
                     : undefined;
 
+                const highlightAboveRedraw = drawHighlightRings(
+                    ctx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis,
+                    "above"
+                );
+
                 const spans = drawCells(
                     ctx,
                     effectiveCols,
@@ -947,6 +997,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
                 highlightRedraw?.();
                 focusRedraw?.();
+                highlightAboveRedraw?.();
                 ctx.restore();
                 return;
             }
@@ -1206,6 +1257,29 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
           )
         : undefined;
 
+    const highlightAboveRedraw = drawHighlightRings(
+        targetCtx,
+        width,
+        height,
+        cellXOffset,
+        cellYOffset,
+        translateX,
+        translateY,
+        mappedColumns,
+        freezeColumns,
+        headerHeight,
+        groupHeaderHeight,
+        rowHeight,
+        freezeTrailingRows,
+        rows,
+        highlightRegions,
+        theme,
+        enableLowDprHairline,
+        columnLayout,
+        rowAxis,
+        "above"
+    );
+
     targetCtx.fillStyle = theme.bgCell;
     if (drawRegions.length > 0) {
         targetCtx.beginPath();
@@ -1323,6 +1397,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
     highlightRedraw?.();
     focusRedraw?.();
+    highlightAboveRedraw?.();
 
     if (isResizing && resizeIndicator !== "none") {
         // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),

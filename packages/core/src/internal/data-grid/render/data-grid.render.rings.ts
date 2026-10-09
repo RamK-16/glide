@@ -81,9 +81,17 @@ export function drawHighlightRings(
     theme: FullTheme,
     enableLowDprHairline: boolean = false,
     columnLayout?: ColumnLayout,
-    rowAxis?: StickyAxis
+    rowAxis?: StickyAxis,
+    phase: "below" | "above" = "below"
 ): (() => void) | undefined {
-    const highlightRegions = allHighlightRegions?.filter(x => x.style !== "no-outline");
+    // "below" — обычные обводки (до нативной рамки выделения), "above" — регионы
+    // с drawAboveSelection (после неё, напр. рамки ошибок). accent — без обводки.
+    const highlightRegions = allHighlightRegions?.filter(
+        x =>
+            x.style !== "no-outline" &&
+            x.style !== "accent" &&
+            (x.drawAboveSelection === true) === (phase === "above")
+    );
 
     if (highlightRegions === undefined || highlightRegions.length === 0) return undefined;
 

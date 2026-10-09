@@ -326,6 +326,7 @@ columns={[
 
 Выравнивание для письма справа налево, единый источник значения по умолчанию, а также
 **известные нативные баги glide** (скачок шрифта групп-шапки при первой отрисовке, рамка
-выделения на 1px шире, зазор 1px слева при дробном dpr) — см. `plans/header-cell-merge.md`.
+выделения на 1px шире) — см. `plans/header-cell-merge.md`; зазор 1px слева при дробном dpr —
+`plans/fractional-dpr.md`.
 Переиспользование `SpanAlignment`/`drawSpanAlignedText` для слияния ячеек ТЕЛА —
 **реализовано** (ветка `feat/span-cells`), см. `docs/body-cell-merge.md`.
