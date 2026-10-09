@@ -1,3 +1,10 @@
+# [6.7.0](https://github.com/RamK-16/glide/compare/v6.6.0...v6.7.0) (2026-10-09)
+
+
+### Features
+
+* **data-grid:** стиль региона accent и обводки поверх выделения ([#53](https://github.com/RamK-16/glide/issues/53)) ([773889f](https://github.com/RamK-16/glide/commit/773889f79225739910cc8c508660398e763be75f))
+
 # [6.6.0](https://github.com/RamK-16/glide/compare/v6.5.1...v6.6.0) (2026-10-06)
 
 
