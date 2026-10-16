@@ -708,7 +708,10 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 if (col === -1 && row === -1) {
                     const b = getBoundsForItem(canvas, mappedColumns.length - 1, -1);
                     assert(b !== undefined);
-                    isEdge = posX < b.x + b.width + edgeDetectionBuffer;
+                    // Грань последней колонки: ресайз, только если колонка его не запретила.
+                    isEdge =
+                        posX < b.x + b.width + edgeDetectionBuffer &&
+                        mappedColumns[mappedColumns.length - 1].resizable !== false;
                 }
 
                 // This is used to ensure that clicking on the scrollbar doesn't unset the selection.
@@ -771,10 +774,19 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     }
                 }
 
-                let isEdge = bounds !== undefined && bounds.x + bounds.width - posX <= edgeDetectionBuffer;
+                // Колонка с resizable: false не отдаёт свою правую грань под ресайз:
+                // нет курсора, перетаскивания и автоподбора по двойному клику.
+                let isEdge =
+                    bounds !== undefined &&
+                    bounds.x + bounds.width - posX <= edgeDetectionBuffer &&
+                    mappedColumns[col].resizable !== false;
 
                 const previousCol = col - 1;
-                if (posX - bounds.x <= edgeDetectionBuffer && previousCol >= 0) {
+                if (
+                    posX - bounds.x <= edgeDetectionBuffer &&
+                    previousCol >= 0 &&
+                    mappedColumns[previousCol].resizable !== false
+                ) {
                     isEdge = true;
                     bounds = getBoundsForItem(canvas, previousCol, row);
                     assert(bounds !== undefined);
@@ -831,7 +843,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 // от неё (её правый край и есть полоса), как будто курсор в листовом ряду
                 // (-1). Двойной клик по полосе по-прежнему раскрывает промежуток, а одиночное
                 // перетаскивание меняет ширину этой левой колонки.
-                if (hiddenIndicatorCol !== undefined && row <= -2 && hiddenIndicatorCol - 1 >= 0) {
+                if (
+                    hiddenIndicatorCol !== undefined &&
+                    row <= -2 &&
+                    hiddenIndicatorCol - 1 >= 0 &&
+                    mappedColumns[hiddenIndicatorCol - 1].resizable !== false
+                ) {
                     const resizeTargetCol = hiddenIndicatorCol - 1;
                     const resizeBounds = getBoundsForItem(canvas, resizeTargetCol, -1);
                     if (resizeBounds !== undefined) {

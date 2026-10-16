@@ -232,6 +232,13 @@ export interface BaseGridColumn {
     readonly minWidth?: number;
     readonly maxWidth?: number;
     readonly maxAutoWidth?: number;
+    /**
+     * Можно ли менять ширину колонки перетаскиванием её правой границы в шапке.
+     * `false` — у границы нет курсора ресайза, перетаскивание и двойной клик
+     * (автоподбор ширины) не работают, а клик по этому месту обрабатывается как
+     * обычный клик по шапке. Не задано — как раньше, ресайз решает `onColumnResize`.
+     */
+    readonly resizable?: boolean;
     readonly trailingRowOptions?: {
         readonly hint?: string;
         readonly addIcon?: string;
