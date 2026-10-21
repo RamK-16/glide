@@ -1563,11 +1563,15 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
             if (!mouseEventArgsAreEqual(args, hoveredRef.current)) {
                 setDrawCursorOverride(undefined);
+                const newInfo: typeof hoverInfoRef.current =
+                    args.kind === outOfBoundsKind ? undefined : [args.location, [args.localEventX, args.localEventY]];
+                // Ссылку обновляем до onItemHovered, как в ветке ниже для той же ячейки:
+                // ре-рендер со стейтом придёт позже, а обработчик может синхронно вызвать
+                // damage/updateCells, и тогда прежняя ячейка рисовалась бы с уже устаревшими
+                // координатами курсора, а новая без них.
+                hoverInfoRef.current = newInfo;
                 onItemHovered?.(args);
-                maybeSetHoveredInfo(
-                    args.kind === outOfBoundsKind ? undefined : [args.location, [args.localEventX, args.localEventY]],
-                    true
-                );
+                maybeSetHoveredInfo(newInfo, true);
                 hoveredRef.current = args;
             } else if (args.kind === "cell" || args.kind === headerKind || args.kind === groupHeaderKind) {
                 let needsDamageCell = false;
