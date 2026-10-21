@@ -651,28 +651,42 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             );
         }
 
+        // Обводки на канве шапки нужны только ради верхней линии первой видимой
+        // строки (она лежит в 1px-полосе под шапкой). Регионы строк, ушедших выше
+        // вьюпорта, геометрически попадают в шапку, поэтому клипуем по области данных.
+        const clipRingsBelowHeader = (draw: () => void) => {
+            overlayCtx.save();
+            overlayCtx.beginPath();
+            overlayCtx.rect(0, totalHeaderHeight, width, overlayHeight - totalHeaderHeight);
+            overlayCtx.clip();
+            draw();
+            overlayCtx.restore();
+        };
+
         if (mustDrawHighlightRingsOnHeader) {
-            drawHighlightRings(
-                overlayCtx,
-                width,
-                height,
-                cellXOffset,
-                cellYOffset,
-                translateX,
-                translateY,
-                mappedColumns,
-                freezeColumns,
-                headerHeight,
-                groupHeaderHeight,
-                rowHeight,
-                freezeTrailingRows,
-                rows,
-                highlightRegions,
-                theme,
-                enableLowDprHairline,
-                columnLayout,
-                rowAxis
-            );
+            clipRingsBelowHeader(() => {
+                drawHighlightRings(
+                    overlayCtx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis
+                );
+            });
         }
 
         if (mustDrawFocusOnHeader) {
@@ -700,28 +714,30 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         if (mustDrawHighlightRingsOnHeader) {
             // Фаза "above" и на канве шапки: иначе у регионов с drawAboveSelection
             // пропадает верхняя линия первой видимой строки (перекрыта overlay-канвой).
-            drawHighlightRings(
-                overlayCtx,
-                width,
-                height,
-                cellXOffset,
-                cellYOffset,
-                translateX,
-                translateY,
-                mappedColumns,
-                freezeColumns,
-                headerHeight,
-                groupHeaderHeight,
-                rowHeight,
-                freezeTrailingRows,
-                rows,
-                highlightRegions,
-                theme,
-                enableLowDprHairline,
-                columnLayout,
-                rowAxis,
-                "above"
-            );
+            clipRingsBelowHeader(() => {
+                drawHighlightRings(
+                    overlayCtx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis,
+                    "above"
+                );
+            });
         }
     };
 

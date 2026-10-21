@@ -167,6 +167,7 @@ export function useMappedColumns(
                     minWidth: c.minWidth,
                     maxWidth: c.maxWidth,
                     maxAutoWidth: c.maxAutoWidth,
+                    resizable: c.resizable,
                     growOffset: c.growOffset,
                     rowMarker: c.rowMarker,
                     rowMarkerChecked: c.rowMarkerChecked,
