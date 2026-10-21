@@ -1,3 +1,10 @@
+# [6.8.0](https://github.com/RamK-16/glide/compare/v6.7.0...v6.8.0) (2026-10-21)
+
+
+### Features
+
+* **data-grid:** флаг resizable у колонки — запрет ресайза отдельной колонки без курсора у границы ([#54](https://github.com/RamK-16/glide/issues/54)) ([f2332ce](https://github.com/RamK-16/glide/commit/f2332ce58f0cc612034089be164684bf5f1635d1))
+
 # [6.7.0](https://github.com/RamK-16/glide/compare/v6.6.0...v6.7.0) (2026-10-09)
 
 
