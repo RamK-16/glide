@@ -1,3 +1,10 @@
+## [6.8.1](https://github.com/RamK-16/glide/compare/v6.8.0...v6.8.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **data-grid:** информация о наведении обновляется до вызова onItemHovered ([#56](https://github.com/RamK-16/glide/issues/56)) ([7906fec](https://github.com/RamK-16/glide/commit/7906fecf7ca919f50feb69b9f6c2c66e7cb51516))
+
 # [6.8.0](https://github.com/RamK-16/glide/compare/v6.7.0...v6.8.0) (2026-10-21)
 
 
