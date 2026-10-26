@@ -165,36 +165,24 @@ export function spanPartialFillRect(hit: SpanIntersection, geom: SpanBlockGeomet
 }
 
 /**
- * Полосы заливки для выделения целыми строками/колонками (чекбоксы, шапки колонок)
- * внутри слитого блока. Считаются от полного диапазона блока, а не от строки/колонки,
- * инициировавшей отрисовку, поэтому результат одинаков при полной и damage-перерисовке
- * (иначе при ховере соседних ячеек блок перерисовывался от невыделенной покрытой строки
- * и заливка выделения пропадала). Смежные выделенные строки/колонки объединяются в одну полосу.
+ * Задевает ли выделение целыми строками/колонками (чекбоксы, шапки колонок) слитый
+ * блок: выбрана хотя бы одна строка или колонка из диапазона блока. Блок красится
+ * целиком, полосами по пересечению не красим (решение дизайнера от 19.10.2026).
+ * Экспортируется для юнит-тестов.
  */
-export function pushSpanSelectionStrips(
+export function spanTouchesSelection(
     selectedRows: CompactSelection,
     selectedCols: CompactSelection,
-    geom: SpanBlockGeometry,
-    color: string,
-    out: SpanPartialFill[]
-): void {
-    const { cols: blockCols, rows: blockRows } = geom;
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number]
+): boolean {
     for (let r = blockRows[0]; r <= blockRows[1]; r++) {
-        if (!selectedRows.hasIndex(r)) continue;
-        let r1 = r;
-        while (r1 + 1 <= blockRows[1] && selectedRows.hasIndex(r1 + 1)) r1++;
-        const strip = spanPartialFillRect({ c0: blockCols[0], c1: blockCols[1], r0: r, r1, full: false }, geom, color);
-        if (strip !== null) out.push(strip);
-        r = r1;
+        if (selectedRows.hasIndex(r)) return true;
     }
-    for (let cc = blockCols[0]; cc <= blockCols[1]; cc++) {
-        if (!selectedCols.hasIndex(cc)) continue;
-        let c1 = cc;
-        while (c1 + 1 <= blockCols[1] && selectedCols.hasIndex(c1 + 1)) c1++;
-        const strip = spanPartialFillRect({ c0: cc, c1, r0: blockRows[0], r1: blockRows[1], full: false }, geom, color);
-        if (strip !== null) out.push(strip);
-        cc = c1;
+    for (let c = blockCols[0]; c <= blockCols[1]; c++) {
+        if (selectedCols.hasIndex(c)) return true;
     }
+    return false;
 }
 
 /**
@@ -225,20 +213,20 @@ export function computeSpanRowBgFills(
 }
 
 /**
- * Выделена ли origin-строка слитого блока: range-выделение пересекает её, либо строка
- * выбрана целиком, либо выбрана любая колонка блока. Управляет подмешиванием accent
- * в цвет фона, отдаваемый контенту origin-ячейки. Экспортируется для юнит-тестов.
+ * Задет ли слитый блок выделением: range-выделение пересекает блок, либо выбрана
+ * любая строка или колонка блока. Блок красится целиком, поэтому и accent в цвет
+ * фона, отдаваемый контенту origin-ячейки, подмешивается при любом касании.
+ * Экспортируется для юнит-тестов.
  */
-export function isSpanOriginAccented(
+export function isSpanAccented(
     selection: GridSelection,
     blockCols: readonly [number, number],
-    originRow: number
+    blockRows: readonly [number, number]
 ): boolean {
     return (
         (selection.current !== undefined &&
-            intersectRangeWithSpan(selection.current.range, blockCols, [originRow, originRow]) !== null) ||
-        selection.rows.hasIndex(originRow) ||
-        selection.columns.some(i => i >= blockCols[0] && i <= blockCols[1])
+            intersectRangeWithSpan(selection.current.range, blockCols, blockRows) !== null) ||
+        spanTouchesSelection(selection.rows, selection.columns, blockCols, blockRows)
     );
 }
 
@@ -499,10 +487,9 @@ export function drawCells(
 
                     ctx.beginPath();
 
-                    // Слитый блок: выделение, пересекающее блок частично, красится полосой
-                    // по пересечению, а не всем прямоугольником блока. Синтетический range
-                    // строки/колонки не расширяется до блока, поэтому при частичном
-                    // пересечении гасим accent-путь; гейт без drawFocus, как cellIsInRange.
+                    // Слитый блок: выделение, задевшее любую его часть, красит блок целиком
+                    // (решение дизайнера от 19.10.2026), полосами по пересечению не красим.
+                    // Заливки блока копятся здесь и кладутся поверх строковых полос.
                     let spanPartialFills: SpanPartialFill[] | undefined;
                     // Диапазоны и геометрия блока считаются один раз на отрисовываемый
                     // блок; обычные ячейки в этом цикле ничего не создают.
@@ -526,28 +513,15 @@ export function drawCells(
                             getRowHeight,
                         }; //alloc
                     }
-                    let rangeIsPartial = false;
-                    if (spanGeom !== undefined && selection.current !== undefined) {
-                        const hit = intersectRangeWithSpan(selection.current.range, spanGeom.cols, spanGeom.rows);
-                        if (hit !== null && !hit.full) {
-                            rangeIsPartial = true;
-                            const strip = spanPartialFillRect(hit, spanGeom, theme.accentLight);
-                            if (strip !== null) {
-                                spanPartialFills = [strip];
-                            }
-                        }
-                    }
+                    // Range-выделение задело блок (возможно, мимо origin-ячейки): блок
+                    // тинтуется как выделенный, даже если origin в range не входит.
+                    const spanRangeHit =
+                        spanGeom !== undefined &&
+                        selection.current !== undefined &&
+                        intersectRangeWithSpan(selection.current.range, spanGeom.cols, spanGeom.rows) !== null;
 
-                    // Выделение целыми строками/колонками внутри блока красим полосами по
-                    // пересечению с полным диапазоном блока, а не заливкой всего прямоугольника.
-                    if (spanGeom !== undefined && (selection.rows.length > 0 || selection.columns.length > 0)) {
-                        if (spanPartialFills === undefined) spanPartialFills = [];
-                        pushSpanSelectionStrips(selection.rows, selection.columns, spanGeom, theme.accentLight, spanPartialFills);
-                        if (spanPartialFills.length === 0) spanPartialFills = undefined;
-                    }
-
-                    const isSelected = !rangeIsPartial && cellIsSelected(cellIndex, cell, selection);
-                    let accentCount = rangeIsPartial ? 0 : cellIsInRange(cellIndex, cell, selection, drawFocus);
+                    const isSelected = cellIsSelected(cellIndex, cell, selection);
+                    let accentCount = cellIsInRange(cellIndex, cell, selection, drawFocus);
                     const spanIsHighlighted =
                         cell.span !== undefined &&
                         selection.columns.some(
@@ -557,15 +531,25 @@ export function drawCells(
                         accentCount = 0;
                     } else if (isSelected && drawFocus) {
                         accentCount = Math.max(accentCount, 1);
+                    } else if (drawingSpan && spanRangeHit) {
+                        accentCount = Math.max(accentCount, 1);
                     }
-                    // Для слитого блока подсветку строк/колонок уже нарисовали полосами
-                    // (pushSpanSelectionStrips), поэтому весь прямоугольник не тинтуем.
                     if (spanIsHighlighted && !drawingSpan) {
                         accentCount++;
                     }
                     if (!isSelected && !drawingSpan) {
                         if (rowSelected) accentCount++;
                         if (colSelected && !isTrailingRow) accentCount++;
+                    }
+                    // Слитый блок: выбранная строка или колонка, проходящая через блок,
+                    // тинтует его целиком (одной ступенью, как у обычной ячейки).
+                    if (
+                        drawingSpan &&
+                        spanGeom !== undefined &&
+                        !isSelected &&
+                        spanTouchesSelection(selection.rows, selection.columns, spanGeom.cols, spanGeom.rows)
+                    ) {
+                        accentCount++;
                     }
 
                     // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
@@ -638,17 +622,22 @@ export function drawCells(
                         }
                     }
 
-                    // Слитый блок: highlight-регион красит своё пересечение с блоком полосой.
-                    // Полный охват - тоже полосой (поверх строковых полос hover/checkbox),
-                    // чтобы порядок слоёв совпадал с обычными ячейками: выделение сверху.
+                    // Слитый блок: highlight-регион, задевший блок, красит его целиком
+                    // (поверх строковых полос hover/checkbox), чтобы порядок слоёв совпадал
+                    // с обычными ячейками: выделение сверху.
                     if (highlightRegions !== undefined && spanGeom !== undefined) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
-                            const hit = intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows);
-                            if (hit === null) continue;
+                            if (intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows) === null) continue;
                             const strip = spanPartialFillRect(
-                                hit,
+                                {
+                                    c0: spanGeom.cols[0],
+                                    c1: spanGeom.cols[1],
+                                    r0: spanGeom.rows[0],
+                                    r1: spanGeom.rows[1],
+                                    full: true,
+                                },
                                 spanGeom,
                                 region.style === "accent" ? theme.accentLight : region.color
                             );
@@ -748,7 +737,7 @@ export function drawCells(
                     // обычных ячеек, где accent уже в fill). Подмешиваем accent в
                     // finalCellFillColor, когда выделена origin-строка блока.
                     let contentFillColor = fill;
-                    if (spanGeom !== undefined && isSpanOriginAccented(selection, spanGeom.cols, spanGeom.rows[0])) {
+                    if (spanGeom !== undefined && isSpanAccented(selection, spanGeom.cols, spanGeom.rows)) {
                         contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 

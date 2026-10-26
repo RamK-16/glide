@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getRowSpanBounds } from "../src/internal/data-grid/render/data-grid-render.walk.js";
 import { cellIsSelected } from "../src/internal/data-grid/render/data-grid-lib.js";
-import {
-    pushSpanSelectionStrips,
-    type SpanBlockGeometry,
-    type SpanPartialFill,
-} from "../src/internal/data-grid/render/data-grid-render.cells.js";
+import { spanTouchesSelection } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import { expandSelection } from "../src/data-editor/data-editor-fns.js";
 import {
     CompactSelection,
@@ -169,78 +165,44 @@ describe("expandSelection — rowspan (расширение диапазона �
     });
 });
 
-// ── pushSpanSelectionStrips: выделение строк/колонок красит полосы, а не весь блок ──
-// Регресс: выделение чекбоксом одной строки блока красило весь объединённый прямоугольник,
-// а при ховере соседних ячеек блок перерисовывался от невыделенной покрытой строки и заливка
-// «осыпалась». Полоса считается от полного диапазона блока (не от строки-триггера).
+// ── spanTouchesSelection: выделение строк/колонок, задевшее блок, красит его целиком ──
+// Решение дизайнера от 19.10.2026: полосами по пересечению не красим. Проверка идёт по
+// полному диапазону блока (не по строке-триггеру), поэтому результат одинаков при полной
+// и damage-перерисовке.
 
-const cols3 = [{ width: 100 }, { width: 100 }, { width: 100 }] as unknown as SpanBlockGeometry["allColumns"];
-const evenRh = () => 20;
+// Вертикальный блок: колонка [0,0], строки [0,9].
+const tallCols: readonly [number, number] = [0, 0];
+const tallRows: readonly [number, number] = [0, 9];
 
-// Вертикальный блок: колонка [0,0], строки [0,9], пиксельно 100x200.
-const tallGeom: SpanBlockGeometry = {
-    cols: [0, 0],
-    rows: [0, 9],
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 200,
-    allColumns: cols3,
-    getRowHeight: evenRh,
-};
+// Широкий блок: колонки [0,2], строки [0,1].
+const wideCols: readonly [number, number] = [0, 2];
+const wideRows: readonly [number, number] = [0, 1];
 
-// Широкий блок: колонки [0,2], строки [0,1], пиксельно 300x40.
-const wideGeom: SpanBlockGeometry = {
-    cols: [0, 2],
-    rows: [0, 1],
-    x: 0,
-    y: 0,
-    width: 300,
-    height: 40,
-    allColumns: cols3,
-    getRowHeight: evenRh,
-};
-
-describe("pushSpanSelectionStrips — полосы выделения внутри слитого блока", () => {
-    it("одна выделенная строка блока → одна полоса во всю ширину, высотой одной строки сверху", () => {
-        const out: SpanPartialFill[] = [];
-        // выделена строка 0 (origin)
-        pushSpanSelectionStrips(CompactSelection.fromSingleSelection(0), CompactSelection.empty(), tallGeom, "#aaccff", out);
-        expect(out).toHaveLength(1);
-        expect(out[0]).toMatchObject({ x: 0, y: 0, w: 100, h: 20, color: "#aaccff" });
+describe("spanTouchesSelection — выделение строк/колонок задевает слитый блок", () => {
+    it("выделена origin-строка блока → задет", () => {
+        expect(
+            spanTouchesSelection(CompactSelection.fromSingleSelection(0), CompactSelection.empty(), tallCols, tallRows)
+        ).toBe(true);
     });
 
-    it("выделение НЕ origin-строки (напр. строки 5) даёт полосу именно на ней — не зависит от строки-триггера", () => {
-        const out: SpanPartialFill[] = [];
-        pushSpanSelectionStrips(CompactSelection.fromSingleSelection(5), CompactSelection.empty(), tallGeom, "#aaccff", out);
-        expect(out).toHaveLength(1);
-        // строка 5 → смещение 5*20 = 100
-        expect(out[0]).toMatchObject({ x: 0, y: 100, w: 100, h: 20 });
+    it("выделена НЕ origin-строка (напр. строка 5) → задет, не зависит от строки-триггера", () => {
+        expect(
+            spanTouchesSelection(CompactSelection.fromSingleSelection(5), CompactSelection.empty(), tallCols, tallRows)
+        ).toBe(true);
     });
 
-    it("смежные выделенные строки объединяются в одну полосу", () => {
-        const out: SpanPartialFill[] = [];
-        pushSpanSelectionStrips(
-            CompactSelection.empty().add(2).add(3).add(4),
-            CompactSelection.empty(),
-            tallGeom,
-            "#aaccff",
-            out
-        );
-        expect(out).toHaveLength(1);
-        expect(out[0]).toMatchObject({ y: 40, h: 60 }); // строки 2..4: 40..100
+    it("выделена колонка внутри широкого блока → задет", () => {
+        expect(
+            spanTouchesSelection(CompactSelection.empty(), CompactSelection.fromSingleSelection(1), wideCols, wideRows)
+        ).toBe(true);
     });
 
-    it("выделенная колонка блока → вертикальная полоса во всю высоту", () => {
-        const out: SpanPartialFill[] = [];
-        pushSpanSelectionStrips(CompactSelection.empty(), CompactSelection.fromSingleSelection(1), wideGeom, "#aaccff", out);
-        expect(out).toHaveLength(1);
-        expect(out[0]).toMatchObject({ x: 100, y: 0, w: 100, h: 40 });
-    });
-
-    it("нет пересечения выделения с блоком → полос нет", () => {
-        const out: SpanPartialFill[] = [];
-        pushSpanSelectionStrips(CompactSelection.fromSingleSelection(50), CompactSelection.empty(), tallGeom, "#aaccff", out);
-        expect(out).toHaveLength(0);
+    it("выделение вне диапазона блока → не задет", () => {
+        expect(
+            spanTouchesSelection(CompactSelection.fromSingleSelection(50), CompactSelection.empty(), tallCols, tallRows)
+        ).toBe(false);
+        expect(
+            spanTouchesSelection(CompactSelection.empty(), CompactSelection.fromSingleSelection(3), wideCols, wideRows)
+        ).toBe(false);
     });
 });

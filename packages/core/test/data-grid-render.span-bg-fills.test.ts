@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
     computeSpanRowBgFills,
-    isSpanOriginAccented,
+    isSpanAccented,
     type SpanBlockGeometry,
 } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import type { MappedGridColumn } from "../src/internal/data-grid/render/data-grid-lib.js";
@@ -64,7 +64,9 @@ describe("computeSpanRowBgFills — пополосный фон строк сл�
     });
 });
 
-describe("isSpanOriginAccented — выделение origin-строки блока", () => {
+describe("isSpanAccented — выделение задело слитый блок", () => {
+    const blockRows: readonly [number, number] = [0, 2];
+
     function sel(partial: Partial<GridSelection>): GridSelection {
         return {
             current: undefined,
@@ -78,30 +80,38 @@ describe("isSpanOriginAccented — выделение origin-строки бло
         const s = sel({
             current: { cell: [2, 0], range: { x: 2, y: 0, width: 1, height: 1 }, rangeStack: [] },
         });
-        expect(isSpanOriginAccented(s, blockCols, 0)).toBe(true);
+        expect(isSpanAccented(s, blockCols, blockRows)).toBe(true);
     });
 
-    it("range на других строках → false", () => {
+    it("range на другой строке блока (не origin) → true: блок красится целиком", () => {
+        const s = sel({
+            current: { cell: [2, 2], range: { x: 2, y: 2, width: 1, height: 1 }, rangeStack: [] },
+        });
+        expect(isSpanAccented(s, blockCols, blockRows)).toBe(true);
+    });
+
+    it("range вне строк блока → false", () => {
         const s = sel({
             current: { cell: [2, 5], range: { x: 2, y: 5, width: 1, height: 1 }, rangeStack: [] },
         });
-        expect(isSpanOriginAccented(s, blockCols, 0)).toBe(false);
+        expect(isSpanAccented(s, blockCols, blockRows)).toBe(false);
     });
 
-    it("origin-строка выбрана целиком (чекбокс) → true", () => {
-        expect(isSpanOriginAccented(sel({ rows: CompactSelection.fromSingleSelection(0) }), blockCols, 0)).toBe(true);
+    it("выбрана целиком любая строка блока (чекбокс) → true", () => {
+        expect(isSpanAccented(sel({ rows: CompactSelection.fromSingleSelection(0) }), blockCols, blockRows)).toBe(true);
+        expect(isSpanAccented(sel({ rows: CompactSelection.fromSingleSelection(2) }), blockCols, blockRows)).toBe(true);
     });
 
     it("выбрана колонка внутри блока → true, вне блока → false", () => {
-        expect(isSpanOriginAccented(sel({ columns: CompactSelection.fromSingleSelection(2) }), blockCols, 0)).toBe(
+        expect(isSpanAccented(sel({ columns: CompactSelection.fromSingleSelection(2) }), blockCols, blockRows)).toBe(
             true
         );
-        expect(isSpanOriginAccented(sel({ columns: CompactSelection.fromSingleSelection(3) }), blockCols, 0)).toBe(
+        expect(isSpanAccented(sel({ columns: CompactSelection.fromSingleSelection(3) }), blockCols, blockRows)).toBe(
             false
         );
     });
 
     it("пустое выделение → false", () => {
-        expect(isSpanOriginAccented(sel({}), blockCols, 0)).toBe(false);
+        expect(isSpanAccented(sel({}), blockCols, blockRows)).toBe(false);
     });
 });
