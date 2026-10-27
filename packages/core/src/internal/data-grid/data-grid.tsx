@@ -3,6 +3,7 @@ import type { FullTheme } from "../../common/styles.js";
 import {
     computeBounds,
     getColumnIndexForX,
+    getFreezeTrailingHeight,
     getRowIndexForY,
     getSpanOrigin,
     getStickyWidth,
@@ -378,6 +379,11 @@ type DamageUpdateList = readonly {
 export interface DataGridRef {
     focus: () => void;
     getBounds: (col?: number, row?: number) => Rectangle | undefined;
+    /**
+     * Видимая область прокручиваемых строк в координатах страницы: между шапкой (или
+     * закреплёнными сверху строками) и закреплёнными снизу строками.
+     */
+    getDataAreaBounds: () => Rectangle | undefined;
     damage: (cells: DamageUpdateList) => void;
     getMouseArgsForPosition: (
         posX: number,
@@ -1966,6 +1972,22 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
                 return getBoundsForItem(canvasRef.current, col ?? 0, row ?? -1);
             },
+            getDataAreaBounds: () => {
+                if (canvasRef === undefined || canvasRef.current === null) {
+                    return undefined;
+                }
+                const rect = canvasRef.current.getBoundingClientRect();
+                const scale = rect.width / width;
+                const top = (rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : totalHeaderHeight) + 1;
+                const bottom =
+                    height - (freezeTrailingRows > 0 ? getFreezeTrailingHeight(rows, freezeTrailingRows, rowHeight) : 0);
+                return {
+                    x: rect.x,
+                    y: rect.y + top * scale,
+                    width: rect.width,
+                    height: Math.max(0, bottom - top) * scale,
+                };
+            },
             damage,
             getMouseArgsForPosition: (posX: number, posY: number, ev?: MouseEvent | TouchEvent) => {
                 if (canvasRef === undefined || canvasRef.current === null) {
@@ -1975,7 +1997,19 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 return getMouseArgsForPosition(canvasRef.current, posX, posY, ev);
             },
         }),
-        [canvasRef, damage, getBoundsForItem, getMouseArgsForPosition]
+        [
+            canvasRef,
+            damage,
+            getBoundsForItem,
+            getMouseArgsForPosition,
+            width,
+            height,
+            rowAxis,
+            totalHeaderHeight,
+            freezeTrailingRows,
+            rows,
+            rowHeight,
+        ]
     );
 
     const lastFocusedSubdomNode = React.useRef<Item | undefined>(undefined);

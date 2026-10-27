@@ -88,7 +88,7 @@ import {
     type CellActivatedEventArgs,
 } from "../internal/data-grid/event-args.js";
 import { type Keybinds, useKeybindingsWithDefaults } from "./data-editor-keybindings.js";
-import type { Highlight } from "../internal/data-grid/render/data-grid-render.cells.js";
+import { type Highlight, stickySpanContentBox } from "../internal/data-grid/render/data-grid-render.cells.js";
 import { useRowGroupingInner, type RowGroupingOptions } from "./row-grouping.js";
 import { useRowGrouping } from "./row-grouping-api.js";
 import { useInitialScrollOffset } from "./use-initial-scroll-offset.js";
@@ -1640,8 +1640,23 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
                 const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
                 if (bottomBounds !== undefined) {
-                    const blockTop = target.y;
-                    const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
+                    let blockTop = target.y;
+                    let blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
+                    // С прилипанием (spanAlign.sticky) содержимое нарисовано в видимой
+                    // части блока: редактор открываем там же, а не у краёв всего блока.
+                    const area = blockSpanAlign?.sticky === true ? gridRef.current?.getDataAreaBounds() : undefined;
+                    if (area !== undefined) {
+                        const box = stickySpanContentBox(
+                            blockTop,
+                            blockHeight,
+                            area.y,
+                            area.y + area.height,
+                            target.height,
+                            bottomBounds.height
+                        );
+                        blockTop = box.y;
+                        blockHeight = box.height;
+                    }
                     const editorHeight = target.height;
                     const vertical = blockSpanAlign?.vertical ?? "center";
                     let y = blockTop;

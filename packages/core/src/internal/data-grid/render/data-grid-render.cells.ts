@@ -815,11 +815,13 @@ export function drawCells(
                             ctx.font = cellFont;
                             font = cellFont;
                         }
+                        // Слитый блок рисуется от главной ячейки: наведение и клик приходят
+                        // на неё (location), а рисовать блок может любая его видимая строка.
                         prepResult = drawCell(
                             ctx,
                             cell,
-                            c.sourceIndex,
-                            row,
+                            drawingSpan ? cell.span?.[0] ?? c.sourceIndex : c.sourceIndex,
+                            drawingSpan ? cell.spanRows?.[0] ?? row : row,
                             isLastColumn,
                             isLastRow,
                             cellX,
@@ -840,7 +842,8 @@ export function drawCells(
                             enqueue,
                             renderStateProvider,
                             getCellRenderer,
-                            overrideCursor
+                            overrideCursor,
+                            contentY - cellY
                         );
                     }
 
@@ -908,13 +911,15 @@ export function drawCell(
     enqueue: EnqueueCallback | undefined,
     renderStateProvider: RenderStateProvider,
     getCellRenderer: GetCellRendererCallback,
-    overrideCursor: (cursor: React.CSSProperties["cursor"]) => void
+    overrideCursor: (cursor: React.CSSProperties["cursor"]) => void,
+    contentOffsetY: number = 0
 ): PrepResult | undefined {
     let hoverX: number | undefined;
     let hoverY: number | undefined;
     if (hoverInfo !== undefined && hoverInfo[0][0] === col && hoverInfo[0][1] === row) {
         hoverX = hoverInfo[1][0];
-        hoverY = hoverInfo[1][1];
+        // Наведение дано относительно всего блока, содержимое нарисовано в rect.
+        hoverY = hoverInfo[1][1] - contentOffsetY;
     }
     let result: PrepResult | undefined = undefined;
 
@@ -951,6 +956,7 @@ export function drawCell(
         hyperWrapping,
         overrideCursor: hoverX !== undefined ? overrideCursor : undefined,
         requestAnimationFrame: animRequest,
+        contentOffsetY,
     };
     const needsAnim = drawLastUpdateUnderlay(args, cell.lastUpdated, frameTime, lastPrep, isLastCol, isLastRow);
 
