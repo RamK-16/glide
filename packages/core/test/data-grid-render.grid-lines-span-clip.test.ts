@@ -21,7 +21,11 @@ type Trace = {
     widthsSet: number[];
 };
 
-function draw(spans: { x: number; y: number; width: number; height: number }[] | undefined, lowDpr = false): Trace {
+function draw(
+    spans: { x: number; y: number; width: number; height: number }[] | undefined,
+    lowDpr = false,
+    freezeTrailingRows = 0
+): Trace {
     const trace: Trace = { rects: [], clips: [], saves: 0, restores: 0, widthsSet: [] };
     let lineWidth = 3; // до вызова
     const noop = () => undefined;
@@ -59,7 +63,7 @@ function draw(spans: { x: number; y: number; width: number; height: number }[] |
         () => 32, // getRowHeight
         undefined, // getRowThemeOverride
         () => true, // verticalBorder
-        0, // freezeTrailingRows
+        freezeTrailingRows,
         10, // rows
         theme,
         false, // verticalOnly
@@ -117,5 +121,23 @@ describe("drawGridLines — evenodd-клип слитых блоков", () => {
         const t = draw(undefined, true);
         expect(t.widthsSet[0]).toBeCloseTo(2);
         expect(t.widthsSet.at(-1)).toBe(3);
+    });
+});
+
+describe("drawGridLines — блок под закреплёнными снизу строками", () => {
+    it("вырез блока обрезается по верху итоговой строки, линия над ней не вырезается", () => {
+        // Высота 500, итоговая строка 32px: её верх на 468. Блок с y=100 уходит ниже.
+        const trace = draw([{ x: 0, y: 100, width: 150, height: 1000 }], false, 1);
+        expect(trace.rects[1]).toEqual({ x: 1, y: 101, w: 149, h: 367 });
+    });
+
+    it("блок целиком над итоговой строкой не меняется", () => {
+        const trace = draw([{ x: 0, y: 100, width: 150, height: 64 }], false, 1);
+        expect(trace.rects[1]).toEqual({ x: 1, y: 101, w: 149, h: 63 });
+    });
+
+    it("блок внутри итоговой строки (colspan итогов) вырезается как есть", () => {
+        const trace = draw([{ x: 0, y: 468, width: 310, height: 32 }], false, 1);
+        expect(trace.rects[1]).toEqual({ x: 1, y: 469, w: 309, h: 31 });
     });
 });
