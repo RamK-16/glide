@@ -562,8 +562,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     ) {
         canBlit = false;
     }
-    // Подпись высокого слитого блока прилипает к верху видимой части: при вертикальной
-    // прокрутке сдвинутый прошлый кадр унёс бы её вверх, поэтому перерисовываем целиком.
+    // Содержимое слитого блока с прилипанием (spanAlign.sticky) выравнивается по видимой
+    // части блока: при вертикальной прокрутке сдвинутый прошлый кадр унёс бы его вместе с
+    // блоком, поэтому перерисовываем целиком.
     if (
         last?.stickySpanInView !== undefined &&
         (last.stickySpanInView[0] || last.stickySpanInView[1]) &&

@@ -231,21 +231,34 @@ export function isSpanAccented(
 }
 
 /**
- * Прямоугольник содержимого многострочного слитого блока с подписью по верху: если
- * верх блока ушёл за верх видимой области, подпись держится у верха видимой части,
- * а у низа блока уезжает вместе с ним (не ниже последней строки блока).
+ * Видимая часть слитого блока в несколько строк для содержимого с прилипанием
+ * (`spanAlign.sticky`): пересечение блока с областью данных между `visibleTop` и
+ * `visibleBottom`. Содержимое выравнивается внутри неё как обычно (верх, центр, низ).
+ * Когда от блока на экране остаётся меньше одной строки, прямоугольник не
+ * сжимается, а уезжает вместе с краем блока: у обрезанного сверху блока держит
+ * высоту последней строки, у обрезанного снизу первой. Из блока не выходит.
  * Экспортируется для юнит-тестов.
  */
 export function stickySpanContentBox(
     blockY: number,
     blockHeight: number,
     visibleTop: number,
-    minHeight: number
+    visibleBottom: number,
+    firstRowHeight: number,
+    lastRowHeight: number
 ): { y: number; height: number } {
-    const bottom = blockY + blockHeight;
-    const keep = Math.min(minHeight, blockHeight);
-    const y = Math.max(blockY, Math.min(Math.max(blockY, visibleTop), bottom - keep));
-    return { y, height: bottom - y };
+    const blockBottom = blockY + blockHeight;
+    let top = Math.max(blockY, visibleTop);
+    let bottom = Math.min(blockBottom, visibleBottom);
+    const keepWhenCutAbove = Math.min(lastRowHeight, blockHeight);
+    const keepWhenCutBelow = Math.min(firstRowHeight, blockHeight);
+    if (top > blockY && bottom - top < keepWhenCutAbove) {
+        top = Math.max(blockY, bottom - keepWhenCutAbove);
+    }
+    if (bottom < blockBottom && bottom - top < keepWhenCutBelow) {
+        bottom = Math.min(blockBottom, top + keepWhenCutBelow);
+    }
+    return { y: top, height: Math.max(0, bottom - top) };
 }
 
 /** Сводка по кадру, которую drawCells отдаёт отрисовщику для решения о сдвиге кадра. */
@@ -771,8 +784,9 @@ export function drawCells(
                         contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 
-                    // Многострочный блок с подписью по верху: подпись прилипает к верху
-                    // видимой части. Фон блока рисуется по полному прямоугольнику выше.
+                    // Многострочный блок с прилипанием (spanAlign.sticky): содержимое
+                    // выравнивается по видимой части блока. Фон блока рисуется по
+                    // полному прямоугольнику выше.
                     let contentY = cellY;
                     let contentHeight = cellHeight;
                     if (
@@ -780,13 +794,15 @@ export function drawCells(
                         !isSticky &&
                         cell.spanRows !== undefined &&
                         cell.spanRows[0] !== cell.spanRows[1] &&
-                        cell.spanAlign?.vertical === "top"
+                        cell.spanAlign?.sticky === true
                     ) {
                         if (stats !== undefined) stats.stickySpanInView = true;
                         const box = stickySpanContentBox(
                             cellY,
                             cellHeight,
                             (pinnedRowsEnd ?? totalHeaderHeight) + 1,
+                            height - freezeTrailingRowsHeight,
+                            getRowHeight(cell.spanRows[0]),
                             getRowHeight(cell.spanRows[1])
                         );
                         contentY = box.y;
