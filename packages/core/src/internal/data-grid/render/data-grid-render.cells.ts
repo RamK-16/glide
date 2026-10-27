@@ -230,6 +230,29 @@ export function isSpanAccented(
     );
 }
 
+/**
+ * Прямоугольник содержимого многострочного слитого блока с подписью по верху: если
+ * верх блока ушёл за верх видимой области, подпись держится у верха видимой части,
+ * а у низа блока уезжает вместе с ним (не ниже последней строки блока).
+ * Экспортируется для юнит-тестов.
+ */
+export function stickySpanContentBox(
+    blockY: number,
+    blockHeight: number,
+    visibleTop: number,
+    minHeight: number
+): { y: number; height: number } {
+    const bottom = blockY + blockHeight;
+    const keep = Math.min(minHeight, blockHeight);
+    const y = Math.max(blockY, Math.min(Math.max(blockY, visibleTop), bottom - keep));
+    return { y, height: bottom - y };
+}
+
+/** Сводка по кадру, которую drawCells отдаёт отрисовщику для решения о сдвиге кадра. */
+export interface DrawCellsStats {
+    stickySpanInView: boolean;
+}
+
 // preppable items:
 // - font
 // - fillStyle
@@ -278,7 +301,8 @@ export function drawCells(
     renderStateProvider: RenderStateProvider,
     getCellRenderer: GetCellRendererCallback,
     overrideCursor: (cursor: React.CSSProperties["cursor"]) => void,
-    minimumCellWidth: number
+    minimumCellWidth: number,
+    stats?: DrawCellsStats
 ): Rectangle[] | undefined {
     let toDraw = damage?.size ?? Number.MAX_SAFE_INTEGER;
     const frameTime = performance.now();
@@ -741,6 +765,28 @@ export function drawCells(
                         contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 
+                    // Многострочный блок с подписью по верху: подпись прилипает к верху
+                    // видимой части. Фон блока рисуется по полному прямоугольнику выше.
+                    let contentY = cellY;
+                    let contentHeight = cellHeight;
+                    if (
+                        drawingSpan &&
+                        !isSticky &&
+                        cell.spanRows !== undefined &&
+                        cell.spanRows[0] !== cell.spanRows[1] &&
+                        cell.spanAlign?.vertical === "top"
+                    ) {
+                        if (stats !== undefined) stats.stickySpanInView = true;
+                        const box = stickySpanContentBox(
+                            cellY,
+                            cellHeight,
+                            (pinnedRowsEnd ?? totalHeaderHeight) + 1,
+                            getRowHeight(cell.spanRows[1])
+                        );
+                        contentY = box.y;
+                        contentHeight = box.height;
+                    }
+
                     if (cellWidth > minimumCellWidth && !skipContents) {
                         const cellFont = theme.baseFontFull;
                         if (cellFont !== font) {
@@ -755,9 +801,9 @@ export function drawCells(
                             isLastColumn,
                             isLastRow,
                             cellX,
-                            cellY,
+                            contentY,
                             cellWidth,
-                            cellHeight,
+                            contentHeight,
                             accentCount > 0,
                             theme,
                             contentFillColor ?? theme.bgCell,

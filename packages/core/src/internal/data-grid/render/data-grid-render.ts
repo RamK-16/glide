@@ -18,7 +18,7 @@ import {
     getSpanBounds,
     getRowSpanBounds,
 } from "./data-grid-render.walk.js";
-import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
+import { drawCells, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
@@ -559,6 +559,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     if (
         last !== undefined &&
         (last.pinnedColumnsEnd !== pinnedColumnsEnd || last.pinnedRowsCount !== pinnedRowsCount)
+    ) {
+        canBlit = false;
+    }
+    // Подпись высокого слитого блока прилипает к верху видимой части: при вертикальной
+    // прокрутке сдвинутый прошлый кадр унёс бы её вверх, поэтому перерисовываем целиком.
+    if (
+        last?.stickySpanInView !== undefined &&
+        (last.stickySpanInView[0] || last.stickySpanInView[1]) &&
+        (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
     }
@@ -1309,6 +1318,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.fillRect(0, 0, width, height);
     }
 
+    const cellsStats: DrawCellsStats = { stickySpanInView: false };
     const spans = drawCells(
         targetCtx,
         effectiveCols,
@@ -1344,7 +1354,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         renderStateProvider,
         getCellRenderer,
         overrideCursor,
-        minimumCellWidth
+        minimumCellWidth,
+        cellsStats
     );
 
     drawBlanks(
@@ -1485,6 +1496,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         pinnedColumnsEnd,
         pinnedRowsCount,
         lastBuffer: doubleBuffer ? (targetBuffer === bufferA ? "a" : "b") : undefined,
+        stickySpanInView: [cellsStats.stickySpanInView, last?.stickySpanInView?.[0] ?? false],
         aBufferScroll: targetBuffer === bufferA ? [scrollX, scrollY] : last?.aBufferScroll,
         bBufferScroll: targetBuffer === bufferB ? [scrollX, scrollY] : last?.bBufferScroll,
     };

@@ -18,6 +18,13 @@ export interface BlitData {
     /** Сколько липких строк прилипло в кадре. */
     readonly pinnedRowsCount: number;
     readonly lastBuffer: "a" | "b" | undefined;
+    /**
+     * В кадре был многострочный слитый блок с подписью по верху: подпись прилипает к
+     * верху видимой части, поэтому при вертикальной прокрутке прошлый кадр сдвигать
+     * нельзя. Два значения: этот кадр и предыдущий (при двойной буферизации сдвигается
+     * кадр двухшаговой давности).
+     */
+    readonly stickySpanInView?: readonly [boolean, boolean];
     aBufferScroll: [boolean, boolean] | undefined;
     bBufferScroll: [boolean, boolean] | undefined;
 }
