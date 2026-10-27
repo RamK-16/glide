@@ -28,13 +28,6 @@ export interface BaseDrawArgs {
     spriteManager: SpriteManager;
     hyperWrapping: boolean;
     cell: InnerGridCell;
-    /**
-     * Только у слитого блока с прилипанием (`spanAlign.sticky`): насколько верх `rect`
-     * (видимая часть блока) ниже верха всего блока. `hoverY` уже дан относительно
-     * `rect`; координаты клика (`posY`, `bounds`) приходят относительно всего блока, и
-     * их нужно сдвинуть на это значение. У остальных ячеек 0.
-     */
-    contentOffsetY?: number;
 }
 
 /** @category Drawing */

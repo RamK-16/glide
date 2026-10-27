@@ -59,6 +59,19 @@ export function isCoveredSpanCell(
 }
 
 /**
+ * Вертикальная область прокручиваемых строк в координатах холста: от низа шапки
+ * (или закреплённых сверху строк) до верха закреплённых снизу строк.
+ */
+export function getScrollBodyRange(
+    height: number,
+    totalHeaderHeight: number,
+    pinnedRowsEnd: number | undefined,
+    freezeTrailingHeight: number
+): { top: number; bottom: number } {
+    return { top: pinnedRowsEnd ?? totalHeaderHeight, bottom: height - freezeTrailingHeight };
+}
+
+/**
  * Origin (левый верхний угол) слитого блока для любой его ячейки. span/spanRows
  * одинаковы на всех ячейках блока, поэтому берём [span[0], spanRows[0]] с
  * фолбэком на исходные координаты. Нормализует клик и навигацию к origin.

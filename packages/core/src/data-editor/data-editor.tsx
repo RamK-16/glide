@@ -88,7 +88,7 @@ import {
     type CellActivatedEventArgs,
 } from "../internal/data-grid/event-args.js";
 import { type Keybinds, useKeybindingsWithDefaults } from "./data-editor-keybindings.js";
-import { type Highlight, stickySpanContentBox } from "../internal/data-grid/render/data-grid-render.cells.js";
+import type { Highlight } from "../internal/data-grid/render/data-grid-render.cells.js";
 import { useRowGroupingInner, type RowGroupingOptions } from "./row-grouping.js";
 import { useRowGrouping } from "./row-grouping-api.js";
 import { useInitialScrollOffset } from "./use-initial-scroll-offset.js";
@@ -1632,40 +1632,29 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
-            // Объединённая ячейка (spanRows): редактор/превью открываем по вертикали
-            // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
-            // даёт верх блока (val.target), нижняя строка — низ.
+            // Объединённая ячейка: редактор размером с главную ячейку. В блоке в несколько
+            // строк он стоит по вертикали блока (spanAlign.vertical) внутри нарисованного
+            // содержимого, при прилипании это видимая часть блока.
             let target = val.target;
-            const { spanRows, spanAlign: blockSpanAlign } = val.content;
-            if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
-                const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
-                if (bottomBounds !== undefined) {
-                    let blockTop = target.y;
-                    let blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
-                    // С прилипанием (spanAlign.sticky) содержимое нарисовано в видимой
-                    // части блока: редактор открываем там же, а не у краёв всего блока.
-                    const area = blockSpanAlign?.sticky === true ? gridRef.current?.getDataAreaBounds() : undefined;
-                    if (area !== undefined) {
-                        const box = stickySpanContentBox(
-                            blockTop,
-                            blockHeight,
-                            area.y,
-                            area.y + area.height,
-                            target.height,
-                            bottomBounds.height
-                        );
-                        blockTop = box.y;
-                        blockHeight = box.height;
-                    }
-                    const editorHeight = target.height;
+            const { span, spanRows, spanAlign: blockSpanAlign } = val.content;
+            const cellBounds =
+                span !== undefined || spanRows !== undefined ? gridRef.current?.getBounds(col, row) : undefined;
+            if (cellBounds !== undefined) {
+                target = cellBounds;
+                const content =
+                    spanRows !== undefined && spanRows[1] > spanRows[0]
+                        ? gridRef.current?.getContentBounds(col, row)
+                        : undefined;
+                if (content !== undefined) {
+                    const editorHeight = Math.min(cellBounds.height, content.height);
                     const vertical = blockSpanAlign?.vertical ?? "center";
-                    let y = blockTop;
+                    let y = content.y;
                     if (vertical === "center") {
-                        y = blockTop + (blockHeight - editorHeight) / 2;
+                        y = content.y + (content.height - editorHeight) / 2;
                     } else if (vertical === "bottom") {
-                        y = blockTop + blockHeight - editorHeight;
+                        y = content.y + content.height - editorHeight;
                     }
-                    target = { ...target, y };
+                    target = { ...cellBounds, y, height: editorHeight };
                 }
             }
 

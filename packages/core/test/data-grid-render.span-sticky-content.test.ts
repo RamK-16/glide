@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stickySpanContentBox } from "../src/internal/data-grid/render/data-grid-render.cells.js";
+import { nextStickySpanInView } from "../src/internal/data-grid/render/data-grid-render.blit.js";
+import { getScrollBodyRange } from "../src/internal/data-grid/render/data-grid-lib.js";
 
 // Видимая часть слитого блока для содержимого с прилипанием (spanAlign.sticky).
 // Область данных в примерах: от 40 (под шапкой) до 468 (над итоговой строкой).
@@ -35,5 +37,27 @@ describe("stickySpanContentBox", () => {
 
     it("блок ниже одной строки по высоте: прямоугольник не выходит за блок", () => {
         expect(stickySpanContentBox(10, 20, TOP, BOTTOM, 32, 32)).toEqual({ y: 10, height: 20 });
+    });
+});
+
+describe("nextStickySpanInView", () => {
+    it("полный кадр берёт то, что нарисовал", () => {
+        expect(nextStickySpanInView(true, false, false)).toBe(true);
+        expect(nextStickySpanInView(false, false, true)).toBe(false);
+    });
+
+    it("частичный кадр, не дошедший до блока, сохраняет признак прошлого кадра", () => {
+        expect(nextStickySpanInView(false, true, true)).toBe(true);
+        expect(nextStickySpanInView(false, true, undefined)).toBe(false);
+    });
+});
+
+describe("getScrollBodyRange", () => {
+    it("без закреплённых строк: от низа шапки до верха итоговой строки", () => {
+        expect(getScrollBodyRange(500, 36, undefined, 32)).toEqual({ top: 36, bottom: 468 });
+    });
+
+    it("с закреплёнными сверху строками: от их низа", () => {
+        expect(getScrollBodyRange(500, 36, 100, 0)).toEqual({ top: 100, bottom: 500 });
     });
 });

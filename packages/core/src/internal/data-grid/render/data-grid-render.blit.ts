@@ -19,14 +19,22 @@ export interface BlitData {
     readonly pinnedRowsCount: number;
     readonly lastBuffer: "a" | "b" | undefined;
     /**
-     * В кадре был многострочный слитый блок с прилипанием (spanAlign.sticky): его
+     * На экране многострочный слитый блок с прилипанием (spanAlign.sticky): его
      * содержимое выравнивается по видимой части, поэтому при вертикальной прокрутке
-     * прошлый кадр сдвигать нельзя. Два значения: этот кадр и предыдущий (при двойной буферизации сдвигается
-     * кадр двухшаговой давности).
+     * прошлый кадр сдвигать нельзя.
      */
-    readonly stickySpanInView?: readonly [boolean, boolean];
+    readonly stickySpanInView?: boolean;
     aBufferScroll: [boolean, boolean] | undefined;
     bBufferScroll: [boolean, boolean] | undefined;
+}
+
+/**
+ * Остался ли на экране слитый блок с прилипанием после кадра. Частичный кадр
+ * (сдвиг прошлого кадра, перерисовка полос) может не дойти до блока: тогда
+ * признак берём с прошлого кадра.
+ */
+export function nextStickySpanInView(drawnNow: boolean, partialFrame: boolean, last: boolean | undefined): boolean {
+    return drawnNow || (partialFrame && last === true);
 }
 
 export function blitLastFrame(

@@ -21,6 +21,8 @@ import {
     cellIsSelected,
     cellIsInRange,
     getFreezeTrailingHeight,
+    getScrollBodyRange,
+    getSpanOrigin,
     drawLastUpdateUnderlay,
 } from "./data-grid-lib.js";
 import type { SpriteManager } from "../data-grid-sprites.js";
@@ -80,31 +82,49 @@ export interface Highlight {
     readonly drawAboveSelection?: boolean;
 }
 
-interface SpanIntersection {
+/** Диапазон колонок и строк внутри слитого блока (логические координаты). */
+interface SpanCellRange {
     c0: number;
     c1: number;
     r0: number;
     r1: number;
-    /** Прямоугольник покрывает блок целиком. */
-    full: boolean;
 }
 
-/** Пересечение прямоугольника выделения с диапазоном слитого блока (логические координаты). */
-export function intersectRangeWithSpan(
+/** Задевает ли прямоугольник (логические координаты) слитый блок. */
+export function rangeTouchesSpan(
     r: Rectangle,
     blockCols: readonly [number, number],
     blockRows: readonly [number, number]
-): SpanIntersection | null {
-    const c0 = Math.max(r.x, blockCols[0]);
-    const c1 = Math.min(r.x + r.width - 1, blockCols[1]);
-    const r0 = Math.max(r.y, blockRows[0]);
-    const r1 = Math.min(r.y + r.height - 1, blockRows[1]);
-    if (c0 > c1 || r0 > r1) return null;
-    const full = c0 === blockCols[0] && c1 === blockCols[1] && r0 === blockRows[0] && r1 === blockRows[1];
-    return { c0, c1, r0, r1, full };
+): boolean {
+    return (
+        r.x <= blockCols[1] &&
+        r.x + r.width - 1 >= blockCols[0] &&
+        r.y <= blockRows[1] &&
+        r.y + r.height - 1 >= blockRows[0]
+    );
 }
 
-export interface SpanPartialFill {
+/**
+ * Задевает ли выделение диапазоном слитый блок. Одна выбранная ячейка красит
+ * блок только при рамке фокуса, как у обычных ячеек. Диапазоны из стека
+ * (выбор с Ctrl) учитываются всегда.
+ */
+export function selectionRangeTouchesSpan(
+    selection: GridSelection,
+    blockCols: readonly [number, number],
+    blockRows: readonly [number, number],
+    drawFocus: boolean
+): boolean {
+    const current = selection.current;
+    if (current === undefined) return false;
+    const { range } = current;
+    if ((drawFocus || range.width * range.height > 1) && rangeTouchesSpan(range, blockCols, blockRows)) {
+        return true;
+    }
+    return current.rangeStack.some(r => rangeTouchesSpan(r, blockCols, blockRows));
+}
+
+export interface SpanFillRect {
     x: number;
     y: number;
     w: number;
@@ -139,7 +159,7 @@ export interface SpanBlockGeometry {
  * ширинам колонок и высотам строк, с клэмпом в видимую часть блока (frozen-сплит).
  */
 // Экспортируется для юнит-тестов геометрии частичной заливки.
-export function spanPartialFillRect(hit: SpanIntersection, geom: SpanBlockGeometry, color: string): SpanPartialFill | null {
+export function spanPartialFillRect(hit: SpanCellRange, geom: SpanBlockGeometry, color: string): SpanFillRect | null {
     let px = geom.x;
     let pw = 0;
     // Идём от колонки, которой соответствует пиксель geom.x, иначе у блока через
@@ -176,11 +196,16 @@ export function spanTouchesSelection(
     blockCols: readonly [number, number],
     blockRows: readonly [number, number]
 ): boolean {
-    for (let r = blockRows[0]; r <= blockRows[1]; r++) {
-        if (selectedRows.hasIndex(r)) return true;
-    }
-    for (let c = blockCols[0]; c <= blockCols[1]; c++) {
-        if (selectedCols.hasIndex(c)) return true;
+    return (
+        selectionTouchesRange(selectedRows, blockRows[0], blockRows[1]) ||
+        selectionTouchesRange(selectedCols, blockCols[0], blockCols[1])
+    );
+}
+
+/** Есть ли среди выбранных индексов хотя бы один из [from, to], без перебора индексов. */
+function selectionTouchesRange(selection: CompactSelection, from: number, to: number): boolean {
+    for (const [start, end] of selection.items) {
+        if (start <= to && end > from) return true;
     }
     return false;
 }
@@ -197,13 +222,13 @@ export function computeSpanRowBgFills(
     geom: SpanBlockGeometry,
     getRowThemeOverride: GetRowThemeCallback | undefined,
     cellForcesBg: boolean
-): SpanPartialFill[] | undefined {
+): SpanFillRect[] | undefined {
     if (getRowThemeOverride === undefined || cellForcesBg) return undefined;
-    let fills: SpanPartialFill[] | undefined;
+    let fills: SpanFillRect[] | undefined;
     for (let r = geom.rows[0]; r <= geom.rows[1]; r++) {
         const rBg = getRowThemeOverride(r)?.bgCell;
         if (rBg === undefined) continue;
-        const strip = spanPartialFillRect({ c0: geom.cols[0], c1: geom.cols[1], r0: r, r1: r, full: false }, geom, rBg);
+        const strip = spanPartialFillRect({ c0: geom.cols[0], c1: geom.cols[1], r0: r, r1: r }, geom, rBg);
         if (strip !== null) {
             if (fills === undefined) fills = [];
             fills.push(strip);
@@ -212,22 +237,9 @@ export function computeSpanRowBgFills(
     return fills;
 }
 
-/**
- * Задет ли слитый блок выделением: range-выделение пересекает блок, либо выбрана
- * любая строка или колонка блока. Блок красится целиком, поэтому и accent в цвет
- * фона, отдаваемый контенту origin-ячейки, подмешивается при любом касании.
- * Экспортируется для юнит-тестов.
- */
-export function isSpanAccented(
-    selection: GridSelection,
-    blockCols: readonly [number, number],
-    blockRows: readonly [number, number]
-): boolean {
-    return (
-        (selection.current !== undefined &&
-            intersectRangeWithSpan(selection.current.range, blockCols, blockRows) !== null) ||
-        spanTouchesSelection(selection.rows, selection.columns, blockCols, blockRows)
-    );
+/** Заливка всей видимой части слитого блока. */
+function spanFill(geom: SpanBlockGeometry, color: string): SpanFillRect {
+    return { x: geom.x, y: geom.y, w: geom.width, h: geom.height, color };
 }
 
 /**
@@ -331,6 +343,7 @@ export function drawCells(
     const skipPoint = getSkipPoint(drawRegions);
     const rowAxis = rowAxisOf(effectiveColumns);
     const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined;
+    const scrollBody = getScrollBodyRange(height, totalHeaderHeight, pinnedRowsEnd, freezeTrailingRowsHeight);
 
     walkColumns(
         effectiveColumns,
@@ -486,19 +499,21 @@ export function drawCells(
                                 // (наведение) фон блока закрашивает линию над итоговой строкой.
                                 const spanBottom = isSticky
                                     ? cellY + cellHeight
-                                    : Math.min(cellY + cellHeight, height - freezeTrailingRowsHeight);
+                                    : Math.min(cellY + cellHeight, scrollBody.bottom);
                                 ctx.rect(cellX + d, cellY, cellWidth - d, Math.max(0, spanBottom - cellY));
-                                if (result === undefined) {
-                                    result = [];
-                                }
                                 const spanTop =
                                     !isSticky && pinnedRowsEnd !== undefined ? Math.max(cellY, pinnedRowsEnd) : cellY;
-                                result.push({
-                                    x: cellX + d,
-                                    y: spanTop,
-                                    width: cellWidth - d,
-                                    height: Math.max(0, spanBottom - spanTop),
-                                });
+                                if (spanBottom > spanTop) {
+                                    if (result === undefined) {
+                                        result = [];
+                                    }
+                                    result.push({
+                                        x: cellX + d,
+                                        y: spanTop,
+                                        width: cellWidth - d,
+                                        height: spanBottom - spanTop,
+                                    });
+                                }
                                 ctx.clip();
                                 drawingSpan = true;
                             }
@@ -530,10 +545,9 @@ export function drawCells(
 
                     ctx.beginPath();
 
-                    // Слитый блок: выделение, задевшее любую его часть, красит блок целиком,
-                    // полосами по пересечению не красим.
-                    // Заливки блока копятся здесь и кладутся поверх строковых полос.
-                    let spanPartialFills: SpanPartialFill[] | undefined;
+                    // Слитый блок: выделение, задевшее любую его часть, красит блок целиком.
+                    // Его заливки копятся здесь и кладутся поверх полос фона строк.
+                    let spanFills: SpanFillRect[] | undefined;
                     // Диапазоны и геометрия блока считаются один раз на отрисовываемый
                     // блок; обычные ячейки в этом цикле ничего не создают.
                     let spanGeom: SpanBlockGeometry | undefined;
@@ -556,12 +570,18 @@ export function drawCells(
                             getRowHeight,
                         }; //alloc
                     }
-                    // Range-выделение задело блок (возможно, мимо origin-ячейки): блок
-                    // тинтуется как выделенный, даже если origin в range не входит.
+                    // Слитый блок рисуется от главной ячейки: наведение, клик и подсветка
+                    // поиска приходят на неё, а рисовать блок может любая его видимая строка.
+                    const [drawCol, drawRow] = drawingSpan
+                        ? getSpanOrigin(cell, c.sourceIndex, row)
+                        : [c.sourceIndex, row];
+                    // Выделение задело блок, возможно мимо главной ячейки: блок подсвечен целиком.
                     const spanRangeHit =
                         spanGeom !== undefined &&
-                        selection.current !== undefined &&
-                        intersectRangeWithSpan(selection.current.range, spanGeom.cols, spanGeom.rows) !== null;
+                        selectionRangeTouchesSpan(selection, spanGeom.cols, spanGeom.rows, drawFocus);
+                    const spanAxisHit =
+                        spanGeom !== undefined &&
+                        spanTouchesSelection(selection.rows, selection.columns, spanGeom.cols, spanGeom.rows);
 
                     const isSelected = cellIsSelected(cellIndex, cell, selection);
                     let accentCount = cellIsInRange(cellIndex, cell, selection, drawFocus);
@@ -584,14 +604,9 @@ export function drawCells(
                         if (rowSelected) accentCount++;
                         if (colSelected && !isTrailingRow) accentCount++;
                     }
-                    // Слитый блок: выбранная строка или колонка, проходящая через блок,
-                    // тинтует его целиком (одной ступенью, как у обычной ячейки).
-                    if (
-                        drawingSpan &&
-                        spanGeom !== undefined &&
-                        !isSelected &&
-                        spanTouchesSelection(selection.rows, selection.columns, spanGeom.cols, spanGeom.rows)
-                    ) {
+                    // Выбранная строка или колонка, проходящая через блок, красит его
+                    // целиком одной ступенью, как обычную ячейку.
+                    if (drawingSpan && !isSelected && spanAxisHit) {
                         accentCount++;
                     }
 
@@ -616,33 +631,18 @@ export function drawCells(
                         }
                         for (let i = 0; i < accentCount; i++) {
                             if (drawingSpan && spanGeom !== undefined) {
-                                // Слитый блок: accent полного выделения кладём полосой ПОВЕРХ
-                                // строковых полос (hover и checkbox из getRowThemeOverride), а не
-                                // blend в базовую заливку. Порядок как у обычных ячеек: hover
-                                // внизу, выделение сверху. Иначе транзиентная hover-полоса
-                                // светлила выделенный блок (и мигала на гонке кадров).
-                                const strip = spanPartialFillRect(
-                                    {
-                                        c0: spanGeom.cols[0],
-                                        c1: spanGeom.cols[1],
-                                        r0: spanGeom.rows[0],
-                                        r1: spanGeom.rows[1],
-                                        full: true,
-                                    },
-                                    spanGeom,
-                                    theme.accentLight
-                                );
-                                if (strip !== null) {
-                                    if (spanPartialFills === undefined) spanPartialFills = [];
-                                    spanPartialFills.push(strip);
-                                }
+                                // Слитый блок: подсветку кладём поверх полос фона строк, а не
+                                // смешиваем с базовой заливкой. Как у обычных ячеек: наведение
+                                // снизу, выделение сверху.
+                                if (spanFills === undefined) spanFills = [];
+                                spanFills.push(spanFill(spanGeom, theme.accentLight));
                             } else {
                                 fill = blend(theme.accentLight, fill);
                             }
                         }
                     } else if (prelightCells !== undefined) {
                         for (const pre of prelightCells) {
-                            if (pre[0] === c.sourceIndex && pre[1] === row) {
+                            if (pre[0] === drawCol && pre[1] === drawRow) {
                                 fill = blend(theme.bgSearchResult, fill);
                                 break;
                             }
@@ -665,29 +665,17 @@ export function drawCells(
                         }
                     }
 
-                    // Слитый блок: highlight-регион, задевший блок, красит его целиком
-                    // (поверх строковых полос hover/checkbox), чтобы порядок слоёв совпадал
-                    // с обычными ячейками: выделение сверху.
+                    // Слитый блок: регион подсветки, задевший блок, красит его целиком
+                    // поверх полос фона строк, как выделение.
                     if (highlightRegions !== undefined && spanGeom !== undefined) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
-                            if (intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows) === null) continue;
-                            const strip = spanPartialFillRect(
-                                {
-                                    c0: spanGeom.cols[0],
-                                    c1: spanGeom.cols[1],
-                                    r0: spanGeom.rows[0],
-                                    r1: spanGeom.rows[1],
-                                    full: true,
-                                },
-                                spanGeom,
-                                region.style === "accent" ? theme.accentLight : region.color
+                            if (!rangeTouchesSpan(region.range, spanGeom.cols, spanGeom.rows)) continue;
+                            if (spanFills === undefined) spanFills = [];
+                            spanFills.push(
+                                spanFill(spanGeom, region.style === "accent" ? theme.accentLight : region.color)
                             );
-                            if (strip !== null) {
-                                if (spanPartialFills === undefined) spanPartialFills = [];
-                                spanPartialFills.push(strip);
-                            }
                         }
                     }
 
@@ -701,7 +689,7 @@ export function drawCells(
                         const top =
                             !isSticky && pinnedRowsEnd !== undefined ? Math.max(cellY, pinnedRowsEnd) + 1 : cellY + 1;
                         const cellBottom = cellY + cellHeight;
-                        const bottom = isSticky ? cellBottom : Math.min(cellBottom, height - freezeTrailingRowsHeight);
+                        const bottom = isSticky ? cellBottom : Math.min(cellBottom, scrollBody.bottom);
                         const h = Math.max(0, bottom - top);
 
                         // however, not clipping at all is even better. We want to clip if we are the left most col
@@ -744,17 +732,16 @@ export function drawCells(
 
                     if (spanRowBgFills !== undefined) {
                         // Пофоновая заливка строк блока (выделение/ховер) поверх базового фона,
-                        // но ПОД accent/highlight-полосами (spanPartialFills).
+                        // но под подсветкой выделения (spanFills).
                         for (const f of spanRowBgFills) {
                             ctx.fillStyle = f.color;
                             ctx.fillRect(f.x, f.y, f.w, f.h);
                         }
                     }
 
-                    if (spanPartialFills !== undefined) {
-                        // Полосы частичного выделения внутри блока: rgba-цвет ложится поверх
-                        // базовой заливки, что эквивалентно blend при полном охвате.
-                        for (const f of spanPartialFills) {
+                    if (spanFills !== undefined) {
+                        // Подсветка блока: полупрозрачный цвет поверх заливки, как blend.
+                        for (const f of spanFills) {
                             ctx.fillStyle = f.color;
                             ctx.fillRect(f.x, f.y, f.w, f.h);
                         }
@@ -767,26 +754,21 @@ export function drawCells(
                     let hoverValue: HoverValues[number] | undefined;
                     for (let i = 0; i < hoverValues.length; i++) {
                         const hv = hoverValues[i];
-                        if (hv.item[0] === c.sourceIndex && hv.item[1] === row) {
+                        if (hv.item[0] === drawCol && hv.item[1] === drawRow) {
                             hoverValue = hv;
                             break;
                         }
                     }
 
-                    // Для слитого блока контент (в т.ч. кастомный: фон select-триггера)
-                    // рисуется на origin-строке. accent выделения тут вынесен в отдельные
-                    // полосы, поэтому fill origin-ячейки его не содержит и cellFillColor,
-                    // отдаваемый кастомной ячейке, не отражал бы выделение (в отличие от
-                    // обычных ячеек, где accent уже в fill). Подмешиваем accent в
-                    // finalCellFillColor, когда выделена origin-строка блока.
+                    // У слитого блока подсветка лежит отдельными заливками, а не в fill:
+                    // содержимому (например, фону Select) отдаём цвет вместе с ней.
                     let contentFillColor = fill;
-                    if (spanGeom !== undefined && isSpanAccented(selection, spanGeom.cols, spanGeom.rows)) {
+                    if (drawingSpan && accentCount > 0) {
                         contentFillColor = blend(theme.accentLight, contentFillColor);
                     }
 
                     // Многострочный блок с прилипанием (spanAlign.sticky): содержимое
-                    // выравнивается по видимой части блока. Фон блока рисуется по
-                    // полному прямоугольнику выше.
+                    // выравнивается по видимой части блока, фон рисуется по всему блоку.
                     let contentY = cellY;
                     let contentHeight = cellHeight;
                     if (
@@ -796,12 +778,14 @@ export function drawCells(
                         cell.spanRows[0] !== cell.spanRows[1] &&
                         cell.spanAlign?.sticky === true
                     ) {
-                        if (stats !== undefined) stats.stickySpanInView = true;
+                        if (stats !== undefined && cellY < scrollBody.bottom && cellY + cellHeight > scrollBody.top) {
+                            stats.stickySpanInView = true;
+                        }
                         const box = stickySpanContentBox(
                             cellY,
                             cellHeight,
-                            (pinnedRowsEnd ?? totalHeaderHeight) + 1,
-                            height - freezeTrailingRowsHeight,
+                            scrollBody.top + 1,
+                            scrollBody.bottom,
                             getRowHeight(cell.spanRows[0]),
                             getRowHeight(cell.spanRows[1])
                         );
@@ -815,13 +799,11 @@ export function drawCells(
                             ctx.font = cellFont;
                             font = cellFont;
                         }
-                        // Слитый блок рисуется от главной ячейки: наведение и клик приходят
-                        // на неё (location), а рисовать блок может любая его видимая строка.
                         prepResult = drawCell(
                             ctx,
                             cell,
-                            drawingSpan ? cell.span?.[0] ?? c.sourceIndex : c.sourceIndex,
-                            drawingSpan ? cell.spanRows?.[0] ?? row : row,
+                            drawCol,
+                            drawRow,
                             isLastColumn,
                             isLastRow,
                             cellX,
@@ -842,8 +824,7 @@ export function drawCells(
                             enqueue,
                             renderStateProvider,
                             getCellRenderer,
-                            overrideCursor,
-                            contentY - cellY
+                            overrideCursor
                         );
                     }
 
@@ -911,15 +892,13 @@ export function drawCell(
     enqueue: EnqueueCallback | undefined,
     renderStateProvider: RenderStateProvider,
     getCellRenderer: GetCellRendererCallback,
-    overrideCursor: (cursor: React.CSSProperties["cursor"]) => void,
-    contentOffsetY: number = 0
+    overrideCursor: (cursor: React.CSSProperties["cursor"]) => void
 ): PrepResult | undefined {
     let hoverX: number | undefined;
     let hoverY: number | undefined;
     if (hoverInfo !== undefined && hoverInfo[0][0] === col && hoverInfo[0][1] === row) {
         hoverX = hoverInfo[1][0];
-        // Наведение дано относительно всего блока, содержимое нарисовано в rect.
-        hoverY = hoverInfo[1][1] - contentOffsetY;
+        hoverY = hoverInfo[1][1];
     }
     let result: PrepResult | undefined = undefined;
 
@@ -956,7 +935,6 @@ export function drawCell(
         hyperWrapping,
         overrideCursor: hoverX !== undefined ? overrideCursor : undefined,
         requestAnimationFrame: animRequest,
-        contentOffsetY,
     };
     const needsAnim = drawLastUpdateUnderlay(args, cell.lastUpdated, frameTime, lastPrep, isLastCol, isLastRow);
 

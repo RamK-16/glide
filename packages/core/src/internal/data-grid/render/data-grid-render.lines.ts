@@ -417,17 +417,12 @@ export function drawGridLines(
 
     // Объединённые ячейки (spans): вырезаем их нутро из области рисования, чтобы
     // линии не попадали внутрь слитого блока. Остаётся только его внешний контур.
-    // Блок, который уходит под закреплённые снизу строки (итоговая строка), вырезаем
-    // только до их верха: иначе вырез накрывает линию над итоговой строкой.
     if (spans !== undefined) {
-        const trailingTop =
-            freezeTrailingRows > 0 ? height - getFreezeTrailingHeight(rows, freezeTrailingRows, getRowHeight) : height;
         ctx.beginPath();
         ctx.save();
         ctx.rect(0, 0, width, height);
         for (const span of spans) {
-            const bottom = span.y < trailingTop ? Math.min(span.y + span.height, trailingTop) : span.y + span.height;
-            ctx.rect(span.x + 1, span.y + 1, span.width - 1, bottom - span.y - 1);
+            ctx.rect(span.x + 1, span.y + 1, span.width - 1, span.height - 1);
         }
         ctx.clip("evenodd");
     }

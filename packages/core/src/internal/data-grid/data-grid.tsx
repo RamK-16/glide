@@ -5,6 +5,7 @@ import {
     getColumnIndexForX,
     getFreezeTrailingHeight,
     getRowIndexForY,
+    getScrollBodyRange,
     getSpanOrigin,
     getStickyWidth,
     rectBottomRight,
@@ -69,6 +70,7 @@ import {
     type GetRowThemeCallback,
     type Highlight,
     drawCell,
+    stickySpanContentBox,
 } from "./render/data-grid-render.cells.js";
 import { getActionBoundsForGroup, drawHeader, computeHeaderLayout } from "./render/data-grid-render.header.js";
 import {
@@ -380,10 +382,10 @@ export interface DataGridRef {
     focus: () => void;
     getBounds: (col?: number, row?: number) => Rectangle | undefined;
     /**
-     * Видимая область прокручиваемых строк в координатах страницы: между шапкой (или
-     * закреплёнными сверху строками) и закреплёнными снизу строками.
+     * Границы нарисованного содержимого ячейки в координатах страницы. У слитого
+     * блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть.
      */
-    getDataAreaBounds: () => Rectangle | undefined;
+    getContentBounds: (col: number, row: number) => Rectangle | undefined;
     damage: (cells: DamageUpdateList) => void;
     getMouseArgsForPosition: (
         posX: number,
@@ -621,6 +623,44 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             columnLayout,
             rowAxis,
         ]
+    );
+
+    // Границы нарисованного содержимого ячейки в координатах страницы. У слитого
+    // блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть,
+    // как в drawCells. Клик, наведение и редактор считают координаты от неё.
+    const getSpanContentBounds = React.useCallback(
+        (canvas: HTMLCanvasElement, cell: InnerGridCell, originCol: number, originRow: number) => {
+            const first = getBoundsForItem(canvas, originCol, originRow);
+            if (cell.span === undefined && cell.spanRows === undefined) return first;
+            const last = getBoundsForItem(canvas, cell.span?.[1] ?? originCol, cell.spanRows?.[1] ?? originRow);
+            if (first === undefined || last === undefined) return first;
+            const block = {
+                x: first.x,
+                y: first.y,
+                width: last.x + last.width - first.x,
+                height: last.y + last.height - first.y,
+            };
+            const multiRow = cell.spanRows !== undefined && cell.spanRows[1] > cell.spanRows[0];
+            if (!multiRow || cell.spanAlign?.sticky !== true) return block;
+            const rect = canvas.getBoundingClientRect();
+            const scale = rect.width / width;
+            const body = getScrollBodyRange(
+                height,
+                totalHeaderHeight,
+                rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined,
+                freezeTrailingRows > 0 ? getFreezeTrailingHeight(rows, freezeTrailingRows, rowHeight) : 0
+            );
+            const box = stickySpanContentBox(
+                block.y,
+                block.height,
+                rect.y + (body.top + 1) * scale,
+                rect.y + body.bottom * scale,
+                first.height,
+                last.height
+            );
+            return { ...block, y: box.y, height: box.height };
+        },
+        [getBoundsForItem, width, height, totalHeaderHeight, rowAxis, freezeTrailingRows, rows, rowHeight]
     );
 
     const getMouseArgsForPosition = React.useCallback(
@@ -881,10 +921,11 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             } else {
                 // Объединённая ячейка тела (colspan/rowspan/прямоугольник): попадание в любую
                 // точку блока трактуем как origin [startCol, startRow], чтобы клик/выделение/
-                // редактирование/hover работали по всему блоку.
+                // редактирование/hover работали по всему блоку. Границы и координаты события
+                // считаются от нарисованного содержимого блока.
                 const spanCell = getCellContent([col, row]);
                 const [cellCol, cellRow] = getSpanOrigin(spanCell, col, row);
-                const bounds = getBoundsForItem(canvas, cellCol, cellRow);
+                const bounds = getSpanContentBounds(canvas, spanCell, cellCol, cellRow);
                 assert(bounds !== undefined);
                 const isEdge = bounds !== undefined && bounds.x + bounds.width - posX < edgeDetectionBuffer;
 
@@ -952,6 +993,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             translateY,
             freezeTrailingRows,
             getBoundsForItem,
+            getSpanContentBounds,
             getCellContent,
             fillHandle,
             selection,
@@ -1972,21 +2014,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
                 return getBoundsForItem(canvasRef.current, col ?? 0, row ?? -1);
             },
-            getDataAreaBounds: () => {
+            getContentBounds: (col: number, row: number) => {
                 if (canvasRef === undefined || canvasRef.current === null) {
                     return undefined;
                 }
-                const rect = canvasRef.current.getBoundingClientRect();
-                const scale = rect.width / width;
-                const top = (rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : totalHeaderHeight) + 1;
-                const bottom =
-                    height - (freezeTrailingRows > 0 ? getFreezeTrailingHeight(rows, freezeTrailingRows, rowHeight) : 0);
-                return {
-                    x: rect.x,
-                    y: rect.y + top * scale,
-                    width: rect.width,
-                    height: Math.max(0, bottom - top) * scale,
-                };
+                const cell = getCellContent([col, row]);
+                const [originCol, originRow] = getSpanOrigin(cell, col, row);
+                return getSpanContentBounds(canvasRef.current, cell, originCol, originRow);
             },
             damage,
             getMouseArgsForPosition: (posX: number, posY: number, ev?: MouseEvent | TouchEvent) => {
@@ -1997,19 +2031,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 return getMouseArgsForPosition(canvasRef.current, posX, posY, ev);
             },
         }),
-        [
-            canvasRef,
-            damage,
-            getBoundsForItem,
-            getMouseArgsForPosition,
-            width,
-            height,
-            rowAxis,
-            totalHeaderHeight,
-            freezeTrailingRows,
-            rows,
-            rowHeight,
-        ]
+        [canvasRef, damage, getBoundsForItem, getMouseArgsForPosition, getCellContent, getSpanContentBounds]
     );
 
     const lastFocusedSubdomNode = React.useRef<Item | undefined>(undefined);

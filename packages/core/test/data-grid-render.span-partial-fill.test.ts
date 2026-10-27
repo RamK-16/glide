@@ -30,18 +30,18 @@ function geom(overrides: Partial<SpanBlockGeometry> = {}): SpanBlockGeometry {
 
 describe("spanPartialFillRect — пиксельная полоса пересечения внутри блока", () => {
     it("пересечение на весь блок = весь прямоугольник блока", () => {
-        const r = spanPartialFillRect({ c0: 1, c1: 2, r0: 0, r1: 1, full: true }, geom(), "red");
+        const r = spanPartialFillRect({ c0: 1, c1: 2, r0: 0, r1: 1 }, geom(), "red");
         expect(r).toEqual({ x: 100, y: 0, w: 200, h: 64, color: "red" });
     });
 
     it("частичное пересечение: смещение по ширинам колонок и высотам строк", () => {
-        const r = spanPartialFillRect({ c0: 2, c1: 2, r0: 1, r1: 1, full: false }, geom(), "blue");
+        const r = spanPartialFillRect({ c0: 2, c1: 2, r0: 1, r1: 1 }, geom(), "blue");
         expect(r).toEqual({ x: 200, y: 32, w: 100, h: 32, color: "blue" });
     });
 
     it("клэмп в видимую часть блока (frozen-сплит: width меньше блока)", () => {
         const r = spanPartialFillRect(
-            { c0: 1, c1: 2, r0: 0, r1: 1, full: false },
+            { c0: 1, c1: 2, r0: 0, r1: 1 },
             geom({ width: 150 }), // видно только 150px из 200
             "green"
         );
@@ -50,7 +50,7 @@ describe("spanPartialFillRect — пиксельная полоса пересе
 
     it("полоса целиком вне видимой части → null", () => {
         const r = spanPartialFillRect(
-            { c0: 2, c1: 2, r0: 0, r1: 1, full: false },
+            { c0: 2, c1: 2, r0: 0, r1: 1 },
             geom({ width: 90 }), // видима только часть колонки 1, полоса начинается с колонки 2
             "red"
         );
@@ -59,7 +59,7 @@ describe("spanPartialFillRect — пиксельная полоса пересе
 
     it("нулевая высота пересечения → null", () => {
         const r = spanPartialFillRect(
-            { c0: 1, c1: 2, r0: 1, r1: 1, full: false },
+            { c0: 1, c1: 2, r0: 1, r1: 1 },
             geom({ height: 30 }), // видимая высота меньше первой строки, вторая строка не видна
             "red"
         );
@@ -72,7 +72,7 @@ describe("spanPartialFillRect — пиксельная полоса пересе
         // Полоса по колонке 1 должна лечь ровно на начало части, без сдвига
         // на ширину закреплённой колонки.
         const r = spanPartialFillRect(
-            { c0: 1, c1: 1, r0: 0, r1: 1, full: false },
+            { c0: 1, c1: 1, r0: 0, r1: 1 },
             geom({ cols: [0, 2], x: 100, width: 200, xStartCol: 1 }),
             "red"
         );
