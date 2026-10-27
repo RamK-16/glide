@@ -468,7 +468,13 @@ export function drawCells(
                                 ctx.save();
                                 ctx.beginPath();
                                 const d = Math.max(0, clipX - cellX);
-                                ctx.rect(cellX + d, cellY, cellWidth - d, cellHeight);
+                                // Блок прокручиваемых строк не заходит на закреплённые снизу
+                                // строки (итоговая строка): иначе при частичной перерисовке
+                                // (наведение) фон блока закрашивает линию над итоговой строкой.
+                                const spanBottom = isSticky
+                                    ? cellY + cellHeight
+                                    : Math.min(cellY + cellHeight, height - freezeTrailingRowsHeight);
+                                ctx.rect(cellX + d, cellY, cellWidth - d, Math.max(0, spanBottom - cellY));
                                 if (result === undefined) {
                                     result = [];
                                 }
@@ -478,7 +484,7 @@ export function drawCells(
                                     x: cellX + d,
                                     y: spanTop,
                                     width: cellWidth - d,
-                                    height: Math.max(0, cellY + cellHeight - spanTop),
+                                    height: Math.max(0, spanBottom - spanTop),
                                 });
                                 ctx.clip();
                                 drawingSpan = true;
