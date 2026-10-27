@@ -62,6 +62,7 @@ import {
     outOfBoundsKind,
     groupHeaderKind,
     headerKind,
+    hoverDamageItems,
     mouseEventArgsAreEqual,
 } from "./event-args.js";
 import { pointInRect } from "../../common/math.js";
@@ -1640,7 +1641,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 maybeSetHoveredInfo(newInfo, needsHoverPosition);
                 hoverInfoRef.current = newInfo;
                 if (needsDamageCell) {
-                    damageInternal(new CellSet([args.location]));
+                    damageInternal(new CellSet(args.kind === "cell" ? hoverDamageItems(args) : [args.location]));
                 }
             }
 
