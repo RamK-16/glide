@@ -368,6 +368,14 @@ export interface DataGridProps {
      * @group Style
      */
     readonly resizeIndicator: "full" | "header" | "none" | undefined;
+    /**
+     * Also shows the resize indicator while a mouse hovers over a resizable header edge.
+     * Uses the height selected by `resizeIndicator` and `theme.resizeIndicatorColor`.
+     * Does not enable column resizing by itself.
+     * @defaultValue false
+     * @group Style
+     */
+    readonly resizeIndicatorOnHover?: boolean;
 }
 
 type DamageUpdateList = readonly {
@@ -467,6 +475,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         experimental,
         getCellRenderer,
         resizeIndicator = "full",
+        resizeIndicatorOnHover = false,
     } = p;
     const translateX = p.translateX ?? 0;
     const translateY = p.translateY ?? 0;
@@ -483,6 +492,9 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     const lastBlitData = React.useRef<BlitData | undefined>(undefined);
     const [hoveredItemInfo, setHoveredItemInfo] = React.useState<[Item, readonly [number, number]] | undefined>();
     const [hoveredOnEdge, setHoveredOnEdge] = React.useState<boolean>();
+    const [hoveredResizeCol, setHoveredResizeCol] = React.useState<number>();
+    const resizeHoverPointer = React.useRef<MouseEvent | undefined>(undefined);
+    const mouseDown = React.useRef(false);
     const overlayRef = React.useRef<HTMLCanvasElement | null>(null);
     const [drawCursorOverride, setDrawCursorOverride] = React.useState<React.CSSProperties["cursor"] | undefined>();
 
@@ -956,6 +968,66 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         ]
     );
 
+    const clearResizeHover = React.useCallback(() => {
+        resizeHoverPointer.current = undefined;
+        setHoveredResizeCol(undefined);
+    }, []);
+
+    const updateResizeHover = React.useCallback(
+        (args: GridMouseEventArgs) => {
+            let col: number | undefined;
+            if (
+                resizeIndicatorOnHover &&
+                allowResize === true &&
+                !mouseDown.current &&
+                !args.isTouch &&
+                args.buttons === 0 &&
+                args.isEdge &&
+                (args.kind === headerKind || args.kind === outOfBoundsKind)
+            ) {
+                const index = args.kind === headerKind ? args.location[0] : columns.length - 1;
+                const column = columns[index];
+                if (
+                    index >= (firstColAccessible ? 0 : 1) &&
+                    column !== undefined &&
+                    column.resizable !== false &&
+                    (column.minWidth === undefined || column.minWidth !== column.maxWidth)
+                ) {
+                    col = index;
+                }
+            }
+            setHoveredResizeCol(col);
+        },
+        [resizeIndicatorOnHover, allowResize, columns, firstColAccessible]
+    );
+
+    // Re-hit-test after a width change or resize end, using the current layout.
+    React.useLayoutEffect(() => {
+        if (!resizeIndicatorOnHover) {
+            clearResizeHover();
+            return;
+        }
+        const pointer = resizeHoverPointer.current;
+        const canvas = ref.current;
+        if (pointer !== undefined && canvas !== null && !isResizing && !mouseDown.current) {
+            updateResizeHover(getMouseArgsForPosition(canvas, pointer.clientX, pointer.clientY, pointer));
+        }
+    }, [resizeIndicatorOnHover, isResizing, getMouseArgsForPosition, updateResizeHover, clearResizeHover]);
+
+    React.useLayoutEffect(clearResizeHover, [clearResizeHover, cellXOffset, cellYOffset, translateX, translateY, width, height]);
+    useEventListener("blur", clearResizeHover, resizeIndicatorOnHover ? window : null, true);
+    useEventListener("scroll", clearResizeHover, resizeIndicatorOnHover ? windowEventTarget : null, true, true);
+    useEventListener(
+        "pointerout",
+        ev => {
+            if (ev.relatedTarget === null) clearResizeHover();
+        },
+        resizeIndicatorOnHover ? windowEventTarget : null,
+        true
+    );
+
+    const hoverIndicatorCol =
+        resizeIndicatorOnHover && allowResize === true && !isDragging && !isFilling ? hoveredResizeCol : undefined;
     const [hoveredItem] = hoveredItemInfo ?? [];
 
     const enqueueRef = React.useRef<EnqueueCallback>(() => {
@@ -1049,6 +1121,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             hiddenColumnsIndicator,
             isResizing,
             resizeCol,
+            hoveredResizeCol: hoverIndicatorCol,
             isFocused,
             selection,
             fillHandle,
@@ -1126,6 +1199,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         getCellBorder,
         hiddenColumnsIndicator,
         isResizing,
+        hoverIndicatorCol,
         hasAppendRow,
         resizeCol,
         isFocused,
@@ -1314,13 +1388,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
     const downTime = React.useRef(0);
     const downPosition = React.useRef<Item | undefined>(undefined);
-    const mouseDown = React.useRef(false);
     const onPointerDown = React.useCallback(
         (ev: PointerEvent) => {
             const canvas = ref.current;
             const eventTarget = eventTargetRef?.current;
             if (canvas === null || (ev.target !== canvas && ev.target !== eventTarget)) return;
             mouseDown.current = true;
+            clearResizeHover();
 
             const clientX = ev.clientX;
             const clientY = ev.clientY;
@@ -1371,6 +1445,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             groupHeaderActionForEvent,
             isOverHeaderElement,
             onMouseDown,
+            clearResizeHover,
         ]
     );
     useEventListener("pointerdown", onPointerDown, windowEventTarget, false);
@@ -1392,6 +1467,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             const canCancel = ev.pointerType === "mouse" ? ev.button < 3 : true;
 
             let args = getMouseArgsForPosition(canvas, clientX, clientY, ev);
+            if (isOutside) {
+                clearResizeHover();
+            } else {
+                resizeHoverPointer.current = ev;
+                updateResizeHover(args);
+            }
 
             if (args.isTouch && downTime.current !== 0 && Date.now() - downTime.current > 500) {
                 args = {
@@ -1435,7 +1516,15 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
             onMouseUp(args, isOutside);
         },
-        [onMouseUp, eventTargetRef, getMouseArgsForPosition, isOverHeaderElement, groupHeaderActionForEvent]
+        [
+            onMouseUp,
+            eventTargetRef,
+            getMouseArgsForPosition,
+            isOverHeaderElement,
+            groupHeaderActionForEvent,
+            updateResizeHover,
+            clearResizeHover,
+        ]
     );
     useEventListener("pointerup", onPointerUp, windowEventTarget, false);
 
@@ -1542,8 +1631,11 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             if (args.kind !== "out-of-bounds" && isIndirect && !mouseDown.current && !args.isTouch) {
                 // we are obscured by something else, so we want to not register events if we are not doing anything
                 // important already
+                clearResizeHover();
                 return;
             }
+            resizeHoverPointer.current = ev;
+            updateResizeHover(args);
 
             // the point here is not to trigger re-renders every time the mouse moves over a cell
             // that doesn't care about the mouse positon.
@@ -1615,6 +1707,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             getCellContent,
             getCellRenderer,
             damageInternal,
+            updateResizeHover,
+            clearResizeHover,
         ]
     );
     useEventListener("pointermove", onPointerMove, windowEventTarget, true);

@@ -9,6 +9,7 @@ import {
     defaultProps,
 } from "../../data-editor/stories/utils.js";
 import { SimpleThemeWrapper } from "../../stories/story-utils.js";
+import type { DataEditorProps } from "../../data-editor/data-editor.js";
 
 export default {
     title: "Glide-Data-Grid/DataEditor Demos",
@@ -30,7 +31,8 @@ export default {
                                 multiple columns to resize them all at once.
                             </MoreInfo>
                         </>
-                    }>
+                    }
+                >
                     <Story />
                 </BeautifulWrapper>
             </SimpleThemeWrapper>
@@ -63,5 +65,63 @@ export const ResizableColumns: React.VFC = () => {
             )}
             onColumnResize={onColumnResize}
         />
+    );
+};
+
+export const ResizeIndicatorOnHover = () => {
+    const { cols, getCellContent, onColumnResize } = useMockDataGenerator(6);
+    const [enabled, setEnabled] = React.useState(true);
+    const [canResize, setCanResize] = React.useState(true);
+    const [indicator, setIndicator] = React.useState<NonNullable<DataEditorProps["resizeIndicator"]>>("full");
+    const columns = React.useMemo(
+        () =>
+            cols.map((column, index) => ({
+                ...column,
+                group: index === 0 ? undefined : "Details",
+                resizable: index !== 1,
+                minWidth: index === 2 ? 100 : undefined,
+                maxWidth: index === 2 ? 320 : undefined,
+            })),
+        [cols]
+    );
+    const theme = React.useMemo(() => ({ resizeIndicatorColor: "#0B7ECB" }), []);
+
+    return (
+        <div style={{ color: "#1f2328" }}>
+            <div style={{ display: "flex", gap: 16, padding: "8px 0" }}>
+                <label>
+                    <input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />
+                    Hover indicator
+                </label>
+                <label>
+                    <input type="checkbox" checked={canResize} onChange={event => setCanResize(event.target.checked)} />
+                    Allow resizing
+                </label>
+                <label>
+                    Height
+                    <select value={indicator} onChange={event => setIndicator(event.target.value as typeof indicator)}>
+                        <option value="full">Full height</option>
+                        <option value="header">Header only</option>
+                        <option value="none">None</option>
+                    </select>
+                </label>
+            </div>
+            <p>2 px, #0B7ECB, col-resize cursor. The first data column is frozen, the second cannot be resized.</p>
+            <DataEditor
+                {...defaultProps}
+                width={720}
+                height={380}
+                columns={columns}
+                rows={50}
+                getCellContent={getCellContent}
+                onColumnResize={canResize ? onColumnResize : undefined}
+                resizeIndicatorOnHover={enabled}
+                resizeIndicator={indicator}
+                theme={theme}
+                rowMarkers="both"
+                freezeColumns={1}
+                overscrollX={100}
+            />
+        </div>
     );
 };
