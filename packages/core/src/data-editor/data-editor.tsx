@@ -1015,6 +1015,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         isOutsideClick,
         renderers,
         resizeIndicator,
+        resizeIndicatorOnHover,
         scrollToActiveCell = true,
         drawFocusRing: drawFocusRingIn = true,
         portalElementRef,
@@ -4860,6 +4861,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     gridRef={gridRef}
                     getCellRenderer={getCellRenderer}
                     resizeIndicator={resizeIndicator}
+                    resizeIndicatorOnHover={resizeIndicatorOnHover}
                     setScrollDir={setScrollDir}
                 />
                 {renameGroupNode}

@@ -260,6 +260,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.getRowThemeOverride !== last.getRowThemeOverride ||
         current.isFocused !== last.isFocused ||
         current.isResizing !== last.isResizing ||
+        current.hoveredResizeCol !== last.hoveredResizeCol ||
+        current.resizeIndicator !== last.resizeIndicator ||
         current.verticalBorder !== last.verticalBorder ||
         current.horizontalBorder !== last.horizontalBorder ||
         current.getCellBorder !== last.getCellBorder ||
