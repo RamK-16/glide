@@ -1,3 +1,10 @@
+# [6.9.0](https://github.com/RamK-16/glide/compare/v6.8.1...v6.9.0) (2026-10-30)
+
+
+### Features
+
+* **data-grid:** быстрый скролл больших таблиц с rowHeight-функцией ([#59](https://github.com/RamK-16/glide/issues/59)) ([7056cf4](https://github.com/RamK-16/glide/commit/7056cf40a738157100483d212eb261e86f8afefe))
+
 ## [6.8.1](https://github.com/RamK-16/glide/compare/v6.8.0...v6.8.1) (2026-10-21)
 
 
