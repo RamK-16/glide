@@ -1,7 +1,8 @@
 import DataGridDnd, { type DataGridDndProps } from "../data-grid-dnd/data-grid-dnd.js";
 import type { Rectangle } from "../data-grid/data-grid-types.js";
 import { InfiniteScroller } from "./infinite-scroller.js";
-import { getRowOffsets, getVisibleRows } from "./row-offsets.js";
+import { getVisibleRows } from "./row-offsets.js";
+import { useRowOffsets } from "./use-row-offsets.js";
 import { getTotalGroupHeaderHeight } from "../data-grid/render/data-grid-render.walk.js";
 import { useMappedColumns } from "../data-grid/render/data-grid-lib.js";
 import React from "react";
@@ -109,13 +110,7 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
 
     const mappedColumns = useMappedColumns(columns, freezeColumns ?? 0);
     const groupHeights = enableGroups ? getTotalGroupHeaderHeight(groupHeaderHeight, mappedColumns) : 0;
-    const rowOffsetsBuffer = React.useRef<Float64Array | undefined>(undefined);
-
-    const rowOffsets = React.useMemo(() => {
-        if (typeof rowHeight === "number") return undefined;
-        rowOffsetsBuffer.current = getRowOffsets(rows, rowHeight, rowOffsetsBuffer.current);
-        return rowOffsetsBuffer.current;
-    }, [rows, rowHeight]);
+    const rowOffsets = useRowOffsets(rows, rowHeight);
 
     let height = headerHeight + groupHeights;
     height += typeof rowHeight === "number" ? rows * rowHeight : (rowOffsets?.[rows] ?? 0);
