@@ -1,0 +1,10 @@
+import{R as e}from"./iframe-D_CHh7La.js";import{D as p}from"./data-editor-all-BP5koKVh.js";import{B as d,D as g,P as u,u as D,d as w}from"./utils-ClOyOVO9.js";import{S as C}from"./story-utils-nNLiij0x.js";import"./preload-helper-C1FmrZbK.js";import"./image-window-loader-2MuPt34i.js";import"./throttle-DjA3whrK.js";import"./marked.esm-sSuBLYN_.js";import"./flatten-FpgrWzPm.js";import"./scrolling-data-grid-BtUeDjIQ.js";import"./index-D_kXk1yT.js";import"./useResizeDetector-B5OsoQZP.js";const G={title:"Glide-Data-Grid/DataEditor Demos",decorators:[t=>e.createElement(C,null,e.createElement(d,{title:"Drag source",description:e.createElement(e.Fragment,null,e.createElement(g,null,"Setting the ",e.createElement(u,null,"isDraggable")," prop can allow for more granular control over what is draggable in the grid via HTML drag and drop."))},e.createElement(t,null)))]},r=t=>{const{cols:i,getCellContent:m,onColumnResize:c}=D(200);return e.createElement(p,{...w,getCellContent:m,columns:i,rowMarkers:"both",rows:5e3,onRowMoved:(o,a)=>window.alert(`Moved row ${o} to ${a}`),onColumnMoved:(o,a)=>window.alert(`Moved col ${o} to ${a}`),onColumnResize:c,isDraggable:t.isDraggable,onDragStart:o=>{o.setData("text/plain","Drag data here!")}})};r.argTypes={isDraggable:{control:{type:"select"},options:[!0,!1,"cell","header"]}};r.args={isDraggable:!1};var n,l,s;r.parameters={...r.parameters,docs:{...(n=r.parameters)==null?void 0:n.docs,source:{originalSource:`p => {
+  const {
+    cols,
+    getCellContent,
+    onColumnResize
+  } = useMockDataGenerator(200);
+  return <DataEditor {...defaultProps} getCellContent={getCellContent} columns={cols} rowMarkers="both" rows={5000} onRowMoved={(s, e) => window.alert(\`Moved row \${s} to \${e}\`)} onColumnMoved={(s, e) => window.alert(\`Moved col \${s} to \${e}\`)} onColumnResize={onColumnResize} isDraggable={p.isDraggable} onDragStart={e => {
+    e.setData("text/plain", "Drag data here!");
+  }} />;
+}`,...(s=(l=r.parameters)==null?void 0:l.docs)==null?void 0:s.source}}};const P=["DragSource"];export{r as DragSource,P as __namedExportsOrder,G as default};
