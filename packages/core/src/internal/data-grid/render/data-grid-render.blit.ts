@@ -55,7 +55,9 @@ export function blitLastFrame(
     if (typeof getRowHeight === "number") {
         deltaY += (maxY - minY) * getRowHeight;
     } else {
-        for (let i = minY; i < maxY; i++) {
+        // Сдвиг больше экрана — кадр всё равно перерисуется целиком, дальше высоты не суммируем
+        const enough = height + Math.abs(translateY - last.translateY);
+        for (let i = minY; i < maxY && deltaY <= enough; i++) {
             deltaY += getRowHeight(i);
         }
     }
