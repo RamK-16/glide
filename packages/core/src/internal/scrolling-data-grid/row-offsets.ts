@@ -32,7 +32,10 @@ export interface RowHeightChanges {
  * пересчитывает позиции всех строк и перерисовывает экран целиком.
  */
 export type RowHeightCallback = ((row: number) => number) & {
-    /** Номер колбэка, на который ссылается `changes.previousVersion` следующего */
+    /**
+     * Номер колбэка, на который ссылается `changes.previousVersion` следующего. Должен быть свой у каждого
+     * колбэка одного грида: по совпавшему номеру glide считает, что видел именно этот колбэк.
+     */
     readonly version?: number;
     readonly changes?: RowHeightChanges;
 };

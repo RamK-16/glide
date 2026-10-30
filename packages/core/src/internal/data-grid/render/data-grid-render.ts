@@ -21,7 +21,13 @@ import {
 import { drawCells, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
-import { blitLastFrame, blitResizedCol, computeCanBlit, nextStickySpanInView } from "./data-grid-render.blit.js";
+import {
+    blitLastFrame,
+    blitResizedCol,
+    computeCanBlit,
+    getChangedRowsRegion,
+    nextStickySpanInView,
+} from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
@@ -574,28 +580,39 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         canBlit = false;
     }
 
-    // Сменились только высоты строк from..to (`RowHeightChanges`): строки выше первой из них остались
-    // на месте, поэтому прошлый кадр сдвигаем как обычно и перерисовываем экран от неё вниз.
+    // Сменились только высоты строк from..to (`RowHeightChanges`): прошлый кадр сдвигаем как обычно
+    // и перерисовываем экран от первой изменившейся строки вниз, см. `getChangedRowsRegion`.
     let changedRowsRegion: Rectangle | undefined;
     if (canBlit !== false && lastArg !== undefined && rowHeight !== lastArg.rowHeight) {
         const changes = rowHeightChangesSince(rowHeight, lastArg.rowHeight);
-        const scrolledFrom = Math.min(last?.cellYOffset ?? cellYOffset, cellYOffset);
-        const scrolledTo = Math.max(last?.cellYOffset ?? cellYOffset, cellYOffset) - 1;
-        if (
-            changes === undefined ||
-            canBlit !== true ||
-            pinnedRowsCount > 0 ||
-            last?.stickySpanInView === true ||
-            // Сдвиг кадра считается по высотам прокрученных строк: их высоты должны быть прежними
-            (changes.from <= scrolledTo && changes.to >= scrolledFrom)
-        ) {
-            canBlit = false;
-        } else {
-            let y = totalHeaderHeight + translateY;
-            for (let r = cellYOffset; r < changes.from && y < height; r++) y += getRowHeight(r);
-            const top = Math.min(Math.max(y, totalHeaderHeight), height);
-            changedRowsRegion = { x: 0, y: top, width, height: height - top };
-        }
+        changedRowsRegion =
+            changes === undefined || canBlit !== true
+                ? undefined
+                : getChangedRowsRegion({
+                      changes,
+                      lastCellYOffset: last?.cellYOffset ?? cellYOffset,
+                      cellYOffset,
+                      translateY,
+                      totalHeaderHeight,
+                      width,
+                      height,
+                      rows,
+                      freezeTrailingRows,
+                      pinnedRowsCount,
+                      stickySpanInView: last?.stickySpanInView === true,
+                      getRowHeight,
+                      spanStartOf: row => {
+                          let start = row;
+                          for (const c of effectiveCols) {
+                              const { spanRows } = getCellContent([c.sourceIndex, row]);
+                              if (spanRows !== undefined && spanRows[0] < start && spanRows[1] >= row) {
+                                  start = spanRows[0];
+                              }
+                          }
+                          return start;
+                      },
+                  });
+        if (changedRowsRegion === undefined) canBlit = false;
     }
 
     let drawRegions: Rectangle[] = [];

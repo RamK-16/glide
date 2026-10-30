@@ -3,6 +3,7 @@ import type { MappedGridColumn } from "../src/internal/data-grid/render/data-gri
 import {
     blitLastFrame,
     computeCanBlit,
+    getChangedRowsRegion,
     type BlitData,
 } from "../src/internal/data-grid/render/data-grid-render.blit.js";
 import type { DrawGridArg } from "../src/internal/data-grid/render/draw-grid-arg.js";
@@ -106,5 +107,129 @@ describe("blitLastFrame с дополнительной областью", () =>
 
     it("если кадр не сдвигается, области нет: экран перерисуется целиком", () => {
         expect(blit(10, 150, extra)).toEqual([]);
+    });
+});
+
+const regionFrom = (y: number) => ({ x: 0, y, width: 600, height: 600 - y });
+
+describe("getChangedRowsRegion", () => {
+    const base = {
+        changes: { previousVersion: 1, from: 5, to: 5 },
+        lastCellYOffset: 0,
+        cellYOffset: 0,
+        translateY: 0,
+        totalHeaderHeight: 36,
+        width: 600,
+        height: 600,
+        rows: 1000,
+        freezeTrailingRows: 0,
+        pinnedRowsCount: 0,
+        stickySpanInView: false,
+        getRowHeight: () => 30,
+        spanStartOf: (row: number) => row,
+    };
+
+    it("от верха первой изменившейся строки до низа экрана", () => {
+        expect(getChangedRowsRegion(base)).toEqual(regionFrom(36 + 5 * 30));
+    });
+
+    it("учитывает частично прокрученную первую строку", () => {
+        expect(getChangedRowsRegion({ ...base, cellYOffset: 2, lastCellYOffset: 2, translateY: -10 })).toEqual(
+            regionFrom(36 - 10 + 3 * 30)
+        );
+    });
+
+    it("изменилась строка выше экрана: перерисовывается всё тело", () => {
+        expect(
+            getChangedRowsRegion({
+                ...base,
+                cellYOffset: 10,
+                lastCellYOffset: 10,
+                changes: { ...base.changes, from: 3, to: 3 },
+            })
+        ).toEqual(regionFrom(36));
+    });
+
+    it("изменилась строка ниже экрана: область нулевой высоты", () => {
+        expect(getChangedRowsRegion({ ...base, changes: { ...base.changes, from: 500, to: 500 } })).toEqual(
+            regionFrom(600)
+        );
+    });
+
+    it("пустой диапазон: область нулевой высоты, высоты за краем не спрашиваются", () => {
+        const asked: number[] = [];
+        const region = getChangedRowsRegion({
+            ...base,
+            rows: 10,
+            changes: { previousVersion: 1, from: Number.POSITIVE_INFINITY, to: -1 },
+            getRowHeight: row => {
+                asked.push(row);
+                return 30;
+            },
+        });
+        expect(region?.height).toBe(600 - 336);
+        expect(Math.max(...asked)).toBe(9);
+    });
+
+    it("прокрутка через изменившиеся строки: кадр целиком", () => {
+        expect(getChangedRowsRegion({ ...base, lastCellYOffset: 3, cellYOffset: 8 })).toBeUndefined();
+        expect(getChangedRowsRegion({ ...base, lastCellYOffset: 8, cellYOffset: 3 })).toBeUndefined();
+        expect(getChangedRowsRegion({ ...base, lastCellYOffset: 0, cellYOffset: 2 })).toEqual(regionFrom(36 + 3 * 30));
+    });
+
+    it("закреплённые строки, прилипшее содержимое блока, итоговые строки: кадр целиком", () => {
+        expect(getChangedRowsRegion({ ...base, pinnedRowsCount: 1 })).toBeUndefined();
+        expect(getChangedRowsRegion({ ...base, stickySpanInView: true })).toBeUndefined();
+        expect(
+            getChangedRowsRegion({ ...base, freezeTrailingRows: 1, changes: { ...base.changes, from: 999, to: 999 } })
+        ).toBeUndefined();
+        expect(getChangedRowsRegion({ ...base, freezeTrailingRows: 1 })).toEqual(regionFrom(36 + 5 * 30));
+    });
+
+    describe("слитые блоки", () => {
+        // Блоки 2..8 и 0..3: граница поднимается к началу блока, пока не станет чистой
+        const blocks: Array<[number, number]> = [
+            [2, 8],
+            [0, 3],
+        ];
+        const spanStartOf = (row: number) => blocks.reduce((start, [a, b]) => (a < start && b >= row ? a : start), row);
+
+        it("строка внутри блока: верх области в начале блока", () => {
+            expect(
+                getChangedRowsRegion({
+                    ...base,
+                    changes: { ...base.changes, from: 7, to: 7 },
+                    spanStartOf: row => (row === 7 ? 2 : row),
+                })
+            ).toEqual(regionFrom(36 + 2 * 30));
+        });
+
+        it("блоки цепочкой: поднимается до начала верхнего", () => {
+            expect(
+                getChangedRowsRegion({ ...base, changes: { ...base.changes, from: 7, to: 7 }, spanStartOf })
+            ).toEqual(regionFrom(36));
+        });
+
+        it("блок начинается выше экрана: всё тело", () => {
+            expect(
+                getChangedRowsRegion({
+                    ...base,
+                    cellYOffset: 4,
+                    lastCellYOffset: 4,
+                    changes: { ...base.changes, from: 7, to: 7 },
+                    spanStartOf: row => (row >= 2 && row <= 8 ? 2 : row),
+                })
+            ).toEqual(regionFrom(36));
+        });
+
+        it("изменилась строка блока ниже экрана: блок виден, верх области в его начале", () => {
+            expect(
+                getChangedRowsRegion({
+                    ...base,
+                    changes: { ...base.changes, from: 40, to: 40 },
+                    spanStartOf: row => (row >= 10 && row <= 50 ? 10 : row),
+                })
+            ).toEqual(regionFrom(36 + 10 * 30));
+        });
     });
 });
