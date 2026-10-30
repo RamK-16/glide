@@ -469,6 +469,9 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
     readonly scrollOffsetX?: number;
 
     /** Determins the height of each row.
+     *
+     * Позиции строк кешируются по функции `rowHeight`: когда высоты меняются, передавай новую функцию,
+     * иначе glide продолжит считать по старым высотам и прокрутка разойдётся с отрисовкой.
      * @group Style
      * @defaultValue 34
      */

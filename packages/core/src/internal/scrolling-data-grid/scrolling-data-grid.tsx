@@ -1,6 +1,8 @@
 import DataGridDnd, { type DataGridDndProps } from "../data-grid-dnd/data-grid-dnd.js";
 import type { Rectangle } from "../data-grid/data-grid-types.js";
 import { InfiniteScroller } from "./infinite-scroller.js";
+import { getVisibleRows } from "./row-offsets.js";
+import { useRowOffsets } from "./use-row-offsets.js";
 import { getTotalGroupHeaderHeight } from "../data-grid/render/data-grid-render.walk.js";
 import { useMappedColumns } from "../data-grid/render/data-grid-lib.js";
 import React from "react";
@@ -108,14 +110,10 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
 
     const mappedColumns = useMappedColumns(columns, freezeColumns ?? 0);
     const groupHeights = enableGroups ? getTotalGroupHeaderHeight(groupHeaderHeight, mappedColumns) : 0;
+    const rowOffsets = useRowOffsets(rows, rowHeight);
+
     let height = headerHeight + groupHeights;
-    if (typeof rowHeight === "number") {
-        height += rows * rowHeight;
-    } else {
-        for (let r = 0; r < rows; r++) {
-            height += rowHeight(r);
-        }
-    }
+    height += typeof rowHeight === "number" ? rows * rowHeight : (rowOffsets?.[rows] ?? 0);
     if (overscrollY !== undefined) {
         height += overscrollY;
     }
@@ -172,30 +170,8 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
             }
             cellBottom = Math.ceil(args.height / rowHeight) + cellY;
             if (ty < 0) cellBottom++;
-        } else {
-            let y = 0;
-            for (let row = 0; row < rows; row++) {
-                const rh = rowHeight(row);
-                const cy = y + (smoothScrollY ? 0 : rh / 2);
-                if (args.y >= y + rh) {
-                    y += rh;
-                    cellY++;
-                    cellBottom++;
-                } else if (args.y > cy) {
-                    y += rh;
-                    if (smoothScrollY) {
-                        ty += cy - args.y;
-                    } else {
-                        cellY++;
-                    }
-                    cellBottom++;
-                } else if (args.y + args.height > rh / 2 + y) {
-                    y += rh;
-                    cellBottom++;
-                } else {
-                    break;
-                }
-            }
+        } else if (rowOffsets !== undefined) {
+            ({ cellY, cellBottom, ty } = getVisibleRows(args.y, args.height, rowHeight, rowOffsets, smoothScrollY));
         }
 
         // Ensure cellY and cellBottom never exceed the actual row count
@@ -241,7 +217,7 @@ const GridScroller: React.FunctionComponent<ScrollingDataGridProps> = p => {
             lastY.current = ty;
             lastSize.current = [args.width, args.height];
         }
-    }, [columns, rowHeight, rows, onVisibleRegionChanged, freezeColumns, smoothScrollX, smoothScrollY]);
+    }, [columns, rowHeight, rowOffsets, rows, onVisibleRegionChanged, freezeColumns, smoothScrollX, smoothScrollY]);
 
     const onScrollUpdate = React.useCallback(
         (args: Rectangle & { paddingRight: number }) => {
