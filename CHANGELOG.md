@@ -1,3 +1,10 @@
+# [6.10.0](https://github.com/RamK-16/glide/compare/v6.9.0...v6.10.0) (2026-10-30)
+
+
+### Features
+
+* **data-grid:** слитый блок красится целиком, подпись высокого блока прилипает к верху видимой части ([#57](https://github.com/RamK-16/glide/issues/57)) ([f497909](https://github.com/RamK-16/glide/commit/f497909a57f6f6014933c14bcf2de01d62bd96a7))
+
 # [6.9.0](https://github.com/RamK-16/glide/compare/v6.8.1...v6.9.0) (2026-10-30)
 
 
