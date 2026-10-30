@@ -7,11 +7,7 @@ import {
     getSpannedGroupRegions,
     type SpannedGroupRegionCols,
 } from "../src/internal/data-grid/render/data-grid-render.walk.js";
-import {
-    pushSpanSelectionStrips,
-    type SpanBlockGeometry,
-    type SpanPartialFill,
-} from "../src/internal/data-grid/render/data-grid-render.cells.js";
+import { spanTouchesSelection } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import { expandSelection } from "../src/data-editor/data-editor-fns.js";
 import {
     CompactSelection,
@@ -22,58 +18,36 @@ import {
     type Rectangle,
 } from "../src/internal/data-grid/data-grid-types.js";
 
-// Добивка граничных кейсов span-хелперов: несмежные полосы выделения, полосы по строкам
-// и колонкам одновременно, guard cellIsSelected, colspan-ветка expandSelection,
-// уровни findSpannedGroupRegion.
+// Добивка граничных кейсов span-хелперов: несмежные и комбинированные выделения строк и
+// колонок, guard cellIsSelected, colspan-ветка expandSelection, уровни findSpannedGroupRegion.
 
-// Блок: колонки [0,2], строки [0,3]. Пиксельно 300x80.
-const stripsGeom: SpanBlockGeometry = {
-    cols: [0, 2],
-    rows: [0, 3],
-    x: 0,
-    y: 0,
-    width: 300,
-    height: 80,
-    allColumns: [{ width: 100 }, { width: 100 }, { width: 100 }] as unknown as SpanBlockGeometry["allColumns"],
-    getRowHeight: () => 20,
-};
+// Блок: колонки [0,2], строки [0,3].
+const blockCols: readonly [number, number] = [0, 2];
+const blockRows: readonly [number, number] = [0, 3];
 
-function strips(rows: CompactSelection, columns: CompactSelection): SpanPartialFill[] {
-    const out: SpanPartialFill[] = [];
-    pushSpanSelectionStrips(rows, columns, stripsGeom, "#s", out);
-    return out;
+function touches(rows: CompactSelection, columns: CompactSelection): boolean {
+    return spanTouchesSelection(rows, columns, blockCols, blockRows);
 }
 
-describe("pushSpanSelectionStrips — несмежные и комбинированные полосы", () => {
-    it("несмежные выделенные строки дают отдельные полосы", () => {
-        const out = strips(CompactSelection.empty().add(0).add(2), CompactSelection.empty());
-        expect(out).toHaveLength(2);
-        expect(out[0]).toMatchObject({ y: 0, h: 20 });
-        expect(out[1]).toMatchObject({ y: 40, h: 20 });
+describe("spanTouchesSelection — несмежные и комбинированные выделения", () => {
+    it("несмежные выделенные строки, одна внутри блока → задет", () => {
+        expect(touches(CompactSelection.empty().add(2).add(7), CompactSelection.empty())).toBe(true);
     });
 
-    it("несмежные выделенные колонки дают отдельные вертикальные полосы", () => {
-        const out = strips(CompactSelection.empty(), CompactSelection.empty().add(0).add(2));
-        expect(out).toHaveLength(2);
-        expect(out[0]).toMatchObject({ x: 0, w: 100, y: 0, h: 80 });
-        expect(out[1]).toMatchObject({ x: 200, w: 100, y: 0, h: 80 });
+    it("несмежные выделенные колонки, обе внутри блока → задет", () => {
+        expect(touches(CompactSelection.empty(), CompactSelection.empty().add(0).add(2))).toBe(true);
     });
 
-    it("строка и колонка одновременно: полосы обоих направлений", () => {
-        const out = strips(CompactSelection.fromSingleSelection(1), CompactSelection.fromSingleSelection(1));
-        expect(out).toHaveLength(2);
-        // Горизонтальная полоса строки 1 и вертикальная полоса колонки 1.
-        expect(out[0]).toMatchObject({ x: 0, w: 300, y: 20, h: 20 });
-        expect(out[1]).toMatchObject({ x: 100, w: 100, y: 0, h: 80 });
+    it("строка и колонка одновременно → задет", () => {
+        expect(touches(CompactSelection.fromSingleSelection(1), CompactSelection.fromSingleSelection(1))).toBe(true);
     });
 
-    it("пустое выделение — полос нет", () => {
-        expect(strips(CompactSelection.empty(), CompactSelection.empty())).toEqual([]);
+    it("пустое выделение → не задет", () => {
+        expect(touches(CompactSelection.empty(), CompactSelection.empty())).toBe(false);
     });
 
-    it("выделение вне диапазона блока — полос нет", () => {
-        const out = strips(CompactSelection.fromSingleSelection(7), CompactSelection.fromSingleSelection(9));
-        expect(out).toEqual([]);
+    it("выделение вне диапазона блока → не задет", () => {
+        expect(touches(CompactSelection.fromSingleSelection(7), CompactSelection.fromSingleSelection(9))).toBe(false);
     });
 });
 

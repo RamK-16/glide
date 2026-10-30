@@ -18,10 +18,10 @@ import {
     getSpanBounds,
     getRowSpanBounds,
 } from "./data-grid-render.walk.js";
-import { drawCells, type GroupDetailsCallback } from "./data-grid-render.cells.js";
+import { drawCells, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
-import { blitLastFrame, blitResizedCol, computeCanBlit } from "./data-grid-render.blit.js";
+import { blitLastFrame, blitResizedCol, computeCanBlit, nextStickySpanInView } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
@@ -559,6 +559,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     if (
         last !== undefined &&
         (last.pinnedColumnsEnd !== pinnedColumnsEnd || last.pinnedRowsCount !== pinnedRowsCount)
+    ) {
+        canBlit = false;
+    }
+    // Содержимое слитого блока с прилипанием (spanAlign.sticky) выравнивается по видимой
+    // части блока: при вертикальной прокрутке сдвинутый прошлый кадр унёс бы его вместе с
+    // блоком, поэтому перерисовываем целиком.
+    if (
+        last?.stickySpanInView === true &&
+        (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
     }
@@ -1309,6 +1318,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.fillRect(0, 0, width, height);
     }
 
+    const cellsStats: DrawCellsStats = { stickySpanInView: false };
     const spans = drawCells(
         targetCtx,
         effectiveCols,
@@ -1344,7 +1354,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         renderStateProvider,
         getCellRenderer,
         overrideCursor,
-        minimumCellWidth
+        minimumCellWidth,
+        cellsStats
     );
 
     drawBlanks(
@@ -1485,6 +1496,11 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         pinnedColumnsEnd,
         pinnedRowsCount,
         lastBuffer: doubleBuffer ? (targetBuffer === bufferA ? "a" : "b") : undefined,
+        stickySpanInView: nextStickySpanInView(
+            cellsStats.stickySpanInView,
+            drawRegions.length > 0,
+            last?.stickySpanInView
+        ),
         aBufferScroll: targetBuffer === bufferA ? [scrollX, scrollY] : last?.aBufferScroll,
         bBufferScroll: targetBuffer === bufferB ? [scrollX, scrollY] : last?.bBufferScroll,
     };

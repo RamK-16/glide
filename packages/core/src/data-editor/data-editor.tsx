@@ -1635,25 +1635,29 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
-            // Объединённая ячейка (spanRows): редактор/превью открываем по вертикали
-            // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
-            // даёт верх блока (val.target), нижняя строка — низ.
+            // Объединённая ячейка: редактор размером с главную ячейку. В блоке в несколько
+            // строк он стоит по вертикали блока (spanAlign.vertical) внутри нарисованного
+            // содержимого, при прилипании это видимая часть блока.
             let target = val.target;
-            const { spanRows, spanAlign: blockSpanAlign } = val.content;
-            if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
-                const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
-                if (bottomBounds !== undefined) {
-                    const blockTop = target.y;
-                    const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
-                    const editorHeight = target.height;
+            const { span, spanRows, spanAlign: blockSpanAlign } = val.content;
+            const cellBounds =
+                span !== undefined || spanRows !== undefined ? gridRef.current?.getBounds(col, row) : undefined;
+            if (cellBounds !== undefined) {
+                target = cellBounds;
+                const content =
+                    spanRows !== undefined && spanRows[1] > spanRows[0]
+                        ? gridRef.current?.getContentBounds(col, row)
+                        : undefined;
+                if (content !== undefined) {
+                    const editorHeight = Math.min(cellBounds.height, content.height);
                     const vertical = blockSpanAlign?.vertical ?? "center";
-                    let y = blockTop;
+                    let y = content.y;
                     if (vertical === "center") {
-                        y = blockTop + (blockHeight - editorHeight) / 2;
+                        y = content.y + (content.height - editorHeight) / 2;
                     } else if (vertical === "bottom") {
-                        y = blockTop + blockHeight - editorHeight;
+                        y = content.y + content.height - editorHeight;
                     }
-                    target = { ...target, y };
+                    target = { ...cellBounds, y, height: editorHeight };
                 }
             }
 
