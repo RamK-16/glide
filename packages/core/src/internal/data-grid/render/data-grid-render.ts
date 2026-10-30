@@ -24,6 +24,7 @@ import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes
 import { blitLastFrame, blitResizedCol, computeCanBlit, nextStickySpanInView } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
 
 export function getDamageRepairPad(enableLowDprHairline: boolean): number {
@@ -495,6 +496,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const last = lastBlitData.current;
     if (
         canBlit === true &&
+        rowHeight === lastArg?.rowHeight &&
         cellXOffset === last?.cellXOffset &&
         cellYOffset === last?.cellYOffset &&
         translateX === last?.translateX &&
@@ -570,6 +572,30 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
+    }
+
+    // Сменились только высоты строк from..to (`RowHeightChanges`): строки выше первой из них остались
+    // на месте, поэтому прошлый кадр сдвигаем как обычно и перерисовываем экран от неё вниз.
+    let changedRowsRegion: Rectangle | undefined;
+    if (canBlit !== false && lastArg !== undefined && rowHeight !== lastArg.rowHeight) {
+        const changes = rowHeightChangesSince(rowHeight, lastArg.rowHeight);
+        const scrolledFrom = Math.min(last?.cellYOffset ?? cellYOffset, cellYOffset);
+        const scrolledTo = Math.max(last?.cellYOffset ?? cellYOffset, cellYOffset) - 1;
+        if (
+            changes === undefined ||
+            canBlit !== true ||
+            pinnedRowsCount > 0 ||
+            last?.stickySpanInView === true ||
+            // Сдвиг кадра считается по высотам прокрученных строк: их высоты должны быть прежними
+            (changes.from <= scrolledTo && changes.to >= scrolledFrom)
+        ) {
+            canBlit = false;
+        } else {
+            let y = totalHeaderHeight + translateY;
+            for (let r = cellYOffset; r < changes.from && y < height; r++) y += getRowHeight(r);
+            const top = Math.min(Math.max(y, totalHeaderHeight), height);
+            changedRowsRegion = { x: 0, y: top, width, height: height - top };
+        }
     }
 
     let drawRegions: Rectangle[] = [];
@@ -1187,7 +1213,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             effectiveCols,
             rowHeight,
             doubleBuffer,
-            rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight
+            rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight,
+            changedRowsRegion
         );
         drawRegions = regions;
     } else if (canBlit !== false) {

@@ -22,6 +22,7 @@ import type { CellSet } from "../cell-set.js";
 import type { EnqueueCallback } from "../use-animation-queue.js";
 import type { ImageWindowLoader } from "../image-window-loader-interface.js";
 import type { GroupDetailsCallback, GetRowThemeCallback, Highlight } from "./data-grid-render.cells.js";
+import type { RowHeightCallback } from "../../scrolling-data-grid/row-offsets.js";
 
 export type HoverInfo = readonly [Item, readonly [number, number]];
 
@@ -49,7 +50,7 @@ export interface DrawGridArg {
     readonly headerHeight: number;
     readonly groupHeaderHeight: number | number[];
     readonly disabledRows: CompactSelection;
-    readonly rowHeight: number | ((index: number) => number);
+    readonly rowHeight: number | RowHeightCallback;
     readonly verticalBorder: (col: number) => boolean;
     /** Рисовать ли горизонтальную линию сверху строки row. Если не задано, линия рисуется. */
     readonly horizontalBorder?: (row: number) => boolean;

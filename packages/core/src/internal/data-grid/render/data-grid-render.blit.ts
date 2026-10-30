@@ -5,6 +5,7 @@ import { type Rectangle } from "../data-grid-types.js";
 import { getStickyWidth, type MappedGridColumn, getFreezeTrailingHeight } from "./data-grid-lib.js";
 import { walkColumns } from "./data-grid-render.walk.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
+import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 
 export interface BlitData {
     readonly cellXOffset: number;
@@ -57,7 +58,9 @@ export function blitLastFrame(
     effectiveCols: readonly MappedGridColumn[],
     getRowHeight: number | ((r: number) => number),
     doubleBuffer: boolean,
-    stickyRowsBottom: number = totalHeaderHeight
+    stickyRowsBottom: number = totalHeaderHeight,
+    /** Что перерисовать поверх сдвинутого кадра, например строки с новой высотой */
+    extraRegion?: Rectangle
 ): {
     regions: Rectangle[];
 } {
@@ -109,6 +112,7 @@ export function blitLastFrame(
     const blitHeight = height - bodyTop - freezeTrailingRowsHeight - Math.abs(deltaY) - 1;
 
     if (blitWidth > 150 && blitHeight > 150) {
+        if (extraRegion !== undefined) drawRegions.push(extraRegion);
         const args = {
             sx: 0,
             sy: 0,
@@ -270,7 +274,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.height !== last.height ||
         current.theme !== last.theme ||
         current.headerHeight !== last.headerHeight ||
-        current.rowHeight !== last.rowHeight ||
+        (current.rowHeight !== last.rowHeight &&
+            rowHeightChangesSince(current.rowHeight, last.rowHeight) === undefined) ||
         current.rows !== last.rows ||
         current.freezeColumns !== last.freezeColumns ||
         current.stickyRows !== last.stickyRows ||

@@ -1,12 +1,12 @@
 import React from "react";
-import { getRowOffsets, updateRowOffsets, type RowHeightCallback } from "./row-offsets.js";
+import { getRowOffsets, rowHeightChangesSince, updateRowOffsets, type RowHeightCallback } from "./row-offsets.js";
 
 /**
  * Верхние границы строк для колбэка `rowHeight`, см. `getRowOffsets`. Буферов два: новый рендер пишет в тот,
  * что не показан. React может выбросить рендер (прерванный transition, Suspense), и показанная таблица
  * продолжит читать свой буфер — его никто не перезаписал.
  *
- * Если у колбэка есть `changes` и последними посчитаны позиции как раз для `changes.previous`, высоты
+ * Если у колбэка есть `changes` и последними посчитаны позиции как раз для `changes.previousVersion`, высоты
  * спрашиваются только у изменившихся строк (`updateRowOffsets`). Последний расчёт лежит либо в показанном
  * буфере, тогда пишем в другой, либо в непоказанном, тогда он и обновляется на месте.
  */
@@ -21,9 +21,9 @@ export function useRowOffsets(rows: number, rowHeight: number | RowHeightCallbac
         if (base?.rowHeight === rowHeight && base.offsets.length === rows + 1) return base.offsets;
 
         const spare = buffers.current[0] !== undefined && buffers.current[0] === committed.current ? 1 : 0;
-        const changes = rowHeight.changes;
+        const changes = rowHeightChangesSince(rowHeight, base?.rowHeight);
         buffers.current[spare] =
-            changes !== undefined && base?.rowHeight === changes.previous && base.offsets.length === rows + 1
+            changes !== undefined && base !== undefined && base.offsets.length === rows + 1
                 ? updateRowOffsets(base.offsets, rowHeight, changes.from, changes.to, buffers.current[spare])
                 : getRowOffsets(rows, rowHeight, buffers.current[spare]);
         last.current = { rowHeight, offsets: buffers.current[spare] };

@@ -14,20 +14,39 @@ export function getRowOffsets(rows: number, rowHeight: (row: number) => number, 
 }
 
 /**
- * Чем новый колбэк `rowHeight` отличается от прежнего. Glide, который считал позиции строк для `previous`,
- * спросит высоты только у строк `from..to`, а не у всех.
+ * Чем новый колбэк `rowHeight` отличается от колбэка с версией `previousVersion`: у строк вне `from..to`
+ * высоты те же. Glide, который считал позиции и рисовал кадр для той версии, спросит высоты только у
+ * строк `from..to` и перерисует экран только от первой из них.
  */
 export interface RowHeightChanges {
-    /** Колбэк, который заменяет новый */
-    readonly previous: (row: number) => number;
+    /** `version` колбэка, который заменяет новый */
+    readonly previousVersion: number;
     /** Первая строка, у которой высота могла измениться */
     readonly from: number;
-    /** Последняя такая строка: у строк вне `from..to` высоты те же, что у `previous` */
+    /** Последняя такая строка */
     readonly to: number;
 }
 
-/** Колбэк высоты строки, при желании с подсказкой, у каких строк высоты изменились */
-export type RowHeightCallback = ((row: number) => number) & { readonly changes?: RowHeightChanges };
+/**
+ * Колбэк высоты строки. `version` и `changes` необязательны: без них glide при каждом новом колбэке
+ * пересчитывает позиции всех строк и перерисовывает экран целиком.
+ */
+export type RowHeightCallback = ((row: number) => number) & {
+    /** Номер колбэка, на который ссылается `changes.previousVersion` следующего */
+    readonly version?: number;
+    readonly changes?: RowHeightChanges;
+};
+
+/** Подсказка `current`, если она описывает переход именно от `previous`; иначе undefined */
+export function rowHeightChangesSince(
+    current: number | RowHeightCallback,
+    previous: number | RowHeightCallback | undefined
+): RowHeightChanges | undefined {
+    if (typeof current === "number" || typeof previous !== "function") return undefined;
+    const changes = current.changes;
+    if (changes === undefined || previous.version === undefined) return undefined;
+    return changes.previousVersion === previous.version ? changes : undefined;
+}
 
 /**
  * `getRowOffsets` из готовых позиций `base` прежнего колбэка: высоты спрашиваются только у строк `from..to`,

@@ -33,16 +33,26 @@ const App: React.FC<{ rowHeight: RowHeightCallback; suspend: boolean }> = ({ row
     </React.Suspense>
 );
 
+let nextVersion = 0;
+
 const counted = (height: (row: number) => number) => {
     const asked: number[] = [];
-    const fn: RowHeightCallback = row => {
-        asked.push(row);
-        return height(row);
-    };
+    const fn: RowHeightCallback & { version: number } = Object.assign(
+        (row: number) => {
+            asked.push(row);
+            return height(row);
+        },
+        { version: ++nextVersion }
+    );
     return { fn, asked };
 };
-const withChanges = (fn: RowHeightCallback, previous: RowHeightCallback, from: number, to: number): RowHeightCallback =>
-    Object.assign(fn, { changes: { previous, from, to } });
+
+const withChanges = (
+    fn: RowHeightCallback & { version: number },
+    previous: RowHeightCallback & { version: number },
+    from: number,
+    to: number
+): RowHeightCallback => Object.assign(fn, { changes: { previousVersion: previous.version, from, to } });
 
 let root: Root | undefined;
 
@@ -111,12 +121,13 @@ describe("useRowOffsets", () => {
             expect(shown.offsets?.[ROWS]).toBe(3040);
         });
 
-        test("подсказка от другого колбэка: полный пересчёт", () => {
+        test("подсказка от другой версии: полный пересчёт", () => {
             root = createRoot(document.createElement("div"));
             React.act(() => root?.render(<App rowHeight={height30} suspend={false} />));
 
+            const other = counted(height60);
             const next = counted(height60);
-            React.act(() => root?.render(<App rowHeight={withChanges(next.fn, height60, 0, 0)} suspend={false} />));
+            React.act(() => root?.render(<App rowHeight={withChanges(next.fn, other.fn, 0, 0)} suspend={false} />));
             expect(next.asked).toHaveLength(ROWS);
             expect(shown.offsets?.[ROWS]).toBe(6000);
         });
@@ -126,12 +137,15 @@ describe("useRowOffsets", () => {
             const first = counted(height30);
             React.act(() => root?.render(<App rowHeight={first.fn} suspend={false} />));
 
-            const dropped = withChanges(counted(row => (row < 50 ? 60 : 30)).fn, first.fn, 0, 49);
+            const droppedCounted = counted(row => (row < 50 ? 60 : 30));
+            const dropped = withChanges(droppedCounted.fn, first.fn, 0, 49);
             React.act(() => React.startTransition(() => root?.render(<App rowHeight={dropped} suspend={true} />)));
             expect(shown.offsets?.[ROWS]).toBe(3000);
 
             const next = counted(row => (row < 50 ? 60 : row === 70 ? 40 : 30));
-            React.act(() => root?.render(<App rowHeight={withChanges(next.fn, dropped, 70, 70)} suspend={false} />));
+            React.act(() =>
+                root?.render(<App rowHeight={withChanges(next.fn, droppedCounted.fn, 70, 70)} suspend={false} />)
+            );
             expect(next.asked).toEqual([70]);
             expect(shown.offsets?.[ROWS]).toBe(4510);
             expect(shown.offsets?.[50]).toBe(3000);
