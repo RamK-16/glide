@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getRowOffsets, getVisibleRows } from "../src/internal/scrolling-data-grid/row-offsets.js";
+import { getRowOffsets, getVisibleRows, updateRowOffsets } from "../src/internal/scrolling-data-grid/row-offsets.js";
 
 function visibleRowsByLoop(y: number, height: number, rows: number, rowHeight: (r: number) => number, smooth: boolean) {
     let ty = 0;
@@ -114,5 +114,57 @@ describe("getVisibleRows", () => {
         };
         getVisibleRows(offsets[500_000] + 10, 600, counted, offsets, true);
         expect(calls).toBeLessThan(30);
+    });
+});
+
+const before = uneven;
+const changedIn = (from: number, to: number, by: (r: number) => number) => (r: number) =>
+    r >= from && r <= to ? by(r) : before(r);
+
+describe("updateRowOffsets", () => {
+    const rows = 50;
+
+    test.each([
+        ["выше", 10, 12, () => 90],
+        ["ниже", 10, 12, () => 5],
+        ["без изменения суммы", 4, 5, (r: number) => (r === 4 ? before(4) + 7 : before(5) - 7)],
+        ["первая строка", 0, 0, () => 99],
+        ["последняя строка", rows - 1, rows - 1, () => 1],
+        ["весь диапазон", 0, rows - 1, () => 33],
+    ])("совпадает с полным пересчётом: %s", (_, from, to, by) => {
+        const base = getRowOffsets(rows, before);
+        const after = changedIn(from, to, by);
+        const expected = [...getRowOffsets(rows, after)];
+
+        expect([...updateRowOffsets(base, after, from, to, new Float64Array(rows + 1))]).toEqual(expected);
+        expect([...base]).toEqual([...getRowOffsets(rows, before)]);
+
+        const inPlace = getRowOffsets(rows, before);
+        expect(updateRowOffsets(inPlace, after, from, to, inPlace)).toBe(inPlace);
+        expect([...inPlace]).toEqual(expected);
+    });
+
+    test("спрашивает высоты только у строк from..to", () => {
+        const asked: number[] = [];
+        const after = (r: number) => {
+            asked.push(r);
+            return 40;
+        };
+        updateRowOffsets(getRowOffsets(rows, before), after, 7, 9);
+        expect(asked).toEqual([7, 8, 9]);
+    });
+
+    test("диапазон за краями обрезается, пустой копирует base", () => {
+        const base = getRowOffsets(rows, before);
+        const after = changedIn(45, rows - 1, () => 10);
+        expect([...updateRowOffsets(base, after, 45, rows + 20)]).toEqual([...getRowOffsets(rows, after)]);
+        expect([...updateRowOffsets(base, before, 12, 11)]).toEqual([...base]);
+        expect([...updateRowOffsets(base, after, -5, 100)]).toEqual([...getRowOffsets(rows, after)]);
+    });
+
+    test("буфер другой длины не используется", () => {
+        const base = getRowOffsets(rows, before);
+        const small = new Float64Array(3);
+        expect(updateRowOffsets(base, before, 0, 0, small)).not.toBe(small);
     });
 });

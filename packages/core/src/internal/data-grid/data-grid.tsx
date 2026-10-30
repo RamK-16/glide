@@ -66,6 +66,7 @@ import {
     mouseEventArgsAreEqual,
 } from "./event-args.js";
 import { pointInRect } from "../../common/math.js";
+import type { RowHeightCallback } from "../scrolling-data-grid/row-offsets.js";
 import {
     type GroupDetailsCallback,
     type GetRowThemeCallback,
@@ -146,7 +147,7 @@ export interface DataGridProps {
     readonly headerHeight: number;
     readonly groupHeaderHeight: number | number[];
     readonly enableGroups: boolean;
-    readonly rowHeight: number | ((index: number) => number);
+    readonly rowHeight: number | RowHeightCallback;
 
     readonly canvasRef: React.MutableRefObject<HTMLCanvasElement | null> | undefined;
 
