@@ -1,3 +1,10 @@
+# [6.11.0](https://github.com/RamK-16/glide/compare/v6.10.0...v6.11.0) (2026-10-31)
+
+
+### Features
+
+* **data-grid:** подсказка changes у rowHeight: позиции строк и кадр обновляются только от изменившихся строк ([#60](https://github.com/RamK-16/glide/issues/60)) ([4add19a](https://github.com/RamK-16/glide/commit/4add19af9e4860fa7d6a7245e77dd92dcd941d23))
+
 # [6.10.0](https://github.com/RamK-16/glide/compare/v6.9.0...v6.10.0) (2026-10-30)
 
 
