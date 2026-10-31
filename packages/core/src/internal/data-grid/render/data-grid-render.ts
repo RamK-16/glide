@@ -21,9 +21,16 @@ import {
 import { drawCells, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
-import { blitLastFrame, blitResizedCol, computeCanBlit, nextStickySpanInView } from "./data-grid-render.blit.js";
+import {
+    blitLastFrame,
+    blitResizedCol,
+    computeCanBlit,
+    getChangedRowsRegion,
+    nextStickySpanInView,
+} from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
+import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
 
 export function getDamageRepairPad(enableLowDprHairline: boolean): number {
@@ -495,6 +502,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const last = lastBlitData.current;
     if (
         canBlit === true &&
+        rowHeight === lastArg?.rowHeight &&
         cellXOffset === last?.cellXOffset &&
         cellYOffset === last?.cellYOffset &&
         translateX === last?.translateX &&
@@ -570,6 +578,41 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
+    }
+
+    // Сменились только высоты строк from..to (`RowHeightChanges`): прошлый кадр сдвигаем как обычно
+    // и перерисовываем экран от первой изменившейся строки вниз, см. `getChangedRowsRegion`.
+    let changedRowsRegion: Rectangle | undefined;
+    if (canBlit !== false && lastArg !== undefined && rowHeight !== lastArg.rowHeight) {
+        const changes = rowHeightChangesSince(rowHeight, lastArg.rowHeight);
+        changedRowsRegion =
+            changes === undefined || canBlit !== true
+                ? undefined
+                : getChangedRowsRegion({
+                      changes,
+                      lastCellYOffset: last?.cellYOffset ?? cellYOffset,
+                      cellYOffset,
+                      translateY,
+                      totalHeaderHeight,
+                      width,
+                      height,
+                      rows,
+                      freezeTrailingRows,
+                      pinnedRowsCount,
+                      stickySpanInView: last?.stickySpanInView === true,
+                      getRowHeight,
+                      spanStartOf: row => {
+                          let start = row;
+                          for (const c of effectiveCols) {
+                              const { spanRows } = getCellContent([c.sourceIndex, row]);
+                              if (spanRows !== undefined && spanRows[0] < start && spanRows[1] >= row) {
+                                  start = spanRows[0];
+                              }
+                          }
+                          return start;
+                      },
+                  });
+        if (changedRowsRegion === undefined) canBlit = false;
     }
 
     let drawRegions: Rectangle[] = [];
@@ -1187,7 +1230,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             effectiveCols,
             rowHeight,
             doubleBuffer,
-            rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight
+            rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight,
+            changedRowsRegion
         );
         drawRegions = regions;
     } else if (canBlit !== false) {

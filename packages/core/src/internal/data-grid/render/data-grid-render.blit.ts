@@ -5,6 +5,7 @@ import { type Rectangle } from "../data-grid-types.js";
 import { getStickyWidth, type MappedGridColumn, getFreezeTrailingHeight } from "./data-grid-lib.js";
 import { walkColumns } from "./data-grid-render.walk.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
+import { rowHeightChangesSince, type RowHeightChanges } from "../../scrolling-data-grid/row-offsets.js";
 
 export interface BlitData {
     readonly cellXOffset: number;
@@ -57,7 +58,9 @@ export function blitLastFrame(
     effectiveCols: readonly MappedGridColumn[],
     getRowHeight: number | ((r: number) => number),
     doubleBuffer: boolean,
-    stickyRowsBottom: number = totalHeaderHeight
+    stickyRowsBottom: number = totalHeaderHeight,
+    /** Что перерисовать поверх сдвинутого кадра, например строки с новой высотой */
+    extraRegion?: Rectangle
 ): {
     regions: Rectangle[];
 } {
@@ -109,6 +112,7 @@ export function blitLastFrame(
     const blitHeight = height - bodyTop - freezeTrailingRowsHeight - Math.abs(deltaY) - 1;
 
     if (blitWidth > 150 && blitHeight > 150) {
+        if (extraRegion !== undefined) drawRegions.push(extraRegion);
         const args = {
             sx: 0,
             sy: 0,
@@ -213,7 +217,10 @@ export function blitLastFrame(
                 ctx.drawImage(blitSource, 0, y, w, h, 0, y, w, h);
             }
         }
-        ctx.drawImage(blitSource, args.sx, args.sy, args.sw, args.sh, args.dx, args.dy, args.dw, args.dh);
+        // Без сдвига и второго буфера кадр уже на месте: копировать холст сам в себя незачем
+        if (doubleBuffer || deltaX !== 0 || deltaY !== 0) {
+            ctx.drawImage(blitSource, args.sx, args.sy, args.sw, args.sh, args.dx, args.dy, args.dw, args.dh);
+        }
         ctx.scale(dpr, dpr);
     }
     ctx.imageSmoothingEnabled = true;
@@ -270,7 +277,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.height !== last.height ||
         current.theme !== last.theme ||
         current.headerHeight !== last.headerHeight ||
-        current.rowHeight !== last.rowHeight ||
+        (current.rowHeight !== last.rowHeight &&
+            rowHeightChangesSince(current.rowHeight, last.rowHeight) === undefined) ||
         current.rows !== last.rows ||
         current.freezeColumns !== last.freezeColumns ||
         current.stickyRows !== last.stickyRows ||
@@ -325,4 +333,55 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         return resized;
     }
     return true;
+}
+
+export interface ChangedRowsRegionArgs {
+    readonly changes: RowHeightChanges;
+    readonly lastCellYOffset: number;
+    readonly cellYOffset: number;
+    readonly translateY: number;
+    readonly totalHeaderHeight: number;
+    readonly width: number;
+    readonly height: number;
+    /** Все строки вместе с итоговыми */
+    readonly rows: number;
+    readonly freezeTrailingRows: number;
+    readonly pinnedRowsCount: number;
+    readonly stickySpanInView: boolean;
+    readonly getRowHeight: (row: number) => number;
+    /** Начало самого верхнего слитого блока, который задевает строку `row` в видимых колонках; без блока сама `row` */
+    readonly spanStartOf: (row: number) => number;
+}
+
+/**
+ * Что перерисовать поверх сдвинутого прошлого кадра, когда сменились только высоты строк `changes.from..to`;
+ * undefined — кадр перерисовывается целиком.
+ *
+ * Строки выше первой изменившейся остались на месте. Слитый блок, который начинается выше неё и задевает её,
+ * стал выше, и его содержимое сместилось, поэтому верх области поднимается к началу такого блока.
+ */
+export function getChangedRowsRegion(args: ChangedRowsRegionArgs): Rectangle | undefined {
+    const { changes, cellYOffset, translateY, totalHeaderHeight, width, height, rows, getRowHeight } = args;
+    if (args.pinnedRowsCount > 0 || args.stickySpanInView) return undefined;
+
+    // Сдвиг кадра считается по высотам прокрученных строк: их высоты должны быть прежними
+    const scrolledFrom = Math.min(args.lastCellYOffset, cellYOffset);
+    const scrolledTo = Math.max(args.lastCellYOffset, cellYOffset) - 1;
+    if (changes.from <= scrolledTo && changes.to >= scrolledFrom) return undefined;
+
+    // Итоговые строки прижаты к низу экрана, отдельно от строк тела
+    const bodyRows = rows - args.freezeTrailingRows;
+    if (args.freezeTrailingRows > 0 && changes.to >= bodyRows && changes.from <= changes.to) return undefined;
+
+    let topRow = Math.max(changes.from, cellYOffset);
+    while (topRow > cellYOffset && topRow < bodyRows) {
+        const start = args.spanStartOf(topRow);
+        if (start >= topRow) break;
+        topRow = Math.max(start, cellYOffset);
+    }
+
+    let y = totalHeaderHeight + translateY;
+    for (let r = cellYOffset; r < topRow && r < bodyRows && y < height; r++) y += getRowHeight(r);
+    const top = Math.min(Math.max(y, totalHeaderHeight), height);
+    return { x: 0, y: top, width, height: height - top };
 }
