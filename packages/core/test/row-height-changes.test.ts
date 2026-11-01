@@ -91,7 +91,7 @@ describe("blitLastFrame с дополнительной областью", () =>
             30,
             false,
             36,
-            extra
+            extra === undefined ? undefined : [extra]
         ).regions;
     };
     const extra = { x: 0, y: 200, width: 600, height: 400 };
