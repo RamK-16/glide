@@ -82,7 +82,13 @@ export function drawHighlightRings(
     enableLowDprHairline: boolean = false,
     columnLayout?: ColumnLayout,
     rowAxis?: StickyAxis,
-    phase: "below" | "above" = "below"
+    phase: "below" | "above" = "below",
+    /**
+     * Рисовать обводки сразу, а не только вернуть функцию дорисовки. В кадре тела таблицы
+     * сразу рисовать нельзя: поверх сдвинутого прошлого кадра обводка легла бы второй раз
+     * и полупрозрачные края становились бы темнее с каждым частичным кадром.
+     */
+    drawNow: boolean = true
 ): (() => void) | undefined {
     // "below" — обычные обводки (до нативной рамки выделения), "above" — регионы
     // с drawAboveSelection (после неё, напр. рамки ошибок). accent — без обводки.
@@ -296,7 +302,7 @@ export function drawHighlightRings(
         }
     };
 
-    drawCb();
+    if (drawNow) drawCb();
     return drawCb;
 }
 

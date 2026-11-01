@@ -1321,6 +1321,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.restore();
     }
 
+    // Обводки рисуются только после ячеек (вызов highlightRedraw): при сдвиге прошлого кадра
+    // они уже на холсте, и второй слой делал бы полупрозрачные края темнее.
     const highlightRedraw = drawHighlightRings(
         targetCtx,
         width,
@@ -1340,7 +1342,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         theme,
         enableLowDprHairline,
         columnLayout,
-        rowAxis
+        rowAxis,
+        "below",
+        false
     );
 
     // the overdraw may have nuked out our focus ring right edge.
@@ -1386,7 +1390,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         enableLowDprHairline,
         columnLayout,
         rowAxis,
-        "above"
+        "above",
+        false
     );
 
     targetCtx.fillStyle = theme.bgCell;

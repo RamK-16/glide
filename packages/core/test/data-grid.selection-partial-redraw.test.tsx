@@ -253,6 +253,20 @@ describe("data-grid: частичная перерисовка при смене
         expect(fullRedraw(focused.events)).toBe(false);
     });
 
+    test("обводка нетронутого региона не ложится на прошлый кадр второй раз", () => {
+        const ring = { color: "#ff000080", range: { x: 3, y: 10, width: 1, height: 1 }, style: "solid" as const };
+        const { change } = setup({ highlightRegions: [ring] });
+        const { events } = change({ selection: sel(1, 5) });
+        expect(fullRedraw(events)).toBe(false);
+        // Обводка в стороне от выделения уже есть на сдвинутом кадре. Она штрихуется один раз,
+        // после ячеек и под клипом областей (мок-холст клип не учитывает, но вызов один), а не
+        // дважды: раньше первый штрих ложился на весь кадр ещё до ячеек.
+        const ringStrokes = events.filter(
+            e => e.type === "strokeRect" && e.props?.x === COL_X[3] + 0.5 && e.props?.y === HEADER + 10 * ROW + 0.5
+        );
+        expect(ringStrokes).toHaveLength(1);
+    });
+
     test("сменились регионы подсветки: только их области", () => {
         const { change } = setup();
         const { events } = change({
