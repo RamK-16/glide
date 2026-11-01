@@ -14,6 +14,7 @@ import {
     getSelectionChangeRegions,
     isSelectionOnlyChange,
     SELECTION_REGION_PAD as PAD,
+    selectionHeaderChanged,
     selectionRegionPad,
     type SelectionChangeRegionsArgs,
 } from "../src/internal/data-grid/render/data-grid-render.selection-regions.js";
@@ -233,6 +234,24 @@ describe("getSelectionChangeRegions", () => {
         ]);
         // колонка, уехавшая под закреплённую, на экране не видна
         expect(regions({ selection: sel(1, 12), columnLayout: frozen })).toEqual([]);
+    });
+});
+
+describe("selectionHeaderChanged", () => {
+    it("смена только строк шапку не трогает, смена колонки, диапазона по колонкам и стека трогает", () => {
+        expect(selectionHeaderChanged(sel(1, 5), sel(1, 9))).toBe(false);
+        expect(selectionHeaderChanged(sel(1, 5, { x: 1, y: 5, width: 1, height: 3 }), sel(1, 5))).toBe(false);
+        expect(selectionHeaderChanged(sel(1, 5), sel(2, 5))).toBe(true);
+        expect(selectionHeaderChanged(sel(1, 5, { x: 1, y: 5, width: 2, height: 1 }), sel(1, 5))).toBe(true);
+        expect(selectionHeaderChanged(sel(1, 5), sel(1, 5, undefined, [{ x: 3, y: 1, width: 1, height: 1 }]))).toBe(true);
+    });
+
+    it("появление и сброс выделения, выбранные колонки и заголовок трогают шапку", () => {
+        expect(selectionHeaderChanged(none, sel(1, 5))).toBe(true);
+        expect(selectionHeaderChanged(sel(1, 5), none)).toBe(true);
+        expect(selectionHeaderChanged(none, { ...none, columns: CompactSelection.fromSingleSelection(2) })).toBe(true);
+        expect(selectionHeaderChanged(sel(1, -1), sel(1, 5))).toBe(true);
+        expect(selectionHeaderChanged(none, none)).toBe(false);
     });
 });
 
