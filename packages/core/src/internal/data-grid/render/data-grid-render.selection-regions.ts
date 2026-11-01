@@ -28,6 +28,28 @@ export function isSelectionOnlyChange(current: DrawGridArg, last: DrawGridArg): 
     );
 }
 
+/**
+ * Зависит ли шапка от разницы двух выделений. Шапка отмечает выбранные колонки, колонку выбранной
+ * ячейки и колонки диапазонов (включая стек), а выделение заголовка идёт отрицательной строкой.
+ * Смена только строк выделения шапку не трогает.
+ */
+export function selectionHeaderChanged(a: GridSelection, b: GridSelection): boolean {
+    if (a === b) return false;
+    if (!a.columns.equals(b.columns)) return true;
+    const ca = a.current;
+    const cb = b.current;
+    if (ca === undefined || cb === undefined) return ca !== cb;
+    if (ca.cell[0] !== cb.cell[0] || ca.cell[1] < 0 || cb.cell[1] < 0) return true;
+    if (ca.range.x !== cb.range.x || ca.range.width !== cb.range.width) return true;
+    if (ca.rangeStack.length !== cb.rangeStack.length) return true;
+    for (let i = 0; i < ca.rangeStack.length; i++) {
+        const ra = ca.rangeStack[i];
+        const rb = cb.rangeStack[i];
+        if (ra.x !== rb.x || ra.width !== rb.width || ra.y !== rb.y || ra.height !== rb.height) return true;
+    }
+    return false;
+}
+
 export interface SelectionChangeRegionsArgs {
     readonly selection: GridSelection;
     readonly lastSelection: GridSelection;

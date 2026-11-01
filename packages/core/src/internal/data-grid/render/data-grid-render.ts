@@ -29,7 +29,11 @@ import {
     nextStickySpanInView,
 } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
-import { getSelectionChangeRegions, isSelectionOnlyChange } from "./data-grid-render.selection-regions.js";
+import {
+    getSelectionChangeRegions,
+    isSelectionOnlyChange,
+    selectionHeaderChanged,
+} from "./data-grid-render.selection-regions.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
@@ -1317,16 +1321,17 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         return;
     }
 
-    // Шапка отмечает колонку выбранной ячейки, поэтому при смене выделения рисуется заново. На её
-    // холсте лежит и верхняя линия обводок регионов первой видимой строки: при смене регионов,
-    // когда такая линия есть или была, шапка тоже рисуется заново.
+    // Шапка отмечает выбранные колонки и колонку выбранной ячейки, поэтому рисуется заново, когда
+    // у выделения сменились колонки (смена только строк её не трогает). На её холсте лежит и
+    // верхняя линия обводок регионов первой видимой строки: при смене регионов, когда такая линия
+    // есть или была, шапка тоже рисуется заново.
     if (
         canBlit !== true ||
         cellXOffset !== last?.cellXOffset ||
         translateX !== last?.translateX ||
         mustDrawFocusOnHeader !== last?.mustDrawFocusOnHeader ||
         mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader ||
-        (selectionChange && selection !== lastArg?.selection) ||
+        (selectionChange && lastArg !== undefined && selectionHeaderChanged(selection, lastArg.selection)) ||
         (selectionChange &&
             highlightRegions !== lastArg?.highlightRegions &&
             (mustDrawHighlightRingsOnHeader || last?.mustDrawHighlightRingsOnHeader === true))

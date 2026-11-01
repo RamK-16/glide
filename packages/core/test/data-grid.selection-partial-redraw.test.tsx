@@ -251,11 +251,21 @@ describe("data-grid: частичная перерисовка при смене
 
     test("переход на другую ячейку: прежняя и новая области", () => {
         const { change } = setup({ selection: sel(1, 5) });
-        const { events, askedRows } = change({ selection: sel(3, 20) });
+        const { events, askedRows, headerEvents } = change({ selection: sel(3, 20) });
         expect(fullRedraw(events)).toBe(false);
         expect(hasClip(events, cellRect(1, 5))).toBe(true);
         expect(hasClip(events, cellRect(3, 20))).toBe(true);
         expect(askedRows.every(row => (row >= 4 && row <= 6) || (row >= 19 && row <= 21))).toBe(true);
+        // колонка выбранной ячейки сменилась: шапка отмечает её заново
+        expect(headerDrawn(headerEvents)).toBe(true);
+    });
+
+    test("переход по строкам в той же колонке: шапка не трогается", () => {
+        const { change } = setup({ selection: sel(1, 5) });
+        const { events, headerEvents } = change({ selection: sel(1, 8) });
+        expect(fullRedraw(events)).toBe(false);
+        expect(hasClip(events, cellRect(1, 8))).toBe(true);
+        expect(headerDrawn(headerEvents)).toBe(false);
     });
 
     test("протяжка диапазона: прежний и новый диапазоны", () => {
