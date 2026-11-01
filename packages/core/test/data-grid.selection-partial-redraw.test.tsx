@@ -1,6 +1,6 @@
 import * as React from "react";
 import { render, cleanup } from "@testing-library/react";
-import DataGrid, { type DataGridProps } from "../src/internal/data-grid/data-grid.js";
+import DataGrid, { type DataGridProps, type DataGridRef } from "../src/internal/data-grid/data-grid.js";
 import {
     CompactSelection,
     GridCellKind,
@@ -193,8 +193,10 @@ describe("data-grid: частичная перерисовка при смене
             askedRows.push(cell[1]);
             return cellContent(cell);
         });
+        const ref = React.createRef<DataGridRef>();
         const grid = (p: Partial<DataGridProps>) => (
             <DataGrid
+                ref={ref}
                 {...basicProps}
                 {...props}
                 getCellContent={spy}
@@ -213,8 +215,29 @@ describe("data-grid: частичная перерисовка при смене
             view.rerender(grid(p));
             return { events: ctx.__getEvents(), headerEvents: headerCtx.__getEvents(), askedRows };
         };
-        return { change };
+        /** Точечная дорисовка ячеек, как делает updateCells у DataEditor */
+        const damage = (cells: Array<readonly [number, number]>) => {
+            ctx.__clearEvents();
+            ref.current?.damage(cells.map(cell => ({ cell })));
+            return ctx.__getEvents();
+        };
+        return { change, damage };
     };
+
+    test("точечная дорисовка строки перекрашивает и пустую область правее колонок", () => {
+        // колонки занимают 850 из 1000 px; у строки 3 свой фон, он красится и в пустой области
+        const { damage } = setup({ getRowThemeOverride: row => (row === 3 ? { bgCell: "#aabbcc" } : undefined) });
+        const events = damage([[1, 3]]);
+        expect(fullRedraw(events)).toBe(false);
+        const blankRowFill = events.some(
+            e => e.type === "fillRect" && e.props?.x === COL_X[5] && e.props?.y === HEADER + 3 * ROW && e.props?.height === ROW
+        );
+        expect(blankRowFill).toBe(true);
+        // в широкой таблице пустой области нет, лишних заливок тоже
+        const wide = setup({ columns: basicProps.columns.map(c => ({ ...c, width: 300 })) });
+        const wideEvents = wide.damage([[1, 3]]);
+        expect(wideEvents.some(e => e.type === "fillRect" && e.props?.width === 10_000)).toBe(false);
+    });
 
     test("клик по ячейке: перерисовывается только её область, другие строки не спрашиваются", () => {
         const { events, askedRows, headerEvents } = setup().change({ selection: sel(1, 5) });
@@ -239,7 +262,8 @@ describe("data-grid: частичная перерисовка при смене
         const { change } = setup({ selection: sel(1, 5, { x: 1, y: 5, width: 2, height: 2 }) });
         const { events } = change({ selection: sel(1, 5, { x: 1, y: 5, width: 3, height: 3 }) });
         expect(fullRedraw(events)).toBe(false);
-        expect(hasClip(events, cellRect(1, 5, 2, 2))).toBe(true);
+        // прежний диапазон лежит в новом, отдельной области у него нет
+        expect(hasClip(events, cellRect(1, 5, 2, 2))).toBe(false);
         expect(hasClip(events, cellRect(1, 5, 3, 3))).toBe(true);
     });
 
@@ -297,6 +321,49 @@ describe("data-grid: частичная перерисовка при смене
         const { change } = setup();
         const { events } = change({ selection: { ...none, rows: CompactSelection.fromSingleSelection(3) } });
         expect(fullRedraw(events)).toBe(true);
+    });
+
+    test("блок задет выделением за кадром: его видимая часть перерисовывается", () => {
+        // блок колонок 1..2 строк 4..7, выбрана ячейка (1,5), экран прокручен к строке 6
+        const spanned = (cell: readonly [number, number]): GridCell =>
+            cell[0] >= 1 && cell[0] <= 2 && cell[1] >= 4 && cell[1] <= 7
+                ? { ...textCell(cell), span: [1, 2], spanRows: [4, 7] }
+                : textCell(cell);
+        const { change } = setup({ cellYOffset: 6, selection: sel(1, 5) }, spanned);
+        const { events, askedRows } = change({ selection: sel(3, 20) });
+        expect(fullRedraw(events)).toBe(false);
+        // строки 6 и 7 блока стоят на экране первыми двумя, новая ячейка в 14-й строке экрана
+        expect(hasClip(events, cellRect(1, 0, 2, 2))).toBe(true);
+        expect(hasClip(events, cellRect(3, 14))).toBe(true);
+        expect(askedRows).toContain(6);
+        expect(askedRows).toContain(7);
+    });
+
+    test("выделение за кадром: тело не трогается, шапка обновляется", () => {
+        const { change } = setup({ selection: sel(1, 500) });
+        const far = sel(2, 600);
+        const moved = change({ selection: far });
+        expect(moved.events.some(e => e.type === "fillRect" || e.type === "rect")).toBe(false);
+        expect(headerDrawn(moved.headerEvents)).toBe(true);
+        const blurred = change({ selection: far, isFocused: false });
+        expect(blurred.events.some(e => e.type === "fillRect" || e.type === "rect")).toBe(false);
+        expect(headerDrawn(blurred.headerEvents)).toBe(false);
+        // следующий обычный кадр по-прежнему частичный
+        const back = change({ selection: sel(1, 5) });
+        expect(fullRedraw(back.events)).toBe(false);
+        expect(hasClip(back.events, cellRect(1, 5))).toBe(true);
+    });
+
+    test("регион с обводкой в первой видимой строке сменился: шапка обновляется", () => {
+        const ring = (col: number) => ({
+            color: "#ff0000",
+            range: { x: col, y: 0, width: 1, height: 1 },
+            style: "solid" as const,
+        });
+        const { change } = setup({ highlightRegions: [ring(1)] });
+        const { events, headerEvents } = change({ highlightRegions: [ring(3)] });
+        expect(fullRedraw(events)).toBe(false);
+        expect(headerDrawn(headerEvents)).toBe(true);
     });
 
     test("ячейка в слитом блоке: область на весь блок", () => {

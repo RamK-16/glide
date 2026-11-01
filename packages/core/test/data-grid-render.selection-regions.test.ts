@@ -14,6 +14,7 @@ import {
     getSelectionChangeRegions,
     isSelectionOnlyChange,
     SELECTION_REGION_PAD as PAD,
+    selectionRegionPad,
     type SelectionChangeRegionsArgs,
 } from "../src/internal/data-grid/render/data-grid-render.selection-regions.js";
 import type { DrawGridArg } from "../src/internal/data-grid/render/draw-grid-arg.js";
@@ -88,14 +89,19 @@ describe("getSelectionChangeRegions", () => {
         ]);
     });
 
-    it("протяжка диапазона: прежний и новый диапазоны, одинаковые области не дублируются", () => {
+    it("протяжка диапазона: прежний диапазон лежит в новом и отдельной областью не нужен", () => {
         const last = sel(1, 12, { x: 1, y: 12, width: 2, height: 2 });
         const next = sel(1, 12, { x: 1, y: 12, width: 3, height: 4 });
-        expect(regions({ lastSelection: last, selection: next })).toEqual([
-            cellRect(1, 12),
-            cellRect(1, 12, 2, 2),
-            cellRect(1, 12, 3, 4),
-        ]);
+        expect(regions({ lastSelection: last, selection: next })).toEqual([cellRect(1, 12, 3, 4)]);
+        // ячейка вне диапазона (так бывает у внешнего выделения) идёт отдельной областью
+        const odd = sel(4, 20, { x: 1, y: 12, width: 2, height: 2 });
+        expect(regions({ selection: odd })).toEqual([cellRect(4, 20), cellRect(1, 12, 2, 2)]);
+    });
+
+    it("площадь считается без вложенных областей: протяжка на треть экрана остаётся частичной", () => {
+        const last = sel(0, OFFSET, { x: 0, y: OFFSET, width: 3, height: 7 });
+        const next = sel(0, OFFSET, { x: 0, y: OFFSET, width: 3, height: 8 });
+        expect(regions({ lastSelection: last, selection: next })).toHaveLength(1);
     });
 
     it("стек диапазонов тоже перерисовывается", () => {
@@ -157,13 +163,49 @@ describe("getSelectionChangeRegions", () => {
         // диапазон задел блок краем: растягивается до блока
         expect(
             regions({ selection: sel(0, 13, { x: 0, y: 13, width: 2, height: 1 }), getCellContent: spanned })
-        ).toEqual([onScreen(cellRect(0, 13)), onScreen(cellRect(0, 12, 3, 4))]);
+        ).toEqual([onScreen(cellRect(0, 12, 3, 4))]);
     });
 
     it("выделение за кадром: областей нет", () => {
         expect(regions({ selection: sel(1, 500) })).toEqual([]);
         expect(regions({ selection: sel(1, 3) })).toEqual([]);
         expect(regions({ lastSelection: sel(1, 500), selection: sel(2, 12) })).toEqual([cellRect(2, 12)]);
+    });
+
+    it("блок задет ячейкой за кадром: его видимая часть попадает в область", () => {
+        // блок строк 3..12 в колонке 1, выбрана строка 5 над экраном (экран с 10-й)
+        const tall = (cell: Item): InnerGridCell =>
+            cell[0] === 1 && cell[1] >= 3 && cell[1] <= 12 ? { ...textCell(cell), spanRows: [3, 12] } : textCell(cell);
+        expect(regions({ lastSelection: sel(1, 5), selection: sel(3, 15), getCellContent: tall })).toEqual([
+            cellRect(1, OFFSET, 1, 3),
+            cellRect(3, 15),
+        ]);
+        // блок ниже экрана, выбрана строка под ним: видимой части нет
+        const below = (cell: Item): InnerGridCell =>
+            cell[0] === 1 && cell[1] >= 40 && cell[1] <= 60 ? { ...textCell(cell), spanRows: [40, 60] } : textCell(cell);
+        expect(regions({ selection: sel(1, 50), getCellContent: below })).toEqual([]);
+        // блок колонок 1..3 в строке 12, выбрана колонка 1, уехавшая под закреплённую нулевую
+        const wide = (cell: Item): InnerGridCell =>
+            cell[0] >= 1 && cell[0] <= 3 && cell[1] === 12 ? { ...textCell(cell), span: [1, 3] } : textCell(cell);
+        const frozen = computeColumnLayout(makeColumns([true, false, false, false, false]), 2, 0, WIDTH, 1);
+        expect(regions({ selection: sel(1, 12), columnLayout: frozen, getCellContent: wide })).toEqual([
+            { ...cellRect(0, 12), x: frozen.drawX(2) - PAD, width: COL * 2 + PAD * 2 },
+        ]);
+    });
+
+    it("соседний блок, который диапазон не задевает, область не растягивает", () => {
+        const neighbour = (cell: Item): InnerGridCell =>
+            cell[0] === 2 && cell[1] >= 12 && cell[1] <= 14 ? { ...textCell(cell), spanRows: [12, 14] } : textCell(cell);
+        expect(regions({ selection: sel(1, 13), getCellContent: neighbour })).toEqual([cellRect(1, 13)]);
+    });
+
+    it("запас области растёт с маркером растяжения", () => {
+        expect(selectionRegionPad(undefined)).toBe(PAD);
+        expect(selectionRegionPad(true)).toBe(PAD);
+        expect(selectionRegionPad({ size: 12, offsetX: -4, offsetY: -4, outline: 2 })).toBe(13);
+        expect(regions({ selection: sel(1, 12), fillHandle: { size: 12, offsetX: -4, offsetY: -4, outline: 2 } })).toEqual([
+            { x: COL - 13, y: HEADER + 2 * ROW - 13, width: COL + 26, height: ROW + 26 },
+        ]);
     });
 
     it("частично прокрученная первая строка учитывается", () => {
