@@ -1,4 +1,5 @@
-import type { GridSelection, InnerGridCell, Item, Rectangle } from "../data-grid-types.js";
+import type { FillHandle, GridSelection, InnerGridCell, Item, Rectangle } from "../data-grid-types.js";
+import { DEFAULT_FILL_HANDLE } from "../data-grid-types.js";
 import type { ColumnLayout } from "./data-grid-freeze.js";
 import { computeCanBlit } from "./data-grid-render.blit.js";
 import type { Highlight } from "./data-grid-render.cells.js";
@@ -44,11 +45,13 @@ export interface SelectionChangeRegionsArgs {
     readonly freezeTrailingRows: number;
     readonly pinnedRowsCount: number;
     readonly stickySpanInView: boolean;
+    /** Маркер растяжения выходит за край ячейки, запас области считается от его размера */
+    readonly fillHandle?: FillHandle;
     readonly getRowHeight: (row: number) => number;
     readonly getCellContent: (cell: Item) => InnerGridCell;
 }
 
-/** Запас вокруг ячеек: маркер растяжения и обводки регионов выходят за край ячейки. */
+/** Запас вокруг ячеек под обводки регионов и сглаженные края, не меньше этого. */
 export const SELECTION_REGION_PAD = 8;
 /** Если области занимают больше этой доли тела таблицы, кадр целиком дешевле. */
 const MAX_AREA_SHARE = 0.6;
@@ -67,14 +70,17 @@ interface CellRange {
 
 const rangeOf = (r: Rectangle): CellRange => ({ x0: r.x, y0: r.y, x1: r.x + r.width - 1, y1: r.y + r.height - 1 });
 
+const rangeContains = (r: CellRange, col: number, row: number) =>
+    col >= r.x0 && col <= r.x1 && row >= r.y0 && row <= r.y1;
+
+/** Ячейка отдельно от диапазона нужна, только если диапазон её не содержит. */
 function addSelectionRanges(target: CellRange[], selection: GridSelection): void {
     const current = selection.current;
     if (current === undefined) return;
-    target.push(
-        { x0: current.cell[0], y0: current.cell[1], x1: current.cell[0], y1: current.cell[1] },
-        rangeOf(current.range),
-        ...current.rangeStack.map(rangeOf)
-    );
+    const range = rangeOf(current.range);
+    const [col, row] = current.cell;
+    if (!rangeContains(range, col, row)) target.push({ x0: col, y0: row, x1: col, y1: row });
+    target.push(range, ...current.rangeStack.map(rangeOf));
 }
 
 const highlightKey = (h: Highlight) =>
@@ -103,6 +109,14 @@ function addHighlightChanges(
     }
 }
 
+/** Запас области под маркер растяжения: половина размера, смещение, обводка и пиксель на сглаживание. */
+export function selectionRegionPad(fillHandle: FillHandle | undefined): number {
+    if (fillHandle === undefined || fillHandle === false) return SELECTION_REGION_PAD;
+    const fill = typeof fillHandle === "object" ? { ...DEFAULT_FILL_HANDLE, ...fillHandle } : DEFAULT_FILL_HANDLE;
+    const reach = fill.size / 2 + Math.max(Math.abs(fill.offsetX), Math.abs(fill.offsetY)) + fill.outline + 1;
+    return Math.max(SELECTION_REGION_PAD, Math.ceil(reach));
+}
+
 interface VisibleColumn {
     readonly sourceIndex: number;
     readonly left: number;
@@ -111,7 +125,8 @@ interface VisibleColumn {
 
 /**
  * Что перерисовать поверх прошлого кадра, когда сменились только выделение, регионы подсветки
- * или фокус; undefined, если кадр надо перерисовать целиком.
+ * или фокус; undefined, если кадр надо перерисовать целиком. Пустой список значит, что на
+ * экране от смены ничего не зависит.
  *
  * Области: ячейки прежнего и нового выделения (с диапазонами и стеком диапазонов), изменившиеся
  * регионы подсветки, при смене фокуса текущее выделение. Слитый блок красится целиком, поэтому
@@ -161,11 +176,12 @@ export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rec
         const right = Math.min(x + c.width, width);
         if (right > left) columns.push({ sourceIndex: c.sourceIndex, left, right });
     }
+    const visibleCols = columns.map(c => c.sourceIndex).sort((a, b) => a - b);
+    const pad = selectionRegionPad(args.fillHandle);
 
     const regions: Rectangle[] = [];
-    let area = 0;
     for (const range of ranges) {
-        const expanded = expandToSpans(range, columns, cellYOffset, lastVisibleRow, getCellContent);
+        const expanded = expandToSpans(range, visibleCols, cellYOffset, lastVisibleRow, getCellContent);
         if (expanded === undefined) return undefined;
         const vy0 = Math.max(expanded.y0, cellYOffset);
         const vy1 = Math.min(expanded.y1, lastVisibleRow);
@@ -181,54 +197,53 @@ export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rec
         const top = rowTops[vy0 - cellYOffset];
         const bottom = vy1 === lastVisibleRow ? rowsBottom : rowTops[vy1 - cellYOffset + 1];
         const region = clampRect(
-            {
-                x: left - SELECTION_REGION_PAD,
-                y: top - SELECTION_REGION_PAD,
-                width: right - left + SELECTION_REGION_PAD * 2,
-                height: bottom - top + SELECTION_REGION_PAD * 2,
-            },
+            { x: left - pad, y: top - pad, width: right - left + pad * 2, height: bottom - top + pad * 2 },
             width,
             height
         );
-        if (region === undefined || regions.some(r => sameRect(r, region))) continue;
-        regions.push(region);
-        area += region.width * region.height;
+        if (region !== undefined) regions.push(region);
     }
 
+    // Область внутри другой ничего не добавляет: при протяжке прежний диапазон лежит в новом
+    const kept = regions.filter((r, i) => !regions.some((o, j) => j !== i && containsRect(o, r) && (j < i || !sameRect(o, r))));
+    let area = 0;
+    for (const r of kept) area += r.width * r.height;
     const bodyArea = width * Math.max(0, height - args.totalHeaderHeight);
     if (area > bodyArea * MAX_AREA_SHARE) return undefined;
-    return regions;
+    return kept;
 }
 
 /**
- * Диапазон, растянутый до границ слитых блоков, которые он задевает. Блок, пересекающий границу
- * диапазона, обязательно содержит ячейку на этой границе, поэтому спрашиваем только ячейки по
- * периметру видимой части и повторяем, пока границы растут. undefined, если границы не сошлись.
+ * Диапазон, растянутый до слитых блоков, которые он задевает и которые видны на экране. Блок
+ * красится целиком, поэтому его видимая часть должна попасть в область, даже когда диапазон
+ * задевает блок ячейкой за экраном: прокрученной вверх, ушедшей под закреплённую зону или за край.
+ *
+ * Спрашиваем только видимые ячейки: видимые колонки диапазона и ближайшую видимую колонку слева
+ * и справа от него, видимые строки диапазона и ближайшую видимую строку выше и ниже. Блок, который
+ * пересекает и диапазон, и экран, но выходит за диапазон, обязательно содержит ячейку на границе
+ * этого набора: в крайних колонках на любой его строке или в крайних строках на любой его колонке.
+ * Блоки, не задевающие диапазон, не учитываются. Повторяем, пока границы растут; undefined, если
+ * за MAX_SPAN_PASSES границы не сошлись.
  */
 function expandToSpans(
     range: CellRange,
-    columns: readonly VisibleColumn[],
+    visibleCols: readonly number[],
     firstRow: number,
     lastRow: number,
     getCellContent: (cell: Item) => InnerGridCell
 ): CellRange | undefined {
     const r = { ...range };
+    if (visibleCols.length === 0 || firstRow > lastRow) return r;
     for (let pass = 0; pass < MAX_SPAN_PASSES; pass++) {
-        const vy0 = Math.max(r.y0, firstRow);
-        const vy1 = Math.min(r.y1, lastRow);
-        if (vy0 > vy1) return r;
-        const visible = columns.filter(c => c.sourceIndex >= r.x0 && c.sourceIndex <= r.x1);
-        if (visible.length === 0) return r;
-        const edgeCols = new Set([visible[0].sourceIndex, visible[visible.length - 1].sourceIndex]);
+        const cols = probeColumns(visibleCols, r.x0, r.x1);
+        const probeRowList = probeRows(firstRow, lastRow, r.y0, r.y1);
+        const edgeCols = new Set([cols[0], cols[cols.length - 1]]);
+        const edgeRows = [probeRowList[0], probeRowList[probeRowList.length - 1]];
         let grown = false;
-        for (const c of visible) {
-            if (edgeCols.has(c.sourceIndex)) {
-                for (let row = vy0; row <= vy1; row++) {
-                    grown = growToSpan(r, getCellContent([c.sourceIndex, row])) || grown;
-                }
-            } else {
-                grown = growToSpan(r, getCellContent([c.sourceIndex, vy0])) || grown;
-                if (vy1 !== vy0) grown = growToSpan(r, getCellContent([c.sourceIndex, vy1])) || grown;
+        for (const col of cols) {
+            const rowsToProbe = edgeCols.has(col) ? probeRowList : edgeRows;
+            for (const row of rowsToProbe) {
+                grown = growToSpan(r, col, row, getCellContent([col, row])) || grown;
             }
         }
         if (!grown) return r;
@@ -236,12 +251,40 @@ function expandToSpans(
     return undefined;
 }
 
-/** Растягивает диапазон до слитого блока ячейки; true, если границы сдвинулись. */
-function growToSpan(r: CellRange, cell: InnerGridCell): boolean {
-    const x0 = cell.span === undefined ? r.x0 : Math.min(r.x0, cell.span[0]);
-    const x1 = cell.span === undefined ? r.x1 : Math.max(r.x1, cell.span[1]);
-    const y0 = cell.spanRows === undefined ? r.y0 : Math.min(r.y0, cell.spanRows[0]);
-    const y1 = cell.spanRows === undefined ? r.y1 : Math.max(r.y1, cell.spanRows[1]);
+/** Видимые колонки диапазона и ближайшие видимые слева и справа от него; `visible` по возрастанию */
+function probeColumns(visible: readonly number[], x0: number, x1: number): number[] {
+    const out: number[] = [];
+    let left: number | undefined;
+    let right: number | undefined;
+    for (const c of visible) {
+        if (c < x0) left = c;
+        else if (c > x1) right ??= c;
+        else out.push(c);
+    }
+    if (left !== undefined) out.unshift(left);
+    if (right !== undefined) out.push(right);
+    return out;
+}
+
+/** Видимые строки диапазона и ближайшие видимые выше и ниже него */
+function probeRows(firstRow: number, lastRow: number, y0: number, y1: number): number[] {
+    const out: number[] = [];
+    if (y0 > firstRow) out.push(Math.min(y0 - 1, lastRow));
+    for (let row = Math.max(y0, firstRow); row <= Math.min(y1, lastRow); row++) out.push(row);
+    if (y1 < lastRow) out.push(Math.max(y1 + 1, firstRow));
+    return out;
+}
+
+/** Растягивает диапазон до слитого блока ячейки, если блок задевает диапазон; true, если границы сдвинулись. */
+function growToSpan(r: CellRange, col: number, row: number, cell: InnerGridCell): boolean {
+    if (cell.span === undefined && cell.spanRows === undefined) return false;
+    const [c0, c1] = cell.span ?? [col, col];
+    const [r0, r1] = cell.spanRows ?? [row, row];
+    if (c0 > r.x1 || c1 < r.x0 || r0 > r.y1 || r1 < r.y0) return false;
+    const x0 = Math.min(r.x0, c0);
+    const x1 = Math.max(r.x1, c1);
+    const y0 = Math.min(r.y0, r0);
+    const y1 = Math.max(r.y1, r1);
     if (x0 === r.x0 && x1 === r.x1 && y0 === r.y0 && y1 === r.y1) return false;
     r.x0 = x0;
     r.x1 = x1;
@@ -261,3 +304,9 @@ function clampRect(r: Rectangle, width: number, height: number): Rectangle | und
 
 const sameRect = (a: Rectangle, b: Rectangle) =>
     a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+const containsRect = (outer: Rectangle, inner: Rectangle) =>
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height;

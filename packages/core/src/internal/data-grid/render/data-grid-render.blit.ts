@@ -25,6 +25,8 @@ export interface BlitData {
      * прошлый кадр сдвигать нельзя.
      */
     readonly stickySpanInView?: boolean;
+    /** Масштаб холста кадра: при его смене холст очищается, сдвигать прошлый кадр нельзя. */
+    readonly dpr?: number;
     aBufferScroll: [boolean, boolean] | undefined;
     bBufferScroll: [boolean, boolean] | undefined;
 }
@@ -286,6 +288,9 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.isFocused !== last.isFocused ||
         current.drawFocus !== last.drawFocus ||
         current.editorOpen !== last.editorOpen ||
+        current.fillHandle !== last.fillHandle ||
+        current.disabledRows !== last.disabledRows ||
+        current.hasAppendRow !== last.hasAppendRow ||
         current.isResizing !== last.isResizing ||
         current.verticalBorder !== last.verticalBorder ||
         current.horizontalBorder !== last.horizontalBorder ||

@@ -342,7 +342,9 @@ export function drawFillHandle(
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     fillHandle: FillHandle,
-    rows: number
+    rows: number,
+    /** Рисовать маркер сразу, а не только вернуть функцию дорисовки; в кадре тела только после ячеек. */
+    drawNow: boolean = true
 ): (() => void) | undefined {
     if (selectedCell.current === undefined) return undefined;
 
@@ -493,7 +495,7 @@ export function drawFillHandle(
         ctx.restore();
     };
 
-    result();
+    if (drawNow) result();
 
     return result;
 }
