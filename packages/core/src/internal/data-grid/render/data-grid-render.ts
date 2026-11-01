@@ -29,6 +29,7 @@ import {
     nextStickySpanInView,
 } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
+import { getSelectionChangeRegions, isSelectionOnlyChange } from "./data-grid-render.selection-regions.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
@@ -462,6 +463,16 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // if we are double buffering we need to make sure we can blit. If we can't we need to redraw the whole thing
     let canBlit = renderStrategy !== "direct" && computeCanBlit(arg, lastArg);
 
+    // Сменились только выделение, регионы подсветки или фокус: прошлый кадр годится, поверх него
+    // перерисуем прежние и новые области выделения, см. `getSelectionChangeRegions`.
+    const selectionChange =
+        canBlit === false &&
+        renderStrategy !== "direct" &&
+        lastArg !== undefined &&
+        lastBlitData.current !== undefined &&
+        isSelectionOnlyChange(arg, lastArg);
+    if (selectionChange) canBlit = true;
+
     const canvas = canvasCtx.canvas;
 
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
@@ -503,6 +514,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const last = lastBlitData.current;
     if (
         canBlit === true &&
+        !selectionChange &&
         rowHeight === lastArg?.rowHeight &&
         cellXOffset === last?.cellXOffset &&
         cellYOffset === last?.cellYOffset &&
@@ -579,6 +591,30 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
+    }
+
+    let selectionRegions: Rectangle[] | undefined;
+    if (selectionChange && canBlit === true && lastArg !== undefined) {
+        selectionRegions = getSelectionChangeRegions({
+            selection,
+            lastSelection: lastArg.selection,
+            highlightRegions,
+            lastHighlightRegions: lastArg.highlightRegions,
+            focusChanged: isFocused !== lastArg.isFocused,
+            columnLayout,
+            cellYOffset,
+            translateY,
+            totalHeaderHeight,
+            width,
+            height,
+            rows,
+            freezeTrailingRows,
+            pinnedRowsCount,
+            stickySpanInView: last?.stickySpanInView === true,
+            getRowHeight,
+            getCellContent,
+        });
+        if (selectionRegions === undefined) canBlit = false;
     }
 
     // Сменились только высоты строк from..to (`RowHeightChanges`): прошлый кадр сдвигаем как обычно
@@ -1201,18 +1237,22 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         return;
     }
 
+    // Шапка отмечает колонку выбранной ячейки, поэтому при смене выделения рисуется заново.
     if (
         canBlit !== true ||
         cellXOffset !== last?.cellXOffset ||
         translateX !== last?.translateX ||
         mustDrawFocusOnHeader !== last?.mustDrawFocusOnHeader ||
-        mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader
+        mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader ||
+        (selectionChange && selection !== lastArg?.selection)
     ) {
         drawHeaderTexture();
     }
 
     if (canBlit === true) {
         assert(blitSource !== undefined && last !== undefined);
+        const extraRegions = selectionRegions ?? [];
+        if (changedRowsRegion !== undefined) extraRegions.push(changedRowsRegion);
         const { regions } = blitLastFrame(
             targetCtx,
             blitSource,
@@ -1234,7 +1274,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             rowHeight,
             doubleBuffer,
             rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight,
-            changedRowsRegion
+            extraRegions
         );
         drawRegions = regions;
     } else if (canBlit !== false) {
