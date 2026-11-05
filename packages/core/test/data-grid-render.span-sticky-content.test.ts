@@ -57,6 +57,35 @@ describe("stickySpanContentBox", () => {
         expect(stickySpanContentBox(-500, 2000, TOP, BOTTOM, 32, 32, 600)).toEqual({ y: 40, height: 600 });
     });
 
+    it("низ блока проходит через низ области данных: содержимое выше области не прыгает", () => {
+        // Содержимое 600px в области 428px, блок длинный, верх давно под шапкой.
+        const atBottom = (blockBottom: number) =>
+            stickySpanContentBox(blockBottom - 2000, 2000, TOP, BOTTOM, 40, 40, 600);
+
+        expect(atBottom(469)).toEqual({ y: -131, height: 600 });
+        expect(atBottom(468)).toEqual({ y: -132, height: 600 });
+        expect(atBottom(467)).toEqual({ y: -133, height: 600 });
+    });
+
+    it("содержимое выше области данных: при прокрутке сдвигается ровно на шаг прокрутки или стоит", () => {
+        let previous = stickySpanContentBox(-1000, 2000, TOP, BOTTOM, 40, 40, 600);
+        for (let blockY = -1001; blockY > -2100; blockY--) {
+            const box = stickySpanContentBox(blockY, 2000, TOP, BOTTOM, 40, 40, 600);
+            expect(previous.y - box.y).toBeGreaterThanOrEqual(0);
+            expect(previous.y - box.y).toBeLessThanOrEqual(1);
+            expect(box.height).toBe(600);
+            previous = box;
+        }
+    });
+
+    it("въезд блока снизу: при прохождении низа области данных прямоугольник не прыгает", () => {
+        const atTop = (blockY: number) => stickySpanContentBox(blockY, 300, TOP, BOTTOM, 32, 32, 100);
+
+        // Видимая часть становится меньше содержимого между 368 и 369.
+        expect(atTop(368)).toEqual({ y: 368, height: 100 });
+        expect(atTop(369)).toEqual({ y: 369, height: 100 });
+    });
+
     it("блок ниже одной строки по высоте: прямоугольник не выходит за блок", () => {
         expect(stickySpanContentBox(10, 20, TOP, BOTTOM, 32, 32)).toEqual({ y: 10, height: 20 });
     });
