@@ -1,3 +1,10 @@
+# [6.12.0](https://github.com/RamK-16/glide/compare/v6.11.0...v6.12.0) (2026-11-05)
+
+
+### Features
+
+* **data-grid:** содержимое выше строки в прилипшем блоке не обрезается, а уезжает с краем блока ([1dadef2](https://github.com/RamK-16/glide/commit/1dadef223a39eb73ecc4637bc4b4f8eda67a3bfe))
+
 # [6.11.0](https://github.com/RamK-16/glide/compare/v6.10.0...v6.11.0) (2026-10-31)
 
 
