@@ -246,10 +246,10 @@ function spanFill(geom: SpanBlockGeometry, color: string): SpanFillRect {
  * Видимая часть слитого блока в несколько строк для содержимого с прилипанием
  * (`spanAlign.sticky`): пересечение блока с областью данных между `visibleTop` и
  * `visibleBottom`. Содержимое выравнивается внутри неё как обычно (верх, центр, низ).
- * Когда от блока на экране остаётся меньше одной строки, прямоугольник не
- * сжимается, а уезжает вместе с краем блока: у обрезанного сверху блока держит
- * высоту последней строки, у обрезанного снизу первой. Из блока не выходит.
- * Экспортируется для юнит-тестов.
+ * Когда от блока на экране остаётся меньше одной строки или меньше `contentHeight`,
+ * прямоугольник не сжимается, а уезжает вместе с краем блока: у обрезанного сверху
+ * блока держит высоту последней строки, у обрезанного снизу первой, но не меньше
+ * `contentHeight`. Из блока не выходит. Экспортируется для юнит-тестов.
  */
 export function stickySpanContentBox(
     blockY: number,
@@ -257,17 +257,20 @@ export function stickySpanContentBox(
     visibleTop: number,
     visibleBottom: number,
     firstRowHeight: number,
-    lastRowHeight: number
+    lastRowHeight: number,
+    contentHeight: number = 0
 ): { y: number; height: number } {
     const blockBottom = blockY + blockHeight;
     let top = Math.max(blockY, visibleTop);
     let bottom = Math.min(blockBottom, visibleBottom);
-    const keepWhenCutAbove = Math.min(lastRowHeight, blockHeight);
-    const keepWhenCutBelow = Math.min(firstRowHeight, blockHeight);
-    if (top > blockY && bottom - top < keepWhenCutAbove) {
+    const keepWhenCutAbove = Math.min(Math.max(lastRowHeight, contentHeight), blockHeight);
+    const keepWhenCutBelow = Math.min(Math.max(firstRowHeight, contentHeight), blockHeight);
+    const cutBelow = bottom < blockBottom;
+    // Обрезан с обеих сторон: верх содержимого остаётся на экране, растём вниз.
+    if (top > blockY && !cutBelow && bottom - top < keepWhenCutAbove) {
         top = Math.max(blockY, bottom - keepWhenCutAbove);
     }
-    if (bottom < blockBottom && bottom - top < keepWhenCutBelow) {
+    if (cutBelow && bottom - top < keepWhenCutBelow) {
         bottom = Math.min(blockBottom, top + keepWhenCutBelow);
     }
     return { y: top, height: Math.max(0, bottom - top) };
@@ -787,7 +790,8 @@ export function drawCells(
                             scrollBody.top + 1,
                             scrollBody.bottom,
                             getRowHeight(cell.spanRows[0]),
-                            getRowHeight(cell.spanRows[1])
+                            getRowHeight(cell.spanRows[1]),
+                            cell.spanAlign.stickyContentHeight
                         );
                         contentY = box.y;
                         contentHeight = box.height;

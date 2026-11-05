@@ -35,6 +35,28 @@ describe("stickySpanContentBox", () => {
         expect(stickySpanContentBox(450, 300, TOP, BOTTOM, 32, 32)).toEqual({ y: 450, height: 32 });
     });
 
+    it("содержимое выше видимой части, верх блока под шапкой: упирается в низ блока и уезжает с ним", () => {
+        // Блок заканчивается на 100, видно 60px, содержимое 100px.
+        expect(stickySpanContentBox(-300, 400, TOP, BOTTOM, 32, 32, 100)).toEqual({ y: 0, height: 100 });
+    });
+
+    it("содержимое выше видимой части, низ блока под итогом: стоит от верха блока", () => {
+        // Блок начинается на 430, над итоговой строкой видно 38px, содержимое 100px.
+        expect(stickySpanContentBox(430, 400, TOP, BOTTOM, 32, 32, 100)).toEqual({ y: 430, height: 100 });
+    });
+
+    it("содержимое помещается в видимую часть: высота содержимого ни на что не влияет", () => {
+        expect(stickySpanContentBox(-200, 600, TOP, BOTTOM, 32, 32, 100)).toEqual({ y: 40, height: 360 });
+    });
+
+    it("содержимое выше всего блока: прямоугольник не выходит за блок", () => {
+        expect(stickySpanContentBox(-20, 64, TOP, BOTTOM, 32, 32, 100)).toEqual({ y: -20, height: 64 });
+    });
+
+    it("блок обрезан с обеих сторон и содержимое выше области данных: верх остаётся на экране", () => {
+        expect(stickySpanContentBox(-500, 2000, TOP, BOTTOM, 32, 32, 600)).toEqual({ y: 40, height: 600 });
+    });
+
     it("блок ниже одной строки по высоте: прямоугольник не выходит за блок", () => {
         expect(stickySpanContentBox(10, 20, TOP, BOTTOM, 32, 32)).toEqual({ y: 10, height: 20 });
     });

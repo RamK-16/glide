@@ -658,7 +658,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 rect.y + (body.top + 1) * scale,
                 rect.y + body.bottom * scale,
                 first.height,
-                last.height
+                last.height,
+                cell.spanAlign.stickyContentHeight
             );
             return { ...block, y: box.y, height: box.height };
         },
