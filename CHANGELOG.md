@@ -1,3 +1,10 @@
+## [6.12.1](https://github.com/RamK-16/glide/compare/v6.12.0...v6.12.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **data-grid:** высокое содержимое прилипшего блока не прыгает у нижней границы, при CSS-масштабе клик попадает в него ([354756f](https://github.com/RamK-16/glide/commit/354756f03e9b37f7441f0c1902dce024d7532201))
+
 # [6.12.0](https://github.com/RamK-16/glide/compare/v6.11.0...v6.12.0) (2026-11-05)
 
 
