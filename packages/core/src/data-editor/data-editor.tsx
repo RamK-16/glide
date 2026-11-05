@@ -1653,13 +1653,13 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     spanRows !== undefined && spanRows[1] > spanRows[0]
                         ? gridRef.current?.getContentBounds(col, row)
                         : undefined;
-                if (content !== undefined) {
+                if (content !== undefined && spanRows !== undefined) {
                     const editorHeight = Math.min(cellBounds.height, content.height);
                     const y = getSpanEditorPosition(
                         content,
                         editorHeight,
                         blockSpanAlign?.vertical ?? "center",
-                        gridRef.current?.getScrollBodyBounds()
+                        gridRef.current?.getScrollBodyBounds(spanRows)
                     );
                     target = { ...cellBounds, y, height: editorHeight };
                 }

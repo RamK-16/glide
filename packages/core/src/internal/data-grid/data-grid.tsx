@@ -388,8 +388,11 @@ export interface DataGridRef {
      * блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть.
      */
     getContentBounds: (col: number, row: number) => Rectangle | undefined;
-    /** Верх и низ области данных с прокруткой в координатах страницы. */
-    getScrollBodyBounds: () => { top: number; bottom: number } | undefined;
+    /**
+     * Верх и низ области прокрутки в координатах страницы. Для блока, задевающего
+     * закреплённые или итоговые строки, undefined: он лежит не в этой области.
+     */
+    getScrollBodyBounds: (spanRows: readonly [number, number]) => { top: number; bottom: number } | undefined;
     damage: (cells: DamageUpdateList) => void;
     getMouseArgsForPosition: (
         posX: number,
@@ -644,6 +647,20 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         [width, height, totalHeaderHeight, rowAxis, freezeTrailingRows, rows, rowHeight]
     );
 
+    // Блок, задевающий закреплённые или итоговые строки, лежит не в области прокрутки.
+    const isBlockInScrollBody = React.useCallback(
+        ([fromRow, toRow]: readonly [number, number]) => {
+            if (toRow >= rows - freezeTrailingRows) return false;
+            if (rowAxis.pinnedCount > 0) {
+                for (let row = fromRow; row <= toRow; row++) {
+                    if (rowAxis.isPinned(row)) return false;
+                }
+            }
+            return true;
+        },
+        [rows, freezeTrailingRows, rowAxis]
+    );
+
     // Границы нарисованного содержимого ячейки в координатах страницы. У слитого
     // блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть,
     // как в drawCells. Клик, наведение и редактор считают координаты от неё.
@@ -661,6 +678,10 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             };
             const multiRow = cell.spanRows !== undefined && cell.spanRows[1] > cell.spanRows[0];
             if (!multiRow || cell.spanAlign?.sticky !== true) return block;
+            // drawCells не считает прилипание у закреплённых строк, блок стоит там, где нарисован.
+            if (cell.spanRows !== undefined && !isBlockInScrollBody(cell.spanRows)) {
+                return { ...block, height: Math.max(0, block.height) };
+            }
             const scale = canvas.getBoundingClientRect().width / width;
             const body = getScrollBodyBounds(canvas);
             // Высота в getBoundsForItem на 1px больше строки, расчёт идёт по настоящей, как в drawCells.
@@ -675,7 +696,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             );
             return { ...block, y: box.y, height: box.height + scale };
         },
-        [getBoundsForItem, getScrollBodyBounds, width]
+        [getBoundsForItem, getScrollBodyBounds, isBlockInScrollBody, width]
     );
 
     const getMouseArgsForPosition = React.useCallback(
@@ -2037,8 +2058,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 const [originCol, originRow] = getSpanOrigin(cell, col, row);
                 return getSpanContentBounds(canvasRef.current, cell, originCol, originRow);
             },
-            getScrollBodyBounds: () => {
-                if (canvasRef === undefined || canvasRef.current === null) {
+            getScrollBodyBounds: (spanRows: readonly [number, number]) => {
+                if (canvasRef === undefined || canvasRef.current === null || !isBlockInScrollBody(spanRows)) {
                     return undefined;
                 }
                 return getScrollBodyBounds(canvasRef.current);
@@ -2060,6 +2081,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             getCellContent,
             getSpanContentBounds,
             getScrollBodyBounds,
+            isBlockInScrollBody,
         ]
     );
 

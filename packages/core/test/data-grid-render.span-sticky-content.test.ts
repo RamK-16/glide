@@ -103,6 +103,11 @@ describe("stickySpanContentBox", () => {
         }
     });
 
+    it("блок с нулевой или отрицательной высотой: высота прямоугольника не меньше нуля", () => {
+        expect(stickySpanContentBox(100, -39, TOP, BOTTOM, 32, 32).height).toBe(0);
+        expect(stickySpanContentBox(10, -39, TOP, BOTTOM, 32, 32).height).toBe(0);
+    });
+
     it("блок ниже одной строки по высоте: прямоугольник не выходит за блок", () => {
         expect(stickySpanContentBox(10, 20, TOP, BOTTOM, 32, 32)).toEqual({ y: 10, height: 20 });
     });

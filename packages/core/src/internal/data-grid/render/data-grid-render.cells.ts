@@ -266,8 +266,8 @@ export function stickySpanContentBox(
     const bottom = Math.min(blockBottom, visibleBottom);
     const edgeRowHeight = blockY < visibleTop ? lastRowHeight : firstRowHeight;
     const keep = Math.min(Math.max(edgeRowHeight, contentHeight), blockHeight);
-    if (bottom - top >= keep) return { y: top, height: bottom - top };
-    return { y: Math.min(top, blockBottom - keep), height: keep };
+    if (bottom - top >= keep) return { y: top, height: Math.max(0, bottom - top) };
+    return { y: Math.min(top, blockBottom - keep), height: Math.max(0, keep) };
 }
 
 /** Сводка по кадру, которую drawCells отдаёт отрисовщику для решения о сдвиге кадра. */

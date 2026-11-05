@@ -229,12 +229,30 @@ describe("прилипший блок при CSS-масштабе", () => {
         expect(bounds?.height).toBeCloseTo(drawn.height + 1);
     });
 
+    test("getScrollBodyBounds: блок в закреплённых и итоговых строках не в области прокрутки", () => {
+        mockScale(1);
+        const ref = React.createRef<DataGridRef>();
+        render(
+            <DataGrid
+                {...props}
+                ref={ref}
+                canvasRef={React.createRef<HTMLCanvasElement>()}
+                freezeTrailingRows={2}
+                stickyRows={[3]}
+            />
+        );
+
+        expect(ref.current?.getScrollBodyBounds([98, 99])).toBeUndefined();
+        expect(ref.current?.getScrollBodyBounds([2, 5])).toBeUndefined();
+        expect(ref.current?.getScrollBodyBounds([10, 20])).toBeDefined();
+    });
+
     test("getScrollBodyBounds: верх и низ области данных с учётом масштаба", () => {
         mockScale(2);
         const ref = React.createRef<DataGridRef>();
         render(<DataGrid {...props} ref={ref} canvasRef={React.createRef<HTMLCanvasElement>()} />);
 
-        expect(ref.current?.getScrollBodyBounds()).toEqual({
+        expect(ref.current?.getScrollBodyBounds([0, 9])).toEqual({
             top: (HEADER_HEIGHT + 1) * 2,
             bottom: HEIGHT * 2,
         });
