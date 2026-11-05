@@ -249,8 +249,8 @@ function spanFill(geom: SpanBlockGeometry, color: string): SpanFillRect {
  * Когда от блока на экране остаётся меньше одной строки или меньше `contentHeight`,
  * прямоугольник не сжимается, а ведёт себя как `position: sticky`: стоит у верха
  * видимой части и уезжает вместе с низом блока, когда тот подходит вплотную. Держит
- * высоту последней строки у блока, обрезанного только сверху, иначе первой, но не
- * меньше `contentHeight`. Из блока не выходит. Экспортируется для юнит-тестов.
+ * высоту последней строки, если верх блока за краем, иначе первой, но не меньше
+ * `contentHeight`. Из блока не выходит. Экспортируется для юнит-тестов.
  */
 export function stickySpanContentBox(
     blockY: number,
@@ -264,7 +264,7 @@ export function stickySpanContentBox(
     const blockBottom = blockY + blockHeight;
     const top = Math.max(blockY, visibleTop);
     const bottom = Math.min(blockBottom, visibleBottom);
-    const edgeRowHeight = bottom < blockBottom ? firstRowHeight : lastRowHeight;
+    const edgeRowHeight = blockY < visibleTop ? lastRowHeight : firstRowHeight;
     const keep = Math.min(Math.max(edgeRowHeight, contentHeight), blockHeight);
     if (bottom - top >= keep) return { y: top, height: bottom - top };
     return { y: Math.min(top, blockBottom - keep), height: keep };

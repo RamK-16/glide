@@ -8,6 +8,7 @@ import {
     type Rectangle,
     type BaseGridCell,
     type SpanAlignment,
+    type SpanVerticalAlignment,
 } from "../data-grid-types.js";
 import { direction } from "../../../common/utils.js";
 import React from "react";
@@ -69,6 +70,26 @@ export function getScrollBodyRange(
     freezeTrailingHeight: number
 ): { top: number; bottom: number } {
     return { top: pinnedRowsEnd ?? totalHeaderHeight, bottom: height - freezeTrailingHeight };
+}
+
+/**
+ * Где открыть редактор блока: по выравниванию внутри нарисованного содержимого, но в
+ * области данных, даже если верх или низ содержимого уехали за её край. Иначе фокус
+ * окажется в поле, которого не видно.
+ */
+export function getSpanEditorPosition(
+    content: { readonly y: number; readonly height: number },
+    editorHeight: number,
+    vertical: SpanVerticalAlignment,
+    body: { readonly top: number; readonly bottom: number } | undefined
+): number {
+    let y = content.y;
+    if (vertical === "center") {
+        y = content.y + (content.height - editorHeight) / 2;
+    } else if (vertical === "bottom") {
+        y = content.y + content.height - editorHeight;
+    }
+    return body === undefined ? y : Math.max(body.top, Math.min(y, body.bottom - editorHeight));
 }
 
 /**

@@ -1,30 +1,25 @@
 import * as React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import DataGrid, { type DataGridProps, type DataGridRef } from "../src/internal/data-grid/data-grid.js";
 import { CompactSelection, GridCellKind } from "../src/internal/data-grid/data-grid-types.js";
-import { stickySpanContentBox } from "../src/internal/data-grid/render/data-grid-render.cells.js";
 import { AllCellRenderers } from "../src/cells/index.js";
 import { getDefaultTheme } from "../src/index.js";
 import { mergeAndRealizeTheme } from "../src/common/styles.js";
 import ImageWindowLoaderImpl from "../src/common/image-window-loader.js";
 import { standardBeforeEach } from "./test-utils.js";
 
-// При CSS transform: scale(...) клик, наведение и редактор считают границы содержимого
-// в координатах страницы, отрисовка в логических пикселях. Прямоугольник должен совпасть.
+// При CSS transform: scale(...) клик и редактор считают границы содержимого в координатах
+// страницы, отрисовка в логических пикселях. Прямоугольник должен совпасть с нарисованным.
 
 const WIDTH = 1000;
 const HEIGHT = 500;
 const HEADER_HEIGHT = 36;
 const ROW_HEIGHT = 32;
 const CONTENT_HEIGHT = 100;
-// Границы glide на 1px ниже отрисовки при любом масштабе, к масштабированию не относится.
-const BOUNDS_OFFSET = 1;
 
 // Блок в строках 0-9, колонка 0, семь строк над шапкой: виден низ блока, 95px.
 const CELL_Y_OFFSET = 7;
-const LOGICAL_BLOCK_Y = HEADER_HEIGHT - CELL_Y_OFFSET * ROW_HEIGHT;
-const LOGICAL_BLOCK_HEIGHT = 10 * ROW_HEIGHT;
 
 const props: DataGridProps = {
     cellXOffset: 0,
@@ -132,6 +127,37 @@ const mockScale = (scale: number) => {
     });
 };
 
+const blockRowHeight = (row: number) => (row === 9 ? 90 : 30);
+
+/** Настоящая отрисовка: прямоугольник, который drawCells передал ячейке блока. */
+const renderAndGetDrawnRect = async (extra: Partial<DataGridProps>, ref?: React.Ref<DataGridRef>) => {
+    // drawCell использует один объект rect на все ячейки, поэтому копируем сразу.
+    const rects: { y: number; height: number }[] = [];
+    const draw = vi.fn((args: { rect: { y: number; height: number } }) => {
+        rects.push({ ...args.rect });
+    });
+    const base = { ...props, ...extra };
+    render(
+        <DataGrid
+            {...base}
+            ref={ref}
+            canvasRef={React.createRef<HTMLCanvasElement>()}
+            getCellContent={cell => {
+                const content = base.getCellContent(cell);
+                if (content.kind !== GridCellKind.Text || content.spanRows === undefined) return content;
+                return { ...content, kind: GridCellKind.Custom, data: {}, copyData: "" };
+            }}
+            getCellRenderer={cell =>
+                cell.kind === GridCellKind.Custom
+                    ? ({ kind: GridCellKind.Custom, isMatch: () => true, needsHover: false, draw } as any)
+                    : props.getCellRenderer(cell)
+            }
+        />
+    );
+    await waitFor(() => expect(draw).toHaveBeenCalled());
+    return rects[0];
+};
+
 describe("прилипший блок при CSS-масштабе", () => {
     beforeEach(() => {
         standardBeforeEach();
@@ -142,33 +168,23 @@ describe("прилипший блок при CSS-масштабе", () => {
         cleanup();
     });
 
-    // Как считает отрисовка: логические пиксели, без масштаба.
-    const drawn = stickySpanContentBox(
-        LOGICAL_BLOCK_Y,
-        LOGICAL_BLOCK_HEIGHT,
-        HEADER_HEIGHT + 1,
-        HEIGHT,
-        ROW_HEIGHT,
-        ROW_HEIGHT,
-        CONTENT_HEIGHT
-    );
-
-    test.each([0.5, 1, 2])("границы для событий совпадают с отрисовкой, масштаб %s", scale => {
+    test.each([0.5, 1, 2])("границы для событий совпадают с настоящей отрисовкой, масштаб %s", async scale => {
         mockScale(scale);
         const ref = React.createRef<DataGridRef>();
-        render(<DataGrid {...props} ref={ref} canvasRef={React.createRef<HTMLCanvasElement>()} />);
+        const drawn = await renderAndGetDrawnRect({}, ref);
 
         const bounds = ref.current?.getContentBounds(0, 0);
 
         expect(drawn.height).toBe(CONTENT_HEIGHT);
-        expect(bounds?.height).toBeCloseTo(drawn.height * scale);
-        expect(bounds?.y).toBeCloseTo((drawn.y + BOUNDS_OFFSET) * scale);
+        expect(bounds?.y).toBeCloseTo(drawn.y * scale);
+        // Как у всех границ glide, высота на 1px больше, чтобы закрыть линию сетки.
+        expect(bounds?.height).toBeCloseTo((drawn.height + 1) * scale);
     });
 
-    test.each([0.5, 1, 2])("клик по нарисованному содержимому попадает в него, масштаб %s", scale => {
+    test.each([0.5, 1, 2])("клик по нарисованному содержимому попадает в него, масштаб %s", async scale => {
         mockScale(scale);
         const spy = vi.fn();
-        render(<DataGrid {...props} onMouseDown={spy} />);
+        const drawn = await renderAndGetDrawnRect({ onMouseDown: spy });
         const contentY = 50;
 
         fireEvent.pointerDown(screen.getByTestId("data-grid-canvas"), {
@@ -178,7 +194,49 @@ describe("прилипший блок при CSS-масштабе", () => {
 
         const args = spy.mock.calls[0][0];
         expect(args.location).toEqual([0, 0]);
-        // localEventY в координатах страницы, потребитель делит его на масштаб.
-        expect(args.localEventY / scale).toBeCloseTo(contentY - BOUNDS_OFFSET);
+        // localEventY в координатах страницы, внешний код делит его на масштаб.
+        expect(args.localEventY / scale).toBeCloseTo(contentY);
+    });
+
+    test("разные первая и последняя строка: границы и отрисовка выбирают одну высоту", async () => {
+        mockScale(1);
+        const ref = React.createRef<DataGridRef>();
+        // Первая строка 30, последняя 90, от блока над низом шапки видно 60px.
+        const drawn = await renderAndGetDrawnRect(
+            {
+                rowHeight: blockRowHeight,
+                cellYOffset: 9,
+                translateY: -29,
+                headerHeight: 39,
+                height: 468,
+                getCellContent: ([col, row]) => ({
+                    kind: GridCellKind.Text,
+                    allowOverlay: false,
+                    data: "",
+                    displayData: "",
+                    ...(col === 0 && row <= 9
+                        ? { spanRows: [0, 9] as const, spanAlign: { vertical: "top", sticky: true } as const }
+                        : {}),
+                }),
+            },
+            ref
+        );
+
+        const bounds = ref.current?.getContentBounds(0, 0);
+
+        expect(drawn.height).toBe(90);
+        expect(bounds?.y).toBeCloseTo(drawn.y);
+        expect(bounds?.height).toBeCloseTo(drawn.height + 1);
+    });
+
+    test("getScrollBodyBounds: верх и низ области данных с учётом масштаба", () => {
+        mockScale(2);
+        const ref = React.createRef<DataGridRef>();
+        render(<DataGrid {...props} ref={ref} canvasRef={React.createRef<HTMLCanvasElement>()} />);
+
+        expect(ref.current?.getScrollBodyBounds()).toEqual({
+            top: (HEADER_HEIGHT + 1) * 2,
+            bottom: HEIGHT * 2,
+        });
     });
 });
