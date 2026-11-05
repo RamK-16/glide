@@ -116,7 +116,6 @@ const props: DataGridProps = {
         return AllCellRenderers.find(x => x.kind === cell.kind) as any;
     },
     resizeIndicator: "full",
-    imageWindowLoader: new ImageWindowLoaderImpl(),
 };
 
 const mockScale = (scale: number) => {
