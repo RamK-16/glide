@@ -247,8 +247,9 @@ function spanFill(geom: SpanBlockGeometry, color: string): SpanFillRect {
  * (`spanAlign.sticky`): пересечение блока с областью данных между `visibleTop` и
  * `visibleBottom`. Содержимое выравнивается внутри неё как обычно (верх, центр, низ).
  * Когда от блока на экране остаётся меньше одной строки или меньше `contentHeight`,
- * прямоугольник не сжимается, а уезжает вместе с краем блока: у обрезанного сверху
- * блока держит высоту последней строки, у обрезанного снизу первой, но не меньше
+ * прямоугольник не сжимается, а ведёт себя как `position: sticky`: стоит у верха
+ * видимой части и уезжает вместе с низом блока, когда тот подходит вплотную. Держит
+ * высоту последней строки, если верх блока за краем, иначе первой, но не меньше
  * `contentHeight`. Из блока не выходит. Экспортируется для юнит-тестов.
  */
 export function stickySpanContentBox(
@@ -261,19 +262,12 @@ export function stickySpanContentBox(
     contentHeight: number = 0
 ): { y: number; height: number } {
     const blockBottom = blockY + blockHeight;
-    let top = Math.max(blockY, visibleTop);
-    let bottom = Math.min(blockBottom, visibleBottom);
-    const keepWhenCutAbove = Math.min(Math.max(lastRowHeight, contentHeight), blockHeight);
-    const keepWhenCutBelow = Math.min(Math.max(firstRowHeight, contentHeight), blockHeight);
-    const cutBelow = bottom < blockBottom;
-    // Обрезан с обеих сторон: верх содержимого остаётся на экране, растём вниз.
-    if (top > blockY && !cutBelow && bottom - top < keepWhenCutAbove) {
-        top = Math.max(blockY, bottom - keepWhenCutAbove);
-    }
-    if (cutBelow && bottom - top < keepWhenCutBelow) {
-        bottom = Math.min(blockBottom, top + keepWhenCutBelow);
-    }
-    return { y: top, height: Math.max(0, bottom - top) };
+    const top = Math.max(blockY, visibleTop);
+    const bottom = Math.min(blockBottom, visibleBottom);
+    const edgeRowHeight = blockY < visibleTop ? lastRowHeight : firstRowHeight;
+    const keep = Math.min(Math.max(edgeRowHeight, contentHeight), blockHeight);
+    if (bottom - top >= keep) return { y: top, height: Math.max(0, bottom - top) };
+    return { y: Math.min(top, blockBottom - keep), height: Math.max(0, keep) };
 }
 
 /** Сводка по кадру, которую drawCells отдаёт отрисовщику для решения о сдвиге кадра. */

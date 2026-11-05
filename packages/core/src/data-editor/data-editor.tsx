@@ -56,6 +56,7 @@ import {
     gridSelectionHasItem,
     getFreezeTrailingHeight,
     isCoveredSpanCell,
+    getSpanEditorPosition,
     getSpanOrigin,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { normalizeStickyIndexes } from "../internal/data-grid/render/data-grid-freeze.js";
@@ -1652,15 +1653,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     spanRows !== undefined && spanRows[1] > spanRows[0]
                         ? gridRef.current?.getContentBounds(col, row)
                         : undefined;
-                if (content !== undefined) {
+                if (content !== undefined && spanRows !== undefined) {
                     const editorHeight = Math.min(cellBounds.height, content.height);
-                    const vertical = blockSpanAlign?.vertical ?? "center";
-                    let y = content.y;
-                    if (vertical === "center") {
-                        y = content.y + (content.height - editorHeight) / 2;
-                    } else if (vertical === "bottom") {
-                        y = content.y + content.height - editorHeight;
-                    }
+                    const y = getSpanEditorPosition(
+                        content,
+                        editorHeight,
+                        blockSpanAlign?.vertical ?? "center",
+                        gridRef.current?.getScrollBodyBounds(spanRows)
+                    );
                     target = { ...cellBounds, y, height: editorHeight };
                 }
             }
