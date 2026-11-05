@@ -215,6 +215,11 @@ export interface SpanAlignment {
      * @default false
      */
     readonly sticky?: boolean;
+    /**
+     * Только вместе с `sticky`: высота содержимого, если оно выше одной строки. Такое
+     * содержимое не сжимается под видимую часть блока, а целиком уезжает с его краем.
+     */
+    readonly stickyContentHeight?: number;
 }
 
 export interface BaseGridColumn {
