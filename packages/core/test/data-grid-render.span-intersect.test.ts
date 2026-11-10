@@ -1,6 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { CompactSelection, type GridSelection, type Rectangle } from "../src/internal/data-grid/data-grid-types.js";
 import {
+    CompactSelection,
+    GridCellKind,
+    type GridSelection,
+    type InnerGridCell,
+    type Item,
+    type Rectangle,
+} from "../src/internal/data-grid/data-grid-types.js";
+import {
+    getFillSelection,
     rangeTouchesSpan,
     selectionRangeTouchesSpan,
     spanTouchesSelection,
@@ -82,5 +90,68 @@ describe("spanTouchesSelection", () => {
                 rows
             )
         ).toBe(false);
+    });
+});
+
+// Блок по столбцам 2–4 и строкам 5–7; остальные ячейки обычные.
+const getCell = ([col, row]: Item): InnerGridCell =>
+    ({
+        kind: GridCellKind.Text,
+        data: "",
+        displayData: "",
+        allowOverlay: false,
+        ...(col >= 2 && col <= 4 && row >= 5 && row <= 7 ? { span: [2, 4], spanRows: [5, 7] } : {}),
+    }) as InnerGridCell;
+
+// Блок только по строкам: колонка 1, строки 2–4.
+const getTallCell = ([col, row]: Item): InnerGridCell =>
+    ({
+        kind: GridCellKind.Text,
+        data: "",
+        displayData: "",
+        allowOverlay: false,
+        ...(col === 1 && row >= 2 && row <= 4 ? { spanRows: [2, 4] } : {}),
+    }) as InnerGridCell;
+
+const withCell = (cell: Item, range: Rectangle, rangeStack: Rectangle[] = []): GridSelection => ({
+    current: { cell, range, rangeStack },
+    rows: CompactSelection.empty(),
+    columns: CompactSelection.empty(),
+});
+
+describe("getFillSelection", () => {
+    test("без рамки диапазон, растянутый до блока ячейки фокуса, становится одной ячейкой", () => {
+        const stack = [rect(0, 0, 1, 1)];
+        const res = getFillSelection(withCell([3, 6], rect(2, 5, 3, 3), stack), false, 100, getCell);
+        expect(res.current?.range).toEqual(rect(3, 6, 1, 1));
+        expect(res.current?.cell).toEqual([3, 6]);
+        expect(res.current?.rangeStack).toBe(stack);
+        expect(selectionRangeTouchesSpan(res, cols, rows, false)).toBe(false);
+    });
+
+    test("с рамкой фокуса выделение не меняется", () => {
+        const s = withCell([3, 6], rect(2, 5, 3, 3));
+        expect(getFillSelection(s, true, 100, getCell)).toBe(s);
+    });
+
+    test("диапазон больше блока или внутри него остаётся диапазоном", () => {
+        const wider = withCell([3, 6], rect(1, 5, 4, 3));
+        expect(getFillSelection(wider, false, 100, getCell)).toBe(wider);
+        const inner = withCell([3, 6], rect(2, 5, 2, 2));
+        expect(getFillSelection(inner, false, 100, getCell)).toBe(inner);
+    });
+
+    test("обычная ячейка, одна ячейка и фокус вне строк данных: без изменений", () => {
+        const plain = withCell([0, 0], rect(0, 0, 2, 2));
+        expect(getFillSelection(plain, false, 100, getCell)).toBe(plain);
+        const single = withCell([3, 6], rect(3, 6, 1, 1));
+        expect(getFillSelection(single, false, 100, getCell)).toBe(single);
+        const trailing = withCell([3, 6], rect(2, 5, 3, 3));
+        expect(getFillSelection(trailing, false, 6, getCell)).toBe(trailing);
+    });
+
+    test("блок только по строкам", () => {
+        const res = getFillSelection(withCell([1, 3], rect(1, 2, 1, 3)), false, 100, getTallCell);
+        expect(res.current?.range).toEqual(rect(1, 3, 1, 1));
     });
 });
