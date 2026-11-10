@@ -109,15 +109,23 @@ export function getSpanOrigin(
 /**
  * Считает Y текста и baseline по вертикальному выравниванию внутри ячейки высотой height.
  * middleBias — сдвиг для центрирования (из getMiddleCenterBias); padY — отступ сверху/снизу.
+ * lineHeightPx — высота строки. С ней текст «верх» стоит по центру первой строки, как
+ * в поле редактора, где над буквами есть межстрочный запас. Без неё буквы прижаты к отступу.
  */
 export function getSpanTextY(
     y: number,
     height: number,
     vertical: ResolvedSpanAlignment["vertical"],
     middleBias: number,
-    padY: number
+    padY: number,
+    lineHeightPx?: number
 ): { y: number; baseline: CanvasTextBaseline } {
-    if (vertical === "top") return { y: y + padY, baseline: "top" };
+    if (vertical === "top") {
+        if (lineHeightPx === undefined) return { y: y + padY, baseline: "top" };
+        // В блоке ниже строки с отступами текст не опускается ниже центра.
+        const lineCenter = Math.min(padY + lineHeightPx / 2, height / 2);
+        return { y: y + lineCenter + middleBias, baseline: "middle" };
+    }
     if (vertical === "bottom") return { y: y + height - padY, baseline: "bottom" };
     // middleBias из getMiddleCenterBias рассчитан под baseline "middle": он двигает
     // текст от середины шрифта к оптическому центру. С baseline "alphabetic" эта
@@ -139,7 +147,8 @@ export function drawSpanAlignedText(
     height: number,
     align: ResolvedSpanAlignment,
     middleBias: number,
-    padY: number
+    padY: number,
+    lineHeightPx?: number
 ): void {
     const right = Math.max(boxLeft, boxRight);
     let textX = boxLeft;
@@ -151,7 +160,7 @@ export function drawSpanAlignedText(
         textX = right;
         textAlign = "right";
     }
-    const placement = getSpanTextY(y, height, align.vertical, middleBias, padY);
+    const placement = getSpanTextY(y, height, align.vertical, middleBias, padY, lineHeightPx);
     const prevAlign = ctx.textAlign;
     const prevBaseline = ctx.textBaseline;
     ctx.textAlign = textAlign;
@@ -720,6 +729,19 @@ export function getEmHeight(ctx: CanvasRenderingContext2D, fontStyle: string): n
     return textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
 }
 
+/** Множитель высоты строки больше этого не бывает, а высота в px меньше не бывает. */
+const LINE_HEIGHT_PX_MIN = 4;
+
+/**
+ * Высота строки текста ячейки в px. В теме lineHeight бывает множителем (по умолчанию 1.4,
+ * так его понимает перенос строк) или готовой высотой в px.
+ */
+export function getLineHeightPx(ctx: CanvasRenderingContext2D, theme: FullTheme): number {
+    return theme.lineHeight >= LINE_HEIGHT_PX_MIN
+        ? theme.lineHeight
+        : theme.lineHeight * getEmHeight(ctx, theme.baseFontFull);
+}
+
 function truncateString(data: string, w: number): string {
     if (data.includes("\n")) {
         // new lines are rare and split is relatively expensive compared to the search
@@ -817,7 +839,18 @@ export function drawTextCell(
             const resolved = resolveSpanAlignment(spanCell.spanAlign, contentAlign ?? "left");
             const boxLeft = x + theme.cellHorizontalPadding + 0.5;
             const boxRight = x + w - (theme.cellHorizontalPadding + 0.5);
-            drawSpanAlignedText(ctx, data, boxLeft, boxRight, y, h, resolved, bias, theme.cellVerticalPadding);
+            drawSpanAlignedText(
+                ctx,
+                data,
+                boxLeft,
+                boxRight,
+                y,
+                h,
+                resolved,
+                bias,
+                theme.cellVerticalPadding,
+                getLineHeightPx(ctx, theme)
+            );
             if (isRtl) {
                 ctx.direction = "inherit";
             }
