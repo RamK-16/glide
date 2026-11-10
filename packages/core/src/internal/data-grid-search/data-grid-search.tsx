@@ -546,7 +546,7 @@ const DataGridSearch: React.FunctionComponent<DataGridSearchProps> = p => {
                 getCellBorder={p.getCellBorder}
                 onColumnProposeMove={p.onColumnProposeMove}
                 drawFocusRing={p.drawFocusRing}
-                focusHiddenByEditor={p.focusHiddenByEditor}
+                editorOpen={p.editorOpen}
                 drawCell={p.drawCell}
                 drawHeader={p.drawHeader}
                 drawGroupHeader={p.drawGroupHeader}

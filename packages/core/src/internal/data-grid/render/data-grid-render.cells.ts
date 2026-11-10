@@ -127,20 +127,22 @@ export function selectionRangeTouchesSpan(
 /**
  * Выделение, по которому считается заливка. Выбор одной ячейки блока форк растягивает
  * на весь блок (expandSelection), и такой диапазон заливал бы блок, пока открыт
- * редактор, хотя одиночную ячейку под редактором не заливаем. Поэтому, пока рамку
- * фокуса прячет открытый редактор, диапазон, ровно равный блоку ячейки фокуса,
- * считаем выбором одной ячейки. Без редактора (например, выделен столбец, который
- * целиком один блок) выделение не меняем. Сам диапазон выделения не меняется: от
- * него работают копирование и маркер заполнения.
+ * редактор, хотя одиночную ячейку под редактором не заливаем. Поэтому, пока открыт
+ * редактор и рамка фокуса не рисуется (режим "no-editor" или рамка выключена),
+ * диапазон, ровно равный блоку ячейки фокуса, считаем выбором одной ячейки. Без
+ * редактора (например, выделен столбец, который целиком один блок) выделение не
+ * меняем. С рамкой фокуса тоже: рамка обводит диапазон, и заливка ему соответствует.
+ * Сам диапазон выделения не меняется: от него работают копирование и маркер заполнения.
  */
 export function getFillSelection(
     selection: GridSelection,
-    focusHiddenByEditor: boolean,
+    drawFocus: boolean,
+    editorOpen: boolean,
     rows: number,
     getCellContent: (cell: Item) => InnerGridCell
 ): GridSelection {
     const current = selection.current;
-    if (!focusHiddenByEditor || current === undefined) return selection;
+    if (drawFocus || !editorOpen || current === undefined) return selection;
     const { range, cell } = current;
     if (range.width * range.height <= 1) return selection;
     const [col, row] = cell;
@@ -336,7 +338,7 @@ export function drawCells(
     disabledRows: CompactSelection,
     isFocused: boolean,
     drawFocus: boolean,
-    focusHiddenByEditor: boolean,
+    editorOpen: boolean,
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     drawRegions: readonly Rectangle[],
@@ -373,7 +375,7 @@ export function drawCells(
     const rowAxis = rowAxisOf(effectiveColumns);
     const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined;
     const scrollBody = getScrollBodyRange(height, totalHeaderHeight, pinnedRowsEnd, freezeTrailingRowsHeight);
-    const fillSelection = getFillSelection(selection, focusHiddenByEditor, rows, getCellContent);
+    const fillSelection = getFillSelection(selection, drawFocus, editorOpen, rows, getCellContent);
 
     walkColumns(
         effectiveColumns,
