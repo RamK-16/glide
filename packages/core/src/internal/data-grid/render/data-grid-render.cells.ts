@@ -124,6 +124,35 @@ export function selectionRangeTouchesSpan(
     return current.rangeStack.some(r => rangeTouchesSpan(r, blockCols, blockRows));
 }
 
+/**
+ * Выделение, по которому считается заливка. Выбор одной ячейки блока форк растягивает
+ * на весь блок (expandSelection), и такой диапазон заливал бы блок без рамки фокуса,
+ * хотя одиночную ячейку без рамки не заливаем. Поэтому без рамки диапазон, ровно
+ * равный блоку ячейки фокуса, считаем выбором одной ячейки. Сам диапазон выделения
+ * не меняется: от него работают копирование и маркер заполнения.
+ */
+export function getFillSelection(
+    selection: GridSelection,
+    drawFocus: boolean,
+    rows: number,
+    getCellContent: (cell: Item) => InnerGridCell
+): GridSelection {
+    const current = selection.current;
+    if (drawFocus || current === undefined) return selection;
+    const { range, cell } = current;
+    if (range.width * range.height <= 1) return selection;
+    const [col, row] = cell;
+    if (col < 0 || row < 0 || row >= rows) return selection;
+    const content = getCellContent(cell);
+    if (content.span === undefined && content.spanRows === undefined) return selection;
+    const [x0, x1] = content.span ?? [col, col];
+    const [y0, y1] = content.spanRows ?? [row, row];
+    if (range.x !== x0 || range.y !== y0 || range.width !== x1 - x0 + 1 || range.height !== y1 - y0 + 1) {
+        return selection;
+    }
+    return { ...selection, current: { ...current, range: { x: col, y: row, width: 1, height: 1 } } };
+}
+
 export interface SpanFillRect {
     x: number;
     y: number;
@@ -341,6 +370,7 @@ export function drawCells(
     const rowAxis = rowAxisOf(effectiveColumns);
     const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined;
     const scrollBody = getScrollBodyRange(height, totalHeaderHeight, pinnedRowsEnd, freezeTrailingRowsHeight);
+    const fillSelection = getFillSelection(selection, drawFocus, rows, getCellContent);
 
     walkColumns(
         effectiveColumns,
@@ -575,13 +605,13 @@ export function drawCells(
                     // Выделение задело блок, возможно мимо главной ячейки: блок подсвечен целиком.
                     const spanRangeHit =
                         spanGeom !== undefined &&
-                        selectionRangeTouchesSpan(selection, spanGeom.cols, spanGeom.rows, drawFocus);
+                        selectionRangeTouchesSpan(fillSelection, spanGeom.cols, spanGeom.rows, drawFocus);
                     const spanAxisHit =
                         spanGeom !== undefined &&
                         spanTouchesSelection(selection.rows, selection.columns, spanGeom.cols, spanGeom.rows);
 
                     const isSelected = cellIsSelected(cellIndex, cell, selection);
-                    let accentCount = cellIsInRange(cellIndex, cell, selection, drawFocus);
+                    let accentCount = cellIsInRange(cellIndex, cell, fillSelection, drawFocus);
                     const spanIsHighlighted =
                         cell.span !== undefined &&
                         selection.columns.some(
