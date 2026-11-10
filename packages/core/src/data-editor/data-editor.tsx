@@ -1029,6 +1029,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     } = p;
 
     const drawFocusRing = drawFocusRingIn === "no-editor" ? overlay === undefined : drawFocusRingIn;
+    const focusHiddenByEditor = drawFocusRingIn === "no-editor" && overlay !== undefined;
 
     const rowMarkersObj = typeof p.rowMarkers === "string" ? undefined : p.rowMarkers;
 
@@ -4777,6 +4778,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 <DataGridSearch
                     fillHandle={fillHandle}
                     drawFocusRing={drawFocusRing}
+                    focusHiddenByEditor={focusHiddenByEditor}
                     experimental={experimental}
                     fixedShadowX={fixedShadowX}
                     fixedShadowY={fixedShadowY}

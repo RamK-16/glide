@@ -46,6 +46,20 @@ describe("computeCanBlit при смене rowHeight", () => {
     });
 });
 
+describe("computeCanBlit при смене рамки фокуса", () => {
+    const base = { rowHeight: 32, mappedColumns: [], drawFocus: true, focusHiddenByEditor: false };
+
+    it("редактор открылся или закрылся: кадр перерисовывается целиком", () => {
+        const opened = { ...base, drawFocus: false, focusHiddenByEditor: true } as unknown as DrawGridArg;
+        expect(computeCanBlit(opened, base as unknown as DrawGridArg)).toBe(false);
+        expect(computeCanBlit(base as unknown as DrawGridArg, opened)).toBe(false);
+    });
+
+    it("без смены рамки сдвиг кадра разрешён", () => {
+        expect(computeCanBlit({ ...base } as unknown as DrawGridArg, base as unknown as DrawGridArg)).toBe(true);
+    });
+});
+
 describe("blitLastFrame с дополнительной областью", () => {
     const columns = [
         { title: "a", width: 300, sourceIndex: 0, sticky: false },

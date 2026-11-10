@@ -849,7 +849,7 @@ export function drawTextCell(
                 resolved,
                 bias,
                 theme.cellVerticalPadding,
-                getLineHeightPx(ctx, theme)
+                resolved.vertical === "top" ? getLineHeightPx(ctx, theme) : undefined
             );
             if (isRtl) {
                 ctx.direction = "inherit";

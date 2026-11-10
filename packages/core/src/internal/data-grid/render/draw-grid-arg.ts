@@ -62,6 +62,8 @@ export interface DrawGridArg {
     readonly resizeCol: number | undefined;
     readonly isFocused: boolean;
     readonly drawFocus: boolean;
+    /** Рамку фокуса спрятал открытый редактор: блок, растянутый выделением, не заливаем. */
+    readonly focusHiddenByEditor?: boolean;
     readonly selection: GridSelection;
     readonly fillHandle: FillHandle;
     readonly freezeTrailingRows: number;

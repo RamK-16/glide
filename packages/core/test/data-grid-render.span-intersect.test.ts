@@ -120,38 +120,46 @@ const withCell = (cell: Item, range: Rectangle, rangeStack: Rectangle[] = []): G
 });
 
 describe("getFillSelection", () => {
-    test("без рамки диапазон, растянутый до блока ячейки фокуса, становится одной ячейкой", () => {
+    test("пока рамку прячет редактор, диапазон, растянутый до блока ячейки фокуса, становится одной ячейкой", () => {
         const stack = [rect(0, 0, 1, 1)];
-        const res = getFillSelection(withCell([3, 6], rect(2, 5, 3, 3), stack), false, 100, getCell);
+        const res = getFillSelection(withCell([3, 6], rect(2, 5, 3, 3), stack), true, 100, getCell);
         expect(res.current?.range).toEqual(rect(3, 6, 1, 1));
         expect(res.current?.cell).toEqual([3, 6]);
         expect(res.current?.rangeStack).toBe(stack);
         expect(selectionRangeTouchesSpan(res, cols, rows, false)).toBe(false);
     });
 
-    test("с рамкой фокуса выделение не меняется", () => {
+    test("без редактора выделение не меняется, даже если рамки нет", () => {
         const s = withCell([3, 6], rect(2, 5, 3, 3));
-        expect(getFillSelection(s, true, 100, getCell)).toBe(s);
+        expect(getFillSelection(s, false, 100, getCell)).toBe(s);
+    });
+
+    test("выделенный по шапке столбец, который целиком один блок, без редактора остаётся заливкой", () => {
+        // Столбец 1, строки 2–4 это все строки данных, и весь столбец один блок.
+        const column = withCell([1, 2], rect(1, 2, 1, 3));
+        const res = getFillSelection(column, false, 5, getTallCell);
+        expect(res).toBe(column);
+        expect(selectionRangeTouchesSpan(res, [1, 1], [2, 4], false)).toBe(true);
     });
 
     test("диапазон больше блока или внутри него остаётся диапазоном", () => {
         const wider = withCell([3, 6], rect(1, 5, 4, 3));
-        expect(getFillSelection(wider, false, 100, getCell)).toBe(wider);
+        expect(getFillSelection(wider, true, 100, getCell)).toBe(wider);
         const inner = withCell([3, 6], rect(2, 5, 2, 2));
-        expect(getFillSelection(inner, false, 100, getCell)).toBe(inner);
+        expect(getFillSelection(inner, true, 100, getCell)).toBe(inner);
     });
 
     test("обычная ячейка, одна ячейка и фокус вне строк данных: без изменений", () => {
         const plain = withCell([0, 0], rect(0, 0, 2, 2));
-        expect(getFillSelection(plain, false, 100, getCell)).toBe(plain);
+        expect(getFillSelection(plain, true, 100, getCell)).toBe(plain);
         const single = withCell([3, 6], rect(3, 6, 1, 1));
-        expect(getFillSelection(single, false, 100, getCell)).toBe(single);
+        expect(getFillSelection(single, true, 100, getCell)).toBe(single);
         const trailing = withCell([3, 6], rect(2, 5, 3, 3));
-        expect(getFillSelection(trailing, false, 6, getCell)).toBe(trailing);
+        expect(getFillSelection(trailing, true, 6, getCell)).toBe(trailing);
     });
 
     test("блок только по строкам", () => {
-        const res = getFillSelection(withCell([1, 3], rect(1, 2, 1, 3)), false, 100, getTallCell);
+        const res = getFillSelection(withCell([1, 3], rect(1, 2, 1, 3)), true, 100, getTallCell);
         expect(res.current?.range).toEqual(rect(1, 3, 1, 1));
     });
 });
