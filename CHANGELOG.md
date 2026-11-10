@@ -1,3 +1,11 @@
+## [6.12.2](https://github.com/RamK-16/glide/compare/v6.12.1...v6.12.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* **data-grid:** выделение, растянутое до объединённого блока, не заливает блок без рамки фокуса ([9c7551a](https://github.com/RamK-16/glide/commit/9c7551aa9b8938b3e091f27ff1418bab0d706e3a))
+* **data-grid:** текст объединённой ячейки с выравниванием по верху стоит там же, где в поле редактора ([afbe8d8](https://github.com/RamK-16/glide/commit/afbe8d8452a5d8fe912ffc9ae2198dc2cd5497cc))
+
 ## [6.12.1](https://github.com/RamK-16/glide/compare/v6.12.0...v6.12.1) (2026-11-05)
 
 
