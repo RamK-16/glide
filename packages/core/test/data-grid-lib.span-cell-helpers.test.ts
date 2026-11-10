@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getSpanOrigin, isCoveredSpanCell } from "../src/internal/data-grid/render/data-grid-lib.js";
+import { getSpanOrigin, isCoveredSpanCell, rangeIsFocusBlock } from "../src/internal/data-grid/render/data-grid-lib.js";
 
 // Хелперы нормализации слитых ячеек тела: покрытая-vs-origin и приведение к origin.
 // Используются в fill/paste/delete/навигации, поэтому важны для корректности записи в блок.
@@ -61,5 +61,35 @@ describe("getSpanOrigin — приведение любой ячейки бло�
 
     test("ячейка в самом origin остаётся собой (идемпотентность)", () => {
         expect(getSpanOrigin({ span: [2, 4], spanRows: [5, 7] }, 2, 5)).toEqual([2, 5]);
+    });
+});
+
+// Блок: колонки данных 2–3, строки 5–7.
+const blockContent = ([col, row]: readonly [number, number]) =>
+    col >= 2 && col <= 3 && row >= 5 && row <= 7 ? { span: [2, 3] as const, spanRows: [5, 7] as const } : {};
+const block = { x: 2, y: 5, width: 2, height: 3 };
+
+describe("rangeIsFocusBlock: диапазон ровно равен блоку ячейки фокуса", () => {
+    test("диапазон по блоку, фокус в любой его ячейке", () => {
+        expect(rangeIsFocusBlock({ cell: [2, 5], range: block }, 100, blockContent)).toBe(true);
+        expect(rangeIsFocusBlock({ cell: [3, 6], range: block }, 100, blockContent)).toBe(true);
+    });
+
+    test("со служебными колонками слева координаты диапазона сдвинуты, ячейка берётся без сдвига", () => {
+        const shifted = { ...block, x: block.x + 1 };
+        expect(rangeIsFocusBlock({ cell: [3, 5], range: shifted }, 100, blockContent, 1)).toBe(true);
+        expect(rangeIsFocusBlock({ cell: [3, 5], range: block }, 100, blockContent, 1)).toBe(false);
+        expect(rangeIsFocusBlock({ cell: [0, 5], range: shifted }, 100, blockContent, 1)).toBe(false);
+    });
+
+    test("диапазон больше блока, одна ячейка, обычная ячейка, строка за данными: нет", () => {
+        expect(rangeIsFocusBlock({ cell: [2, 5], range: { ...block, height: 4 } }, 100, blockContent)).toBe(false);
+        expect(rangeIsFocusBlock({ cell: [2, 5], range: { x: 2, y: 5, width: 1, height: 1 } }, 100, blockContent)).toBe(
+            false
+        );
+        expect(rangeIsFocusBlock({ cell: [0, 0], range: { x: 0, y: 0, width: 2, height: 2 } }, 100, blockContent)).toBe(
+            false
+        );
+        expect(rangeIsFocusBlock({ cell: [2, 5], range: block }, 5, blockContent)).toBe(false);
     });
 });

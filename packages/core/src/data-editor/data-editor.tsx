@@ -58,6 +58,7 @@ import {
     isCoveredSpanCell,
     getSpanEditorPosition,
     getSpanOrigin,
+    rangeIsFocusBlock,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { normalizeStickyIndexes } from "../internal/data-grid/render/data-grid-freeze.js";
 import { GroupRename } from "./group-rename.js";
@@ -1363,10 +1364,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     const [fillHighlightRegion, setFillHighlightRegion] = React.useState<Rectangle | undefined>();
 
     // this will generally be undefined triggering the memo less often
+    const selectionCurrent = gridSelection.current;
+    // Под редактором без рамки фокуса блок, растянутый выделением, не обводим, как и
+    // не заливаем (getFillSelection): так он выглядит как одиночная ячейка.
     const highlightRange =
-        gridSelection.current !== undefined &&
-        gridSelection.current.range.width * gridSelection.current.range.height > 1
-            ? gridSelection.current.range
+        selectionCurrent !== undefined &&
+        selectionCurrent.range.width * selectionCurrent.range.height > 1 &&
+        !(editorOpen && !drawFocusRing && rangeIsFocusBlock(selectionCurrent, rows, getCellContent, rowMarkerOffset))
+            ? selectionCurrent.range
             : undefined;
 
     const highlightFocus = drawFocusRing ? gridSelection.current?.cell : undefined;

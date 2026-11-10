@@ -24,6 +24,7 @@ import {
     getScrollBodyRange,
     getSpanOrigin,
     drawLastUpdateUnderlay,
+    rangeIsFocusBlock,
 } from "./data-grid-lib.js";
 import type { SpriteManager } from "../data-grid-sprites.js";
 import { mergeAndRealizeTheme, type FullTheme, type Theme } from "../../../common/styles.js";
@@ -143,17 +144,8 @@ export function getFillSelection(
 ): GridSelection {
     const current = selection.current;
     if (drawFocus || !editorOpen || current === undefined) return selection;
-    const { range, cell } = current;
-    if (range.width * range.height <= 1) return selection;
-    const [col, row] = cell;
-    if (col < 0 || row < 0 || row >= rows) return selection;
-    const content = getCellContent(cell);
-    if (content.span === undefined && content.spanRows === undefined) return selection;
-    const [x0, x1] = content.span ?? [col, col];
-    const [y0, y1] = content.spanRows ?? [row, row];
-    if (range.x !== x0 || range.y !== y0 || range.width !== x1 - x0 + 1 || range.height !== y1 - y0 + 1) {
-        return selection;
-    }
+    if (!rangeIsFocusBlock(current, rows, getCellContent)) return selection;
+    const [col, row] = current.cell;
     return { ...selection, current: { ...current, range: { x: col, y: row, width: 1, height: 1 } } };
 }
 
