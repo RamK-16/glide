@@ -1,3 +1,10 @@
+## [6.12.3](https://github.com/RamK-16/glide/compare/v6.12.2...v6.12.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **data-grid:** блок не заливается под открытым редактором, выделенный столбец из одного блока снова залит ([ef82201](https://github.com/RamK-16/glide/commit/ef822013e6a62b868998650fbb25216a3f32ef8f))
+
 ## [6.12.2](https://github.com/RamK-16/glide/compare/v6.12.1...v6.12.2) (2026-11-10)
 
 
