@@ -284,6 +284,8 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.stickyRows !== last.stickyRows ||
         current.getRowThemeOverride !== last.getRowThemeOverride ||
         current.isFocused !== last.isFocused ||
+        current.drawFocus !== last.drawFocus ||
+        current.editorOpen !== last.editorOpen ||
         current.isResizing !== last.isResizing ||
         current.verticalBorder !== last.verticalBorder ||
         current.horizontalBorder !== last.horizontalBorder ||

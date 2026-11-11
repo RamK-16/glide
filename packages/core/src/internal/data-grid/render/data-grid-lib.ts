@@ -60,6 +60,35 @@ export function isCoveredSpanCell(
 }
 
 /**
+ * Диапазон выделения ровно равен объединённому блоку ячейки фокуса: так бывает,
+ * когда форк растянул выбор одной ячейки на весь блок (expandSelection).
+ * getCellContent берёт ячейку без служебных колонок слева, их число colOffset.
+ * Вызывается один раз на кадр, не на ячейку.
+ */
+export function rangeIsFocusBlock(
+    current: { readonly cell: Item; readonly range: Rectangle },
+    rows: number,
+    getCellContent: (cell: Item) => Pick<BaseGridCell, "span" | "spanRows">,
+    colOffset = 0
+): boolean {
+    const { range, cell } = current;
+    if (range.width * range.height <= 1) return false;
+    const [col, row] = cell;
+    const dataCol = col - colOffset;
+    if (dataCol < 0 || row < 0 || row >= rows) return false;
+    const content = getCellContent([dataCol, row]);
+    if (content.span === undefined && content.spanRows === undefined) return false;
+    const [x0, x1] = content.span ?? [dataCol, dataCol];
+    const [y0, y1] = content.spanRows ?? [row, row];
+    return (
+        range.x === x0 + colOffset &&
+        range.y === y0 &&
+        range.width === x1 - x0 + 1 &&
+        range.height === y1 - y0 + 1
+    );
+}
+
+/**
  * Вертикальная область прокручиваемых строк в координатах холста: от низа шапки
  * (или закреплённых сверху строк) до верха закреплённых снизу строк.
  */
@@ -849,7 +878,7 @@ export function drawTextCell(
                 resolved,
                 bias,
                 theme.cellVerticalPadding,
-                getLineHeightPx(ctx, theme)
+                resolved.vertical === "top" ? getLineHeightPx(ctx, theme) : undefined
             );
             if (isRtl) {
                 ctx.direction = "inherit";

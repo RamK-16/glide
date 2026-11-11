@@ -24,6 +24,7 @@ import {
     getScrollBodyRange,
     getSpanOrigin,
     drawLastUpdateUnderlay,
+    rangeIsFocusBlock,
 } from "./data-grid-lib.js";
 import type { SpriteManager } from "../data-grid-sprites.js";
 import { mergeAndRealizeTheme, type FullTheme, type Theme } from "../../../common/styles.js";
@@ -126,30 +127,25 @@ export function selectionRangeTouchesSpan(
 
 /**
  * Выделение, по которому считается заливка. Выбор одной ячейки блока форк растягивает
- * на весь блок (expandSelection), и такой диапазон заливал бы блок без рамки фокуса,
- * хотя одиночную ячейку без рамки не заливаем. Поэтому без рамки диапазон, ровно
- * равный блоку ячейки фокуса, считаем выбором одной ячейки. Сам диапазон выделения
- * не меняется: от него работают копирование и маркер заполнения.
+ * на весь блок (expandSelection), и такой диапазон заливал бы блок, пока открыт
+ * редактор, хотя одиночную ячейку под редактором не заливаем. Поэтому, пока открыт
+ * редактор и рамка фокуса не рисуется (режим "no-editor" или рамка выключена),
+ * диапазон, ровно равный блоку ячейки фокуса, считаем выбором одной ячейки. Без
+ * редактора (например, выделен столбец, который целиком один блок) выделение не
+ * меняем. С рамкой фокуса тоже: рамка обводит диапазон, и заливка ему соответствует.
+ * Сам диапазон выделения не меняется: от него работают копирование и маркер заполнения.
  */
 export function getFillSelection(
     selection: GridSelection,
     drawFocus: boolean,
+    editorOpen: boolean,
     rows: number,
     getCellContent: (cell: Item) => InnerGridCell
 ): GridSelection {
     const current = selection.current;
-    if (drawFocus || current === undefined) return selection;
-    const { range, cell } = current;
-    if (range.width * range.height <= 1) return selection;
-    const [col, row] = cell;
-    if (col < 0 || row < 0 || row >= rows) return selection;
-    const content = getCellContent(cell);
-    if (content.span === undefined && content.spanRows === undefined) return selection;
-    const [x0, x1] = content.span ?? [col, col];
-    const [y0, y1] = content.spanRows ?? [row, row];
-    if (range.x !== x0 || range.y !== y0 || range.width !== x1 - x0 + 1 || range.height !== y1 - y0 + 1) {
-        return selection;
-    }
+    if (drawFocus || !editorOpen || current === undefined) return selection;
+    if (!rangeIsFocusBlock(current, rows, getCellContent)) return selection;
+    const [col, row] = current.cell;
     return { ...selection, current: { ...current, range: { x: col, y: row, width: 1, height: 1 } } };
 }
 
@@ -334,6 +330,7 @@ export function drawCells(
     disabledRows: CompactSelection,
     isFocused: boolean,
     drawFocus: boolean,
+    editorOpen: boolean,
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     drawRegions: readonly Rectangle[],
@@ -370,7 +367,7 @@ export function drawCells(
     const rowAxis = rowAxisOf(effectiveColumns);
     const pinnedRowsEnd = rowAxis !== undefined && rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined;
     const scrollBody = getScrollBodyRange(height, totalHeaderHeight, pinnedRowsEnd, freezeTrailingRowsHeight);
-    const fillSelection = getFillSelection(selection, drawFocus, rows, getCellContent);
+    const fillSelection = getFillSelection(selection, drawFocus, editorOpen, rows, getCellContent);
 
     walkColumns(
         effectiveColumns,

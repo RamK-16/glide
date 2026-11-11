@@ -289,6 +289,12 @@ export interface DataGridProps {
      */
     readonly drawFocusRing: boolean;
 
+    /**
+     * Открыт редактор ячейки. Если при этом рамка фокуса не рисуется, выделение,
+     * растянутое до объединённого блока, не заливает блок под редактором.
+     */
+    readonly editorOpen?: boolean;
+
     readonly dragAndDropState:
         | {
               src: number;
@@ -441,6 +447,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         fixedShadowX = true,
         fixedShadowY = true,
         drawFocusRing,
+        editorOpen = false,
         onMouseDown,
         onMouseUp,
         onMouseMoveRaw,
@@ -1145,6 +1152,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             stickyRows,
             rows,
             drawFocus: drawFocusRing,
+            editorOpen,
             getCellContent,
             getGroupDetails: getGroupDetails ?? (name => ({ name })),
             getRowThemeOverride,
@@ -1219,6 +1227,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         stickyRows,
         rows,
         drawFocusRing,
+        editorOpen,
         maxDPR,
         getCellContent,
         getGroupDetails,

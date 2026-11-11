@@ -58,6 +58,7 @@ import {
     isCoveredSpanCell,
     getSpanEditorPosition,
     getSpanOrigin,
+    rangeIsFocusBlock,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { normalizeStickyIndexes } from "../internal/data-grid/render/data-grid-freeze.js";
 import { GroupRename } from "./group-rename.js";
@@ -130,6 +131,7 @@ type Props = Partial<
         | "columns"
         | "disabledRows"
         | "drawFocusRing"
+        | "editorOpen"
         | "enableGroups"
         | "firstColAccessible"
         | "firstColSticky"
@@ -1029,6 +1031,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     } = p;
 
     const drawFocusRing = drawFocusRingIn === "no-editor" ? overlay === undefined : drawFocusRingIn;
+    const editorOpen = overlay !== undefined;
 
     const rowMarkersObj = typeof p.rowMarkers === "string" ? undefined : p.rowMarkers;
 
@@ -1361,10 +1364,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     const [fillHighlightRegion, setFillHighlightRegion] = React.useState<Rectangle | undefined>();
 
     // this will generally be undefined triggering the memo less often
+    const selectionCurrent = gridSelection.current;
+    // Под редактором без рамки фокуса блок, растянутый выделением, не обводим, как и
+    // не заливаем (getFillSelection): так он выглядит как одиночная ячейка.
     const highlightRange =
-        gridSelection.current !== undefined &&
-        gridSelection.current.range.width * gridSelection.current.range.height > 1
-            ? gridSelection.current.range
+        selectionCurrent !== undefined &&
+        selectionCurrent.range.width * selectionCurrent.range.height > 1 &&
+        !(editorOpen && !drawFocusRing && rangeIsFocusBlock(selectionCurrent, rows, getCellContent, rowMarkerOffset))
+            ? selectionCurrent.range
             : undefined;
 
     const highlightFocus = drawFocusRing ? gridSelection.current?.cell : undefined;
@@ -4777,6 +4784,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 <DataGridSearch
                     fillHandle={fillHandle}
                     drawFocusRing={drawFocusRing}
+                    editorOpen={editorOpen}
                     experimental={experimental}
                     fixedShadowX={fixedShadowX}
                     fixedShadowY={fixedShadowY}
