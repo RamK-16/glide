@@ -60,6 +60,8 @@ export interface DrawGridArg {
     readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
     readonly isResizing: boolean;
     readonly resizeCol: number | undefined;
+    /** Header edge under the mouse; independent of the actual resize interaction. */
+    readonly hoveredResizeCol?: number;
     readonly isFocused: boolean;
     readonly drawFocus: boolean;
     /** Открыт редактор ячейки: без рамки фокуса блок, растянутый выделением, не заливаем. */

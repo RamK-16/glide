@@ -216,13 +216,35 @@ function drawResizeHeaderOutline(
                     overlayCtx,
                     x + c.width,
                     0,
-                    totalHeaderHeight + 1,
+                    totalHeaderHeight,
                     blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
                 );
             }
             return true;
         }
         return false;
+    });
+}
+
+function drawResizeBodyOutline(
+    ctx: CanvasRenderingContext2D,
+    effectiveCols: readonly MappedGridColumn[],
+    translateX: number,
+    totalHeaderHeight: number,
+    height: number,
+    resizeCol: number,
+    theme: DrawGridArg["theme"]
+) {
+    walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+        if (c.sourceIndex !== resizeCol) return false;
+        drawColumnResizeOutline(
+            ctx,
+            x + c.width,
+            totalHeaderHeight,
+            height,
+            blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
+        );
+        return true;
     });
 }
 
@@ -435,6 +457,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         drawCellCallback,
         highlightRegions,
         resizeCol,
+        hoveredResizeCol,
         imageLoader,
         lastBlitData,
         hoverValues,
@@ -455,6 +478,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         minimumCellWidth,
         resizeIndicator,
     } = arg;
+    const indicatorCol = isResizing ? resizeCol : hoveredResizeCol;
+    const showResizeIndicator = indicatorCol !== undefined && resizeIndicator !== "none";
+    // Hover marks only the header edge. The body line belongs to an active resize.
+    const showResizeBodyIndicator = showResizeIndicator && isResizing && resizeIndicator === "full";
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
     const dpr = Math.min(maxScaleFactor, Math.ceil(window.devicePixelRatio ?? 1));
@@ -1147,11 +1174,17 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
         if (damageInView) {
             doDamage(targetCtx);
+            if (showResizeBodyIndicator) {
+                drawResizeBodyOutline(targetCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
+            }
             if (mainCtx !== null) {
                 mainCtx.save();
                 mainCtx.scale(dpr, dpr);
                 mainCtx.textBaseline = "middle";
                 doDamage(mainCtx);
+                if (showResizeBodyIndicator) {
+                    drawResizeBodyOutline(mainCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
+                }
                 mainCtx.restore();
             }
 
@@ -1177,17 +1210,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 drawHeaderTexture();
                 overlayCtx.restore();
 
-                // Во время ресайза частичная перерисовка обновляет фон шапки, но линия
-                // ресайза рисуется только в полном проходе, поэтому фон затирал её левую
-                // половину. Дорисовываем линию шапки и здесь (отсечение уже снято, масштаб
-                // dpr на месте).
-                if (isResizing && resizeIndicator !== "none") {
+                // Восстанавливаем линию после обновления фона шапки как при drag,
+                // так и при hover. Отсечение уже снято, масштаб dpr на месте.
+                if (showResizeIndicator) {
                     drawResizeHeaderOutline(
                         overlayCtx,
                         effectiveCols,
                         translateX,
                         totalHeaderHeight,
-                        resizeCol,
+                        indicatorCol,
                         hiddenColumnsIndicator,
                         theme
                     );
@@ -1474,24 +1505,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     focusRedraw?.();
     highlightAboveRedraw?.();
 
-    if (isResizing && resizeIndicator !== "none") {
+    if (showResizeIndicator) {
         // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),
         // а по телу (режим full) на основной канве.
-        drawResizeHeaderOutline(overlayCtx, effectiveCols, translateX, totalHeaderHeight, resizeCol, hiddenColumnsIndicator, theme);
-        if (resizeIndicator === "full") {
-            walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
-                if (c.sourceIndex === resizeCol) {
-                    drawColumnResizeOutline(
-                        targetCtx,
-                        x + c.width,
-                        totalHeaderHeight,
-                        height,
-                        blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
-                    );
-                    return true;
-                }
-                return false;
-            });
+        drawResizeHeaderOutline(overlayCtx, effectiveCols, translateX, totalHeaderHeight, indicatorCol, hiddenColumnsIndicator, theme);
+        if (showResizeBodyIndicator) {
+            drawResizeBodyOutline(targetCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
         }
     }
 

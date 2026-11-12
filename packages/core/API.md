@@ -125,6 +125,8 @@ Most data grids will want to set the majority of these props one way or another.
 | [overscrollY](#overscroll)                  | Allows overscrolling the data grid vertically by a set amount.          |
 | [rightElement](#rightelement)               | A node which will be placed at the right edge of the data grid.         |
 | [rightElementProps](#rightelement)          | Changes how the right element renders.                                  |
+| [resizeIndicator](#resize-indicator)       | Selects a full-height, header-only or hidden column resize indicator.    |
+| [resizeIndicatorOnHover](#resize-indicator) | Also shows the native indicator when hovering a resizable header edge. |
 | [rowMarkerStartIndex](#rowmarkerstartindex) | The index of the first element in the grid                              |
 | [rowMarkerTheme](#rowmarkertheme)           | Overrides the theme for row markers                                     |
 | [rowMarkerWidth](#rowmarkerwidth)           | The width of the row markers.                                           |
@@ -251,6 +253,24 @@ Most data grids will want to set the majority of these props one way or another.
 | Ctrl/Cmd + Shift + Home/End  | ✔️      | `first`/`last`      | Extend the selection to the first/last cell in the data grid.                            |
 
 # Full API Docs
+
+## Resize indicator
+
+`resizeIndicator?: "full" | "header" | "none"` defaults to `"full"` and controls the indicator height during column resizing.
+
+`resizeIndicatorOnHover?: boolean` defaults to `false`. Set it to `true` to show a native Canvas indicator only in the complete header, including group rows, when a mouse hovers over a resizable column edge. It appears and disappears without a delay or animation, using the existing 5 CSS pixel hit area on either side of the edge. It does not enable resizing by itself: a column resize callback must be provided, and columns with `resizable: false` or equal `minWidth` / `maxWidth` do not show a hover indicator. Touch input does not show a hover indicator.
+
+The line is 2 CSS pixels wide and centered on the column edge. Its color comes from `theme.resizeIndicatorColor`, falling back to the existing `accentLight` color. Set it to your theme's `accentColor` to match the selection outline. The cursor remains `col-resize`. `resizeIndicator="full"` draws a full-height line during drag and a header-only line on hover; `"header"` limits both to the complete header; `"none"` hides both. At a hidden-columns indicator, the existing header stripe takes precedence over the resize line.
+
+```tsx
+<DataEditor
+    {...props}
+    onColumnResize={onColumnResize}
+    resizeIndicator="full"
+    resizeIndicatorOnHover
+    theme={{ resizeIndicatorColor: "#0B7ECB" }}
+/>
+```
 
 ## GridColumn
 
