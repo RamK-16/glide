@@ -882,8 +882,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         // когда в damage попала span-ячейка (иначе hover затирает границы объединённого блока
         // и не восстанавливает их). Обычные таблицы без флага и без span — быстрый blit-путь.
         const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
+        // Прямоугольники повреждённых ячеек нужны и быстрому пути: по ним
+        // перерисовываются обводки регионов подсветки (см. ниже)
         const cellDamageRegions =
-            (enableLowDprHairline || spansInDamage) && damageInView
+            damageInView
                 ? getDamageDrawRegions(
                       effectiveCols,
                       height,
@@ -971,12 +973,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             ctx.restore();
         };
 
+        const repairRegions = enableLowDprHairline || spansInDamage ? cellDamageRegions : undefined;
         const doDamage = (ctx: CanvasRenderingContext2D) => {
-            if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+            if (repairRegions !== undefined && repairRegions.length > 0) {
                 const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);
                 // cellDamageRegions остаются точной dirty-геометрией, а visualDamageRegions расширяют только область repair.
                 // Так мы дорисовываем соседние grid/highlight штрихи без отдельного hover-хака и без смены normal cell rendering path.
-                const visualDamageRegions = expandDamageDrawRegions(cellDamageRegions, repairPad);
+                const visualDamageRegions = expandDamageDrawRegions(repairRegions, repairPad);
 
                 ctx.save();
                 ctx.beginPath();
@@ -1229,6 +1232,43 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 overrideCursor,
                 minimumCellWidth
             );
+
+            // Обводки регионов подсветки (внешние регионы, диапазоны rangeStack,
+            // кольца ошибок) лежат на крайних пикселях ячеек. Ячейка, залитая до
+            // края, при точечной дорисовке их затирала, пока их не перерисует
+            // полный кадр. Перерисовываем обводки в границах повреждённых ячеек.
+            if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+                ctx.save();
+                ctx.beginPath();
+                for (const r of cellDamageRegions) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+                ctx.clip();
+                drawHighlightRings(
+                    ctx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis,
+                    "above",
+                    true
+                );
+                ctx.restore();
+            }
 
             const selectionCurrent = selection.current;
 
