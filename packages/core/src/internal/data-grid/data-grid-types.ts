@@ -206,6 +206,20 @@ export type SpanVerticalAlignment = "top" | "center" | "bottom";
 export interface SpanAlignment {
     readonly horizontal?: SpanHorizontalAlignment;
     readonly vertical?: SpanVerticalAlignment;
+    /**
+     * Только для слитой ячейки в несколько строк: выравнивать содержимое не по всему
+     * блоку, а по его видимой части. Если блок частично ушёл за край области данных
+     * (под шапку, закреплённые сверху строки или закреплённые снизу строки), подпись
+     * остаётся на экране: по верху, центру или низу видимой части. В шапке не
+     * используется.
+     * @default false
+     */
+    readonly sticky?: boolean;
+    /**
+     * Только вместе с `sticky`: высота содержимого, если оно выше одной строки. Такое
+     * содержимое не сжимается под видимую часть блока, а целиком уезжает с его краем.
+     */
+    readonly stickyContentHeight?: number;
 }
 
 export interface BaseGridColumn {

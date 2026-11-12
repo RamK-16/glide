@@ -8,6 +8,7 @@ import {
     type Rectangle,
     type BaseGridCell,
     type SpanAlignment,
+    type SpanVerticalAlignment,
 } from "../data-grid-types.js";
 import { direction } from "../../../common/utils.js";
 import React from "react";
@@ -59,6 +60,69 @@ export function isCoveredSpanCell(
 }
 
 /**
+ * Диапазон выделения ровно равен объединённому блоку ячейки фокуса: так бывает,
+ * когда форк растянул выбор одной ячейки на весь блок (expandSelection).
+ * getCellContent берёт ячейку без служебных колонок слева, их число colOffset.
+ * Вызывается один раз на кадр, не на ячейку.
+ */
+export function rangeIsFocusBlock(
+    current: { readonly cell: Item; readonly range: Rectangle },
+    rows: number,
+    getCellContent: (cell: Item) => Pick<BaseGridCell, "span" | "spanRows">,
+    colOffset = 0
+): boolean {
+    const { range, cell } = current;
+    if (range.width * range.height <= 1) return false;
+    const [col, row] = cell;
+    const dataCol = col - colOffset;
+    if (dataCol < 0 || row < 0 || row >= rows) return false;
+    const content = getCellContent([dataCol, row]);
+    if (content.span === undefined && content.spanRows === undefined) return false;
+    const [x0, x1] = content.span ?? [dataCol, dataCol];
+    const [y0, y1] = content.spanRows ?? [row, row];
+    return (
+        range.x === x0 + colOffset &&
+        range.y === y0 &&
+        range.width === x1 - x0 + 1 &&
+        range.height === y1 - y0 + 1
+    );
+}
+
+/**
+ * Вертикальная область прокручиваемых строк в координатах холста: от низа шапки
+ * (или закреплённых сверху строк) до верха закреплённых снизу строк.
+ */
+export function getScrollBodyRange(
+    height: number,
+    totalHeaderHeight: number,
+    pinnedRowsEnd: number | undefined,
+    freezeTrailingHeight: number
+): { top: number; bottom: number } {
+    return { top: pinnedRowsEnd ?? totalHeaderHeight, bottom: height - freezeTrailingHeight };
+}
+
+/**
+ * Где открыть редактор блока: по выравниванию внутри нарисованного содержимого. Блок
+ * в области прокрутки (`body`) остаётся в ней, даже если верх или низ содержимого
+ * уехали за край: иначе фокус окажется в поле, которого не видно. Блок в закреплённых
+ * и итоговых строках приходит без `body` и стоит там, где нарисован.
+ */
+export function getSpanEditorPosition(
+    content: { readonly y: number; readonly height: number },
+    editorHeight: number,
+    vertical: SpanVerticalAlignment,
+    body: { readonly top: number; readonly bottom: number } | undefined
+): number {
+    let y = content.y;
+    if (vertical === "center") {
+        y = content.y + (content.height - editorHeight) / 2;
+    } else if (vertical === "bottom") {
+        y = content.y + content.height - editorHeight;
+    }
+    return body === undefined ? y : Math.max(body.top, Math.min(y, body.bottom - editorHeight));
+}
+
+/**
  * Origin (левый верхний угол) слитого блока для любой его ячейки. span/spanRows
  * одинаковы на всех ячейках блока, поэтому берём [span[0], spanRows[0]] с
  * фолбэком на исходные координаты. Нормализует клик и навигацию к origin.
@@ -74,15 +138,23 @@ export function getSpanOrigin(
 /**
  * Считает Y текста и baseline по вертикальному выравниванию внутри ячейки высотой height.
  * middleBias — сдвиг для центрирования (из getMiddleCenterBias); padY — отступ сверху/снизу.
+ * lineHeightPx — высота строки. С ней текст «верх» стоит по центру первой строки, как
+ * в поле редактора, где над буквами есть межстрочный запас. Без неё буквы прижаты к отступу.
  */
 export function getSpanTextY(
     y: number,
     height: number,
     vertical: ResolvedSpanAlignment["vertical"],
     middleBias: number,
-    padY: number
+    padY: number,
+    lineHeightPx?: number
 ): { y: number; baseline: CanvasTextBaseline } {
-    if (vertical === "top") return { y: y + padY, baseline: "top" };
+    if (vertical === "top") {
+        if (lineHeightPx === undefined) return { y: y + padY, baseline: "top" };
+        // В блоке ниже строки с отступами текст не опускается ниже центра.
+        const lineCenter = Math.min(padY + lineHeightPx / 2, height / 2);
+        return { y: y + lineCenter + middleBias, baseline: "middle" };
+    }
     if (vertical === "bottom") return { y: y + height - padY, baseline: "bottom" };
     // middleBias из getMiddleCenterBias рассчитан под baseline "middle": он двигает
     // текст от середины шрифта к оптическому центру. С baseline "alphabetic" эта
@@ -104,7 +176,8 @@ export function drawSpanAlignedText(
     height: number,
     align: ResolvedSpanAlignment,
     middleBias: number,
-    padY: number
+    padY: number,
+    lineHeightPx?: number
 ): void {
     const right = Math.max(boxLeft, boxRight);
     let textX = boxLeft;
@@ -116,7 +189,7 @@ export function drawSpanAlignedText(
         textX = right;
         textAlign = "right";
     }
-    const placement = getSpanTextY(y, height, align.vertical, middleBias, padY);
+    const placement = getSpanTextY(y, height, align.vertical, middleBias, padY, lineHeightPx);
     const prevAlign = ctx.textAlign;
     const prevBaseline = ctx.textBaseline;
     ctx.textAlign = textAlign;
@@ -685,6 +758,19 @@ export function getEmHeight(ctx: CanvasRenderingContext2D, fontStyle: string): n
     return textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
 }
 
+/** Множитель высоты строки больше этого не бывает, а высота в px меньше не бывает. */
+const LINE_HEIGHT_PX_MIN = 4;
+
+/**
+ * Высота строки текста ячейки в px. В теме lineHeight бывает множителем (по умолчанию 1.4,
+ * так его понимает перенос строк) или готовой высотой в px.
+ */
+export function getLineHeightPx(ctx: CanvasRenderingContext2D, theme: FullTheme): number {
+    return theme.lineHeight >= LINE_HEIGHT_PX_MIN
+        ? theme.lineHeight
+        : theme.lineHeight * getEmHeight(ctx, theme.baseFontFull);
+}
+
 function truncateString(data: string, w: number): string {
     if (data.includes("\n")) {
         // new lines are rare and split is relatively expensive compared to the search
@@ -782,7 +868,18 @@ export function drawTextCell(
             const resolved = resolveSpanAlignment(spanCell.spanAlign, contentAlign ?? "left");
             const boxLeft = x + theme.cellHorizontalPadding + 0.5;
             const boxRight = x + w - (theme.cellHorizontalPadding + 0.5);
-            drawSpanAlignedText(ctx, data, boxLeft, boxRight, y, h, resolved, bias, theme.cellVerticalPadding);
+            drawSpanAlignedText(
+                ctx,
+                data,
+                boxLeft,
+                boxRight,
+                y,
+                h,
+                resolved,
+                bias,
+                theme.cellVerticalPadding,
+                resolved.vertical === "top" ? getLineHeightPx(ctx, theme) : undefined
+            );
             if (isRtl) {
                 ctx.direction = "inherit";
             }

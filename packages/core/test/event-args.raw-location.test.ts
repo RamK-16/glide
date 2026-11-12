@@ -1,5 +1,10 @@
 import { expect, describe, test } from "vitest";
-import { mouseEventArgsAreEqual, type GridMouseEventArgs } from "../src/internal/data-grid/event-args.js";
+import {
+    hoverDamageItems,
+    mouseEventArgsAreEqual,
+    type GridMouseCellEventArgs,
+    type GridMouseEventArgs,
+} from "../src/internal/data-grid/event-args.js";
 
 // rawLocation в cell-событиях: физическая ячейка под курсором до нормализации
 // к origin слитого блока. Сравнение аргументов должно различать строки внутри
@@ -45,5 +50,21 @@ describe("mouseEventArgsAreEqual и rawLocation", () => {
 
     test("rawLocation против его отсутствия: НЕ равны", () => {
         expect(mouseEventArgsAreEqual(cellArgs([1, 4], [1, 4]), cellArgs([1, 4]))).toBe(false);
+    });
+});
+
+describe("hoverDamageItems", () => {
+    test("обычная ячейка: перерисовывается только она", () => {
+        const args = cellArgs([2, 5], [2, 5]) as GridMouseCellEventArgs;
+        expect(hoverDamageItems(args)).toEqual([[2, 5]]);
+        expect(hoverDamageItems(cellArgs([2, 5]) as GridMouseCellEventArgs)).toEqual([[2, 5]]);
+    });
+
+    test("слитый блок: главная ячейка и ячейка под курсором", () => {
+        const args = cellArgs([2, 0], [2, 7]) as GridMouseCellEventArgs;
+        expect(hoverDamageItems(args)).toEqual([
+            [2, 0],
+            [2, 7],
+        ]);
     });
 });

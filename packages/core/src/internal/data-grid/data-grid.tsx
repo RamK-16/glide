@@ -3,7 +3,9 @@ import type { FullTheme } from "../../common/styles.js";
 import {
     computeBounds,
     getColumnIndexForX,
+    getFreezeTrailingHeight,
     getRowIndexForY,
+    getScrollBodyRange,
     getSpanOrigin,
     getStickyWidth,
     rectBottomRight,
@@ -60,14 +62,17 @@ import {
     outOfBoundsKind,
     groupHeaderKind,
     headerKind,
+    hoverDamageItems,
     mouseEventArgsAreEqual,
 } from "./event-args.js";
 import { pointInRect } from "../../common/math.js";
+import type { RowHeightCallback } from "../scrolling-data-grid/row-offsets.js";
 import {
     type GroupDetailsCallback,
     type GetRowThemeCallback,
     type Highlight,
     drawCell,
+    stickySpanContentBox,
 } from "./render/data-grid-render.cells.js";
 import { getActionBoundsForGroup, drawHeader, computeHeaderLayout } from "./render/data-grid-render.header.js";
 import {
@@ -142,7 +147,7 @@ export interface DataGridProps {
     readonly headerHeight: number;
     readonly groupHeaderHeight: number | number[];
     readonly enableGroups: boolean;
-    readonly rowHeight: number | ((index: number) => number);
+    readonly rowHeight: number | RowHeightCallback;
 
     readonly canvasRef: React.MutableRefObject<HTMLCanvasElement | null> | undefined;
 
@@ -284,6 +289,12 @@ export interface DataGridProps {
      */
     readonly drawFocusRing: boolean;
 
+    /**
+     * Открыт редактор ячейки. Если при этом рамка фокуса не рисуется, выделение,
+     * растянутое до объединённого блока, не заливает блок под редактором.
+     */
+    readonly editorOpen?: boolean;
+
     readonly dragAndDropState:
         | {
               src: number;
@@ -386,6 +397,16 @@ type DamageUpdateList = readonly {
 export interface DataGridRef {
     focus: () => void;
     getBounds: (col?: number, row?: number) => Rectangle | undefined;
+    /**
+     * Границы нарисованного содержимого ячейки в координатах страницы. У слитого
+     * блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть.
+     */
+    getContentBounds: (col: number, row: number) => Rectangle | undefined;
+    /**
+     * Верх и низ области прокрутки в координатах страницы. Для блока, задевающего
+     * закреплённые или итоговые строки, undefined: он лежит не в этой области.
+     */
+    getScrollBodyBounds: (spanRows: readonly [number, number]) => { top: number; bottom: number } | undefined;
     damage: (cells: DamageUpdateList) => void;
     getMouseArgsForPosition: (
         posX: number,
@@ -434,6 +455,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         fixedShadowX = true,
         fixedShadowY = true,
         drawFocusRing,
+        editorOpen = false,
         onMouseDown,
         onMouseUp,
         onMouseMoveRaw,
@@ -627,6 +649,73 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             columnLayout,
             rowAxis,
         ]
+    );
+
+    const getScrollBodyBounds = React.useCallback(
+        (canvas: HTMLCanvasElement) => {
+            const rect = canvas.getBoundingClientRect();
+            const scale = rect.width / width;
+            const body = getScrollBodyRange(
+                height,
+                totalHeaderHeight,
+                rowAxis.pinnedCount > 0 ? rowAxis.pinnedEnd : undefined,
+                freezeTrailingRows > 0 ? getFreezeTrailingHeight(rows, freezeTrailingRows, rowHeight) : 0
+            );
+            return { top: rect.y + (body.top + 1) * scale, bottom: rect.y + body.bottom * scale };
+        },
+        [width, height, totalHeaderHeight, rowAxis, freezeTrailingRows, rows, rowHeight]
+    );
+
+    // Блок, задевающий закреплённые или итоговые строки, лежит не в области прокрутки.
+    const isBlockInScrollBody = React.useCallback(
+        ([fromRow, toRow]: readonly [number, number]) => {
+            if (toRow >= rows - freezeTrailingRows) return false;
+            if (rowAxis.pinnedCount > 0) {
+                for (let row = fromRow; row <= toRow; row++) {
+                    if (rowAxis.isPinned(row)) return false;
+                }
+            }
+            return true;
+        },
+        [rows, freezeTrailingRows, rowAxis]
+    );
+
+    // Границы нарисованного содержимого ячейки в координатах страницы. У слитого
+    // блока это весь блок, а при прилипании (spanAlign.sticky) его видимая часть,
+    // как в drawCells. Клик, наведение и редактор считают координаты от неё.
+    const getSpanContentBounds = React.useCallback(
+        (canvas: HTMLCanvasElement, cell: InnerGridCell, originCol: number, originRow: number) => {
+            const first = getBoundsForItem(canvas, originCol, originRow);
+            if (cell.span === undefined && cell.spanRows === undefined) return first;
+            const last = getBoundsForItem(canvas, cell.span?.[1] ?? originCol, cell.spanRows?.[1] ?? originRow);
+            if (first === undefined || last === undefined) return first;
+            const block = {
+                x: first.x,
+                y: first.y,
+                width: last.x + last.width - first.x,
+                height: last.y + last.height - first.y,
+            };
+            const multiRow = cell.spanRows !== undefined && cell.spanRows[1] > cell.spanRows[0];
+            if (!multiRow || cell.spanAlign?.sticky !== true) return block;
+            // drawCells не считает прилипание у закреплённых строк, блок стоит там, где нарисован.
+            if (cell.spanRows !== undefined && !isBlockInScrollBody(cell.spanRows)) {
+                return { ...block, height: Math.max(0, block.height) };
+            }
+            const scale = canvas.getBoundingClientRect().width / width;
+            const body = getScrollBodyBounds(canvas);
+            // Высота в getBoundsForItem на 1px больше строки, расчёт идёт по настоящей, как в drawCells.
+            const box = stickySpanContentBox(
+                block.y,
+                block.height - scale,
+                body.top,
+                body.bottom,
+                first.height - scale,
+                last.height - scale,
+                (cell.spanAlign.stickyContentHeight ?? 0) * scale
+            );
+            return { ...block, y: box.y, height: box.height + scale };
+        },
+        [getBoundsForItem, getScrollBodyBounds, isBlockInScrollBody, width]
     );
 
     const getMouseArgsForPosition = React.useCallback(
@@ -887,10 +976,11 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             } else {
                 // Объединённая ячейка тела (colspan/rowspan/прямоугольник): попадание в любую
                 // точку блока трактуем как origin [startCol, startRow], чтобы клик/выделение/
-                // редактирование/hover работали по всему блоку.
+                // редактирование/hover работали по всему блоку. Границы и координаты события
+                // считаются от нарисованного содержимого блока.
                 const spanCell = getCellContent([col, row]);
                 const [cellCol, cellRow] = getSpanOrigin(spanCell, col, row);
-                const bounds = getBoundsForItem(canvas, cellCol, cellRow);
+                const bounds = getSpanContentBounds(canvas, spanCell, cellCol, cellRow);
                 assert(bounds !== undefined);
                 const isEdge = bounds !== undefined && bounds.x + bounds.width - posX < edgeDetectionBuffer;
 
@@ -958,6 +1048,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             translateY,
             freezeTrailingRows,
             getBoundsForItem,
+            getSpanContentBounds,
             getCellContent,
             fillHandle,
             selection,
@@ -1134,6 +1225,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             stickyRows,
             rows,
             drawFocus: drawFocusRing,
+            editorOpen,
             getCellContent,
             getGroupDetails: getGroupDetails ?? (name => ({ name })),
             getRowThemeOverride,
@@ -1209,6 +1301,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         stickyRows,
         rows,
         drawFocusRing,
+        editorOpen,
         maxDPR,
         getCellContent,
         getGroupDetails,
@@ -1684,7 +1777,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 maybeSetHoveredInfo(newInfo, needsHoverPosition);
                 hoverInfoRef.current = newInfo;
                 if (needsDamageCell) {
-                    damageInternal(new CellSet([args.location]));
+                    damageInternal(new CellSet(args.kind === "cell" ? hoverDamageItems(args) : [args.location]));
                 }
             }
 
@@ -2060,6 +2153,20 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
 
                 return getBoundsForItem(canvasRef.current, col ?? 0, row ?? -1);
             },
+            getContentBounds: (col: number, row: number) => {
+                if (canvasRef === undefined || canvasRef.current === null) {
+                    return undefined;
+                }
+                const cell = getCellContent([col, row]);
+                const [originCol, originRow] = getSpanOrigin(cell, col, row);
+                return getSpanContentBounds(canvasRef.current, cell, originCol, originRow);
+            },
+            getScrollBodyBounds: (spanRows: readonly [number, number]) => {
+                if (canvasRef === undefined || canvasRef.current === null || !isBlockInScrollBody(spanRows)) {
+                    return undefined;
+                }
+                return getScrollBodyBounds(canvasRef.current);
+            },
             damage,
             getMouseArgsForPosition: (posX: number, posY: number, ev?: MouseEvent | TouchEvent) => {
                 if (canvasRef === undefined || canvasRef.current === null) {
@@ -2069,7 +2176,16 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 return getMouseArgsForPosition(canvasRef.current, posX, posY, ev);
             },
         }),
-        [canvasRef, damage, getBoundsForItem, getMouseArgsForPosition]
+        [
+            canvasRef,
+            damage,
+            getBoundsForItem,
+            getMouseArgsForPosition,
+            getCellContent,
+            getSpanContentBounds,
+            getScrollBodyBounds,
+            isBlockInScrollBody,
+        ]
     );
 
     const lastFocusedSubdomNode = React.useRef<Item | undefined>(undefined);

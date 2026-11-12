@@ -56,7 +56,9 @@ import {
     gridSelectionHasItem,
     getFreezeTrailingHeight,
     isCoveredSpanCell,
+    getSpanEditorPosition,
     getSpanOrigin,
+    rangeIsFocusBlock,
 } from "../internal/data-grid/render/data-grid-lib.js";
 import { normalizeStickyIndexes } from "../internal/data-grid/render/data-grid-freeze.js";
 import { GroupRename } from "./group-rename.js";
@@ -129,6 +131,7 @@ type Props = Partial<
         | "columns"
         | "disabledRows"
         | "drawFocusRing"
+        | "editorOpen"
         | "enableGroups"
         | "firstColAccessible"
         | "firstColSticky"
@@ -469,6 +472,13 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
     readonly scrollOffsetX?: number;
 
     /** Determins the height of each row.
+     *
+     * Позиции строк кешируются по функции `rowHeight`: когда высоты меняются, передавай новую функцию,
+     * иначе glide продолжит считать по старым высотам и прокрутка разойдётся с отрисовкой.
+     * У функции можно указать `version`, а у следующей `changes` (`RowHeightChanges`): версию прежней функции
+     * и строки, у которых высота могла измениться. Тогда glide спросит высоты только у этих строк и перерисует
+     * экран только от первой из них. Подсказка действует на один шаг: если glide не видел прежнюю версию,
+     * он пересчитает всё. С `rowGrouping` и `scaleToRem` функцию оборачивают, и подсказка не используется.
      * @group Style
      * @defaultValue 34
      */
@@ -1022,6 +1032,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     } = p;
 
     const drawFocusRing = drawFocusRingIn === "no-editor" ? overlay === undefined : drawFocusRingIn;
+    const editorOpen = overlay !== undefined;
 
     const rowMarkersObj = typeof p.rowMarkers === "string" ? undefined : p.rowMarkers;
 
@@ -1354,10 +1365,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     const [fillHighlightRegion, setFillHighlightRegion] = React.useState<Rectangle | undefined>();
 
     // this will generally be undefined triggering the memo less often
+    const selectionCurrent = gridSelection.current;
+    // Под редактором без рамки фокуса блок, растянутый выделением, не обводим, как и
+    // не заливаем (getFillSelection): так он выглядит как одиночная ячейка.
     const highlightRange =
-        gridSelection.current !== undefined &&
-        gridSelection.current.range.width * gridSelection.current.range.height > 1
-            ? gridSelection.current.range
+        selectionCurrent !== undefined &&
+        selectionCurrent.range.width * selectionCurrent.range.height > 1 &&
+        !(editorOpen && !drawFocusRing && rangeIsFocusBlock(selectionCurrent, rows, getCellContent, rowMarkerOffset))
+            ? selectionCurrent.range
             : undefined;
 
     const highlightFocus = drawFocusRing ? gridSelection.current?.cell : undefined;
@@ -1633,25 +1648,28 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
-            // Объединённая ячейка (spanRows): редактор/превью открываем по вертикали
-            // блока (spanAlign.vertical), а не всегда в верхней строке. Верхняя строка
-            // даёт верх блока (val.target), нижняя строка — низ.
+            // Объединённая ячейка: редактор размером с главную ячейку. В блоке в несколько
+            // строк он стоит по вертикали блока (spanAlign.vertical) внутри нарисованного
+            // содержимого, при прилипании это видимая часть блока.
             let target = val.target;
-            const { spanRows, spanAlign: blockSpanAlign } = val.content;
-            if (spanRows !== undefined && spanRows[1] > spanRows[0]) {
-                const bottomBounds = gridRef.current?.getBounds(col, spanRows[1]);
-                if (bottomBounds !== undefined) {
-                    const blockTop = target.y;
-                    const blockHeight = bottomBounds.y + bottomBounds.height - blockTop;
-                    const editorHeight = target.height;
-                    const vertical = blockSpanAlign?.vertical ?? "center";
-                    let y = blockTop;
-                    if (vertical === "center") {
-                        y = blockTop + (blockHeight - editorHeight) / 2;
-                    } else if (vertical === "bottom") {
-                        y = blockTop + blockHeight - editorHeight;
-                    }
-                    target = { ...target, y };
+            const { span, spanRows, spanAlign: blockSpanAlign } = val.content;
+            const cellBounds =
+                span !== undefined || spanRows !== undefined ? gridRef.current?.getBounds(col, row) : undefined;
+            if (cellBounds !== undefined) {
+                target = cellBounds;
+                const content =
+                    spanRows !== undefined && spanRows[1] > spanRows[0]
+                        ? gridRef.current?.getContentBounds(col, row)
+                        : undefined;
+                if (content !== undefined && spanRows !== undefined) {
+                    const editorHeight = Math.min(cellBounds.height, content.height);
+                    const y = getSpanEditorPosition(
+                        content,
+                        editorHeight,
+                        blockSpanAlign?.vertical ?? "center",
+                        gridRef.current?.getScrollBodyBounds(spanRows)
+                    );
+                    target = { ...cellBounds, y, height: editorHeight };
                 }
             }
 
@@ -4767,6 +4785,7 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 <DataGridSearch
                     fillHandle={fillHandle}
                     drawFocusRing={drawFocusRing}
+                    editorOpen={editorOpen}
                     experimental={experimental}
                     fixedShadowX={fixedShadowX}
                     fixedShadowY={fixedShadowY}

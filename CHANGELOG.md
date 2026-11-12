@@ -1,3 +1,53 @@
+## [6.12.3](https://github.com/RamK-16/glide/compare/v6.12.2...v6.12.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **data-grid:** блок не заливается под открытым редактором, выделенный столбец из одного блока снова залит ([ef82201](https://github.com/RamK-16/glide/commit/ef822013e6a62b868998650fbb25216a3f32ef8f))
+
+## [6.12.2](https://github.com/RamK-16/glide/compare/v6.12.1...v6.12.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* **data-grid:** выделение, растянутое до объединённого блока, не заливает блок без рамки фокуса ([9c7551a](https://github.com/RamK-16/glide/commit/9c7551aa9b8938b3e091f27ff1418bab0d706e3a))
+* **data-grid:** текст объединённой ячейки с выравниванием по верху стоит там же, где в поле редактора ([afbe8d8](https://github.com/RamK-16/glide/commit/afbe8d8452a5d8fe912ffc9ae2198dc2cd5497cc))
+
+## [6.12.1](https://github.com/RamK-16/glide/compare/v6.12.0...v6.12.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **data-grid:** высокое содержимое прилипшего блока не прыгает у нижней границы, при CSS-масштабе клик попадает в него ([354756f](https://github.com/RamK-16/glide/commit/354756f03e9b37f7441f0c1902dce024d7532201))
+
+# [6.12.0](https://github.com/RamK-16/glide/compare/v6.11.0...v6.12.0) (2026-11-05)
+
+
+### Features
+
+* **data-grid:** содержимое выше строки в прилипшем блоке не обрезается, а уезжает с краем блока ([1dadef2](https://github.com/RamK-16/glide/commit/1dadef223a39eb73ecc4637bc4b4f8eda67a3bfe))
+
+# [6.11.0](https://github.com/RamK-16/glide/compare/v6.10.0...v6.11.0) (2026-10-31)
+
+
+### Features
+
+* **data-grid:** подсказка changes у rowHeight: позиции строк и кадр обновляются только от изменившихся строк ([#60](https://github.com/RamK-16/glide/issues/60)) ([4add19a](https://github.com/RamK-16/glide/commit/4add19af9e4860fa7d6a7245e77dd92dcd941d23))
+
+# [6.10.0](https://github.com/RamK-16/glide/compare/v6.9.0...v6.10.0) (2026-10-30)
+
+
+### Features
+
+* **data-grid:** слитый блок красится целиком, подпись высокого блока прилипает к верху видимой части ([#57](https://github.com/RamK-16/glide/issues/57)) ([f497909](https://github.com/RamK-16/glide/commit/f497909a57f6f6014933c14bcf2de01d62bd96a7))
+
+# [6.9.0](https://github.com/RamK-16/glide/compare/v6.8.1...v6.9.0) (2026-10-30)
+
+
+### Features
+
+* **data-grid:** быстрый скролл больших таблиц с rowHeight-функцией ([#59](https://github.com/RamK-16/glide/issues/59)) ([7056cf4](https://github.com/RamK-16/glide/commit/7056cf40a738157100483d212eb261e86f8afefe))
+
 ## [6.8.1](https://github.com/RamK-16/glide/compare/v6.8.0...v6.8.1) (2026-10-21)
 
 

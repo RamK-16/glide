@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react-hooks";
 import {
     resolveSpanAlignment,
     getSpanTextY,
+    getLineHeightPx,
     drawSpanAlignedText,
     useMappedColumns,
     type ResolvedSpanAlignment,
@@ -66,8 +67,21 @@ describe("getSpanTextY — Y базовой линии и textBaseline по ве
     const bias = 3; // условный getMiddleCenterBias
     const pad = 8;
 
-    it("top → верх ячейки + паддинг, baseline top", () => {
+    it("top без высоты строки (шапки) → верх ячейки + паддинг, baseline top", () => {
         expect(getSpanTextY(y, height, "top", bias, pad)).toEqual({ y: y + pad, baseline: "top" });
+    });
+
+    it("top с высотой строки → центр первой строки после паддинга, как в поле редактора", () => {
+        expect(getSpanTextY(y, height, "top", bias, pad, 24)).toEqual({ y: y + pad + 12 + bias, baseline: "middle" });
+    });
+
+    it("top с высотой строки в низком блоке не опускается ниже центра", () => {
+        expect(getSpanTextY(0, 30, "top", bias, pad, 24)).toEqual({ y: 15 + bias, baseline: "middle" });
+    });
+
+    it("высота строки не влияет на center и bottom", () => {
+        expect(getSpanTextY(y, height, "center", bias, pad, 24)).toEqual(getSpanTextY(y, height, "center", bias, pad));
+        expect(getSpanTextY(y, height, "bottom", bias, pad, 24)).toEqual(getSpanTextY(y, height, "bottom", bias, pad));
     });
 
     it("center → формула (центр + bias), baseline middle", () => {
@@ -152,5 +166,23 @@ describe("useMappedColumns — выравнивание колонки vs общ
     it("ничего не задано → undefined", () => {
         const { result } = renderHook(() => useMappedColumns([col({})], 0));
         expect(result.current[0].spanGroupHeaderAlign).toBeUndefined();
+    });
+});
+
+const themeWithLineHeight = (lineHeight: number) =>
+    ({ lineHeight, baseFontFull: `13px line-height-test-${lineHeight}` }) as Parameters<typeof getLineHeightPx>[1];
+
+describe("getLineHeightPx — высота строки из темы", () => {
+    // Заглушка measureText: высота букв 10 px.
+    const ctx = {
+        measureText: () => ({ actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+    } as unknown as CanvasRenderingContext2D;
+
+    it("высота в px остаётся как есть", () => {
+        expect(getLineHeightPx(ctx, themeWithLineHeight(24))).toBe(24);
+    });
+
+    it("множитель умножается на высоту букв, как при переносе строк", () => {
+        expect(getLineHeightPx(ctx, themeWithLineHeight(1.4))).toBe(14);
     });
 });

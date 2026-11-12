@@ -187,3 +187,17 @@ export function mouseEventArgsAreEqual(args: GridMouseEventArgs | undefined, oth
         getHiddenIndicatorCol(args) === getHiddenIndicatorCol(other)
     );
 }
+
+/**
+ * Ячейки, которые перерисовываются при движении курсора внутри ячейки. Слитый
+ * блок рисует любая его видимая строка, а событие указывает на главную ячейку.
+ * Если главная ячейка ушла за экран (блок прокручен, подпись прилипла), её
+ * перерисовка ничего не нарисует: поэтому перерисовываем и ячейку под курсором.
+ */
+export function hoverDamageItems(args: GridMouseCellEventArgs): Item[] {
+    const raw = args.rawLocation;
+    if (raw === undefined || (raw[0] === args.location[0] && raw[1] === args.location[1])) {
+        return [args.location];
+    }
+    return [args.location, raw];
+}

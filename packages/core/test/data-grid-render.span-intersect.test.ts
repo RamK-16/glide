@@ -1,70 +1,170 @@
 import { describe, expect, test } from "vitest";
-import type { Rectangle } from "../src/internal/data-grid/data-grid-types.js";
-import { intersectRangeWithSpan } from "../src/internal/data-grid/render/data-grid-render.cells.js";
+import {
+    CompactSelection,
+    GridCellKind,
+    type GridSelection,
+    type InnerGridCell,
+    type Item,
+    type Rectangle,
+} from "../src/internal/data-grid/data-grid-types.js";
+import {
+    getFillSelection,
+    rangeTouchesSpan,
+    selectionRangeTouchesSpan,
+    spanTouchesSelection,
+} from "../src/internal/data-grid/render/data-grid-render.cells.js";
 
-// Пересечение прямоугольника выделения с диапазоном слитого блока (логические координаты).
-// Используется для пополосного тинта: c0..c1 / r0..r1 — покрытая часть блока, full — весь блок.
+// Задевает ли выделение слитый блок: блок красится целиком при любом касании.
 const rect = (x: number, y: number, width: number, height: number): Rectangle => ({ x, y, width, height });
+const cols: readonly [number, number] = [2, 4];
+const rows: readonly [number, number] = [5, 7];
 
-describe("intersectRangeWithSpan", () => {
-    const cols: readonly [number, number] = [2, 4];
-    const rows: readonly [number, number] = [5, 7];
-
-    test("выделение полностью покрывает блок → full=true, координаты = границы блока", () => {
-        expect(intersectRangeWithSpan(rect(2, 5, 3, 3), cols, rows)).toEqual({
-            c0: 2,
-            c1: 4,
-            r0: 5,
-            r1: 7,
-            full: true,
-        });
+describe("rangeTouchesSpan", () => {
+    test("прямоугольник внутри блока, вокруг блока и на его краю", () => {
+        expect(rangeTouchesSpan(rect(3, 6, 1, 1), cols, rows)).toBe(true);
+        expect(rangeTouchesSpan(rect(0, 0, 100, 100), cols, rows)).toBe(true);
+        expect(rangeTouchesSpan(rect(4, 7, 3, 3), cols, rows)).toBe(true);
     });
 
-    test("выделение шире блока со всех сторон → клэмп к блоку, full=true", () => {
-        expect(intersectRangeWithSpan(rect(0, 0, 100, 100), cols, rows)).toEqual({
-            c0: 2,
-            c1: 4,
-            r0: 5,
-            r1: 7,
-            full: true,
-        });
+    test("прямоугольник рядом с блоком не задевает его", () => {
+        expect(rangeTouchesSpan(rect(0, 5, 2, 3), cols, rows)).toBe(false);
+        expect(rangeTouchesSpan(rect(2, 0, 3, 5), cols, rows)).toBe(false);
+        expect(rangeTouchesSpan(rect(5, 5, 1, 3), cols, rows)).toBe(false);
+        expect(rangeTouchesSpan(rect(2, 8, 3, 1), cols, rows)).toBe(false);
+    });
+});
+
+function sel(range: Rectangle, rangeStack: Rectangle[] = []): GridSelection {
+    return {
+        current: { cell: [range.x, range.y], range, rangeStack },
+        rows: CompactSelection.empty(),
+        columns: CompactSelection.empty(),
+    };
+}
+
+describe("selectionRangeTouchesSpan", () => {
+    test("одна ячейка в блоке красит его только при рамке фокуса", () => {
+        expect(selectionRangeTouchesSpan(sel(rect(3, 7, 1, 1)), cols, rows, true)).toBe(true);
+        expect(selectionRangeTouchesSpan(sel(rect(3, 7, 1, 1)), cols, rows, false)).toBe(false);
     });
 
-    test("частичное перекрытие слева (c0 > blockCols[0]) → full=false", () => {
-        const hit = intersectRangeWithSpan(rect(3, 5, 5, 3), cols, rows);
-        expect(hit).toEqual({ c0: 3, c1: 4, r0: 5, r1: 7, full: false });
+    test("диапазон из нескольких ячеек красит блок и без рамки фокуса", () => {
+        expect(selectionRangeTouchesSpan(sel(rect(3, 7, 2, 2)), cols, rows, false)).toBe(true);
     });
 
-    test("частичное перекрытие сверху (r0 > blockRows[0]) → full=false", () => {
-        const hit = intersectRangeWithSpan(rect(2, 6, 3, 5), cols, rows);
-        expect(hit).toEqual({ c0: 2, c1: 4, r0: 6, r1: 7, full: false });
+    test("диапазон из стека (выбор с Ctrl) тоже красит блок", () => {
+        expect(selectionRangeTouchesSpan(sel(rect(0, 0, 1, 1), [rect(4, 5, 1, 1)]), cols, rows, true)).toBe(true);
     });
 
-    test("блок выходит за выделение справа (c1 < blockCols[1]) → full=false", () => {
-        const hit = intersectRangeWithSpan(rect(2, 5, 2, 3), cols, rows);
-        expect(hit).toEqual({ c0: 2, c1: 3, r0: 5, r1: 7, full: false });
+    test("без выделения и мимо блока: не красит", () => {
+        const empty: GridSelection = {
+            current: undefined,
+            rows: CompactSelection.empty(),
+            columns: CompactSelection.empty(),
+        };
+        expect(selectionRangeTouchesSpan(empty, cols, rows, true)).toBe(false);
+        expect(selectionRangeTouchesSpan(sel(rect(0, 0, 2, 2)), cols, rows, true)).toBe(false);
+    });
+});
+
+describe("spanTouchesSelection", () => {
+    test("выбранная строка или колонка внутри блока", () => {
+        const none = CompactSelection.empty();
+        expect(spanTouchesSelection(CompactSelection.fromSingleSelection(7), none, cols, rows)).toBe(true);
+        expect(spanTouchesSelection(none, CompactSelection.fromSingleSelection(2), cols, rows)).toBe(true);
     });
 
-    test("нет перекрытия по колонкам (выделение левее блока) → null", () => {
-        expect(intersectRangeWithSpan(rect(0, 5, 2, 3), cols, rows)).toBeNull();
+    test("диапазон выбранных строк, перекрывающий блок с краю", () => {
+        const none = CompactSelection.empty();
+        expect(spanTouchesSelection(CompactSelection.fromSingleSelection([0, 6]), none, cols, rows)).toBe(true);
+        expect(spanTouchesSelection(CompactSelection.fromSingleSelection([8, 20]), none, cols, rows)).toBe(false);
+        expect(spanTouchesSelection(CompactSelection.fromSingleSelection([0, 5]), none, cols, rows)).toBe(false);
     });
 
-    test("нет перекрытия по строкам (выделение выше блока) → null", () => {
-        expect(intersectRangeWithSpan(rect(2, 0, 3, 3), cols, rows)).toBeNull();
+    test("выбранные строки и колонки мимо блока", () => {
+        expect(
+            spanTouchesSelection(
+                CompactSelection.fromSingleSelection(4),
+                CompactSelection.fromSingleSelection(5),
+                cols,
+                rows
+            )
+        ).toBe(false);
+    });
+});
+
+// Блок по столбцам 2–4 и строкам 5–7; остальные ячейки обычные.
+const getCell = ([col, row]: Item): InnerGridCell =>
+    ({
+        kind: GridCellKind.Text,
+        data: "",
+        displayData: "",
+        allowOverlay: false,
+        ...(col >= 2 && col <= 4 && row >= 5 && row <= 7 ? { span: [2, 4], spanRows: [5, 7] } : {}),
+    }) as InnerGridCell;
+
+// Блок только по строкам: колонка 1, строки 2–4.
+const getTallCell = ([col, row]: Item): InnerGridCell =>
+    ({
+        kind: GridCellKind.Text,
+        data: "",
+        displayData: "",
+        allowOverlay: false,
+        ...(col === 1 && row >= 2 && row <= 4 ? { spanRows: [2, 4] } : {}),
+    }) as InnerGridCell;
+
+const withCell = (cell: Item, range: Rectangle, rangeStack: Rectangle[] = []): GridSelection => ({
+    current: { cell, range, rangeStack },
+    rows: CompactSelection.empty(),
+    columns: CompactSelection.empty(),
+});
+
+describe("getFillSelection", () => {
+    test("пока открыт редактор и рамки нет, диапазон, растянутый до блока ячейки фокуса, становится одной ячейкой", () => {
+        const stack = [rect(0, 0, 1, 1)];
+        const res = getFillSelection(withCell([3, 6], rect(2, 5, 3, 3), stack), false, true, 100, getCell);
+        expect(res.current?.range).toEqual(rect(3, 6, 1, 1));
+        expect(res.current?.cell).toEqual([3, 6]);
+        expect(res.current?.rangeStack).toBe(stack);
+        expect(selectionRangeTouchesSpan(res, cols, rows, false)).toBe(false);
     });
 
-    test("одиночная ячейка-блок, полностью выделена → full=true", () => {
-        expect(intersectRangeWithSpan(rect(2, 5, 1, 1), [2, 2], [5, 5])).toEqual({
-            c0: 2,
-            c1: 2,
-            r0: 5,
-            r1: 5,
-            full: true,
-        });
+    test("с рамкой фокуса выделение не меняется и под редактором: рамка обводит весь диапазон", () => {
+        const s = withCell([3, 6], rect(2, 5, 3, 3));
+        expect(getFillSelection(s, true, true, 100, getCell)).toBe(s);
     });
 
-    test("перекрытие ровно в один угол блока → 1x1 hit, full=false", () => {
-        const hit = intersectRangeWithSpan(rect(4, 7, 3, 3), cols, rows);
-        expect(hit).toEqual({ c0: 4, c1: 4, r0: 7, r1: 7, full: false });
+    test("без редактора выделение не меняется, даже если рамки нет", () => {
+        const s = withCell([3, 6], rect(2, 5, 3, 3));
+        expect(getFillSelection(s, false, false, 100, getCell)).toBe(s);
+    });
+
+    test("выделенный по шапке столбец, который целиком один блок, без редактора остаётся заливкой", () => {
+        // Столбец 1, строки 2–4 это все строки данных, и весь столбец один блок.
+        const column = withCell([1, 2], rect(1, 2, 1, 3));
+        const res = getFillSelection(column, false, false, 5, getTallCell);
+        expect(res).toBe(column);
+        expect(selectionRangeTouchesSpan(res, [1, 1], [2, 4], false)).toBe(true);
+    });
+
+    test("диапазон больше блока или внутри него остаётся диапазоном", () => {
+        const wider = withCell([3, 6], rect(1, 5, 4, 3));
+        expect(getFillSelection(wider, false, true, 100, getCell)).toBe(wider);
+        const inner = withCell([3, 6], rect(2, 5, 2, 2));
+        expect(getFillSelection(inner, false, true, 100, getCell)).toBe(inner);
+    });
+
+    test("обычная ячейка, одна ячейка и фокус вне строк данных: без изменений", () => {
+        const plain = withCell([0, 0], rect(0, 0, 2, 2));
+        expect(getFillSelection(plain, false, true, 100, getCell)).toBe(plain);
+        const single = withCell([3, 6], rect(3, 6, 1, 1));
+        expect(getFillSelection(single, false, true, 100, getCell)).toBe(single);
+        const trailing = withCell([3, 6], rect(2, 5, 3, 3));
+        expect(getFillSelection(trailing, false, true, 6, getCell)).toBe(trailing);
+    });
+
+    test("блок только по строкам", () => {
+        const res = getFillSelection(withCell([1, 3], rect(1, 2, 1, 3)), false, true, 100, getTallCell);
+        expect(res.current?.range).toEqual(rect(1, 3, 1, 1));
     });
 });
