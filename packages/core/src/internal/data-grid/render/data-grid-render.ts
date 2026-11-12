@@ -216,7 +216,7 @@ function drawResizeHeaderOutline(
                     overlayCtx,
                     x + c.width,
                     0,
-                    totalHeaderHeight + 1,
+                    totalHeaderHeight,
                     blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
                 );
             }
@@ -480,6 +480,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     } = arg;
     const indicatorCol = isResizing ? resizeCol : hoveredResizeCol;
     const showResizeIndicator = indicatorCol !== undefined && resizeIndicator !== "none";
+    // Hover marks only the header edge. The body line belongs to an active resize.
+    const showResizeBodyIndicator = showResizeIndicator && isResizing && resizeIndicator === "full";
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
     const dpr = Math.min(maxScaleFactor, Math.ceil(window.devicePixelRatio ?? 1));
@@ -1172,7 +1174,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
         if (damageInView) {
             doDamage(targetCtx);
-            if (showResizeIndicator && resizeIndicator === "full") {
+            if (showResizeBodyIndicator) {
                 drawResizeBodyOutline(targetCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
             }
             if (mainCtx !== null) {
@@ -1180,7 +1182,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 mainCtx.scale(dpr, dpr);
                 mainCtx.textBaseline = "middle";
                 doDamage(mainCtx);
-                if (showResizeIndicator && resizeIndicator === "full") {
+                if (showResizeBodyIndicator) {
                     drawResizeBodyOutline(mainCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
                 }
                 mainCtx.restore();
@@ -1507,7 +1509,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),
         // а по телу (режим full) на основной канве.
         drawResizeHeaderOutline(overlayCtx, effectiveCols, translateX, totalHeaderHeight, indicatorCol, hiddenColumnsIndicator, theme);
-        if (resizeIndicator === "full") {
+        if (showResizeBodyIndicator) {
             drawResizeBodyOutline(targetCtx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
         }
     }

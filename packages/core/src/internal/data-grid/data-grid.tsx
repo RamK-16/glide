@@ -381,7 +381,8 @@ export interface DataGridProps {
     readonly resizeIndicator: "full" | "header" | "none" | undefined;
     /**
      * Also shows the resize indicator while a mouse hovers over a resizable header edge.
-     * Uses the height selected by `resizeIndicator` and `theme.resizeIndicatorColor`.
+     * Hover is limited to the complete header and uses `theme.resizeIndicatorColor`.
+     * `resizeIndicator` selects the drag height; "none" hides both states.
      * Does not enable column resizing by itself.
      * @defaultValue false
      * @group Style

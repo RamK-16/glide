@@ -258,9 +258,9 @@ Most data grids will want to set the majority of these props one way or another.
 
 `resizeIndicator?: "full" | "header" | "none"` defaults to `"full"` and controls the indicator height during column resizing.
 
-`resizeIndicatorOnHover?: boolean` defaults to `false`. Set it to `true` to also show the same native Canvas indicator when a mouse hovers over a resizable column edge in the header. It does not enable resizing by itself: a column resize callback must be provided, and columns with `resizable: false` or equal `minWidth` / `maxWidth` do not show a hover indicator. Touch input does not show a hover indicator.
+`resizeIndicatorOnHover?: boolean` defaults to `false`. Set it to `true` to show a native Canvas indicator only in the complete header, including group rows, when a mouse hovers over a resizable column edge. It appears and disappears without a delay or animation, using the existing 5 CSS pixel hit area on either side of the edge. It does not enable resizing by itself: a column resize callback must be provided, and columns with `resizable: false` or equal `minWidth` / `maxWidth` do not show a hover indicator. Touch input does not show a hover indicator.
 
-The line is 2 CSS pixels wide. Its color comes from `theme.resizeIndicatorColor`, falling back to the existing `accentLight` color. The cursor remains `col-resize`. `resizeIndicator="none"` hides both hover and drag indicators; `"header"` limits both to the complete header, including group rows.
+The line is 2 CSS pixels wide and centered on the column edge. Its color comes from `theme.resizeIndicatorColor`, falling back to the existing `accentLight` color. Set it to your theme's `accentColor` to match the selection outline. The cursor remains `col-resize`. `resizeIndicator="full"` draws a full-height line during drag and a header-only line on hover; `"header"` limits both to the complete header; `"none"` hides both. At a hidden-columns indicator, the existing header stripe takes precedence over the resize line.
 
 ```tsx
 <DataEditor

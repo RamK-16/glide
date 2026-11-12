@@ -98,15 +98,18 @@ export const ResizeIndicatorOnHover = () => {
                     Allow resizing
                 </label>
                 <label>
-                    Height
+                    Drag indicator
                     <select value={indicator} onChange={event => setIndicator(event.target.value as typeof indicator)}>
                         <option value="full">Full height</option>
                         <option value="header">Header only</option>
-                        <option value="none">None</option>
+                        <option value="none">None (also hides hover)</option>
                     </select>
                 </label>
             </div>
-            <p>2 px, #0B7ECB, col-resize cursor. The first data column is frozen, the second cannot be resized.</p>
+            <p>
+                Hover: header only, without delay or animation. Drag: full height by default. Both: 2 px, #0B7ECB,
+                col-resize cursor. The first data column is frozen, the second cannot be resized.
+            </p>
             <DataEditor
                 {...defaultProps}
                 width={720}

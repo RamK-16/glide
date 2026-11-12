@@ -49,23 +49,67 @@ describe("resizeIndicatorOnHover", () => {
         expect(outline).toHaveBeenCalled();
     });
 
-    test("draws the native full-height line without entering the resize interaction", () => {
+    test("immediately draws only the header line in the accent color without entering resize", () => {
         const onColumnResizeStart = vi.fn();
         const { outline, hover, frame } = mount({ onColumnResizeStart, theme: { resizeIndicatorColor: "#0B7ECB" } });
         hover(310);
         expect(frame()).toMatchObject({ hoveredResizeCol: 1, isResizing: false });
-        expect(outline.mock.calls.some(([, x, top, bottom]) => x === 310 && top === 0 && bottom === 37)).toBe(true);
-        expect(outline.mock.calls.some(([, x, top, bottom]) => x === 310 && top === 36 && bottom === 1000)).toBe(true);
+        expect(outline).toHaveBeenCalled();
+        expect(
+            outline.mock.calls.every(
+                ([, x, top, bottom, color]) => x === 310 && top === 0 && bottom === 36 && color === "#0B7ECB"
+            )
+        ).toBe(true);
         expect(onColumnResizeStart).not.toHaveBeenCalled();
     });
 
-    test.each(["header", "none"] as const)("respects resizeIndicator=%s", resizeIndicator => {
-        const { outline, hover } = mount({ resizeIndicator });
-        hover(310);
-        if (resizeIndicator === "none") expect(outline).not.toHaveBeenCalled();
-        else {
-            expect(outline).toHaveBeenCalled();
-            expect(outline.mock.calls.every(([, , top]) => top === 0)).toBe(true);
+    test.each(["full", "header", "none"] as const)(
+        "respects resizeIndicator=%s for hover and drag",
+        resizeIndicator => {
+            const { outline, hover, canvas } = mount({ resizeIndicator });
+            hover(310);
+            if (resizeIndicator === "none") expect(outline).not.toHaveBeenCalled();
+            else {
+                expect(outline).toHaveBeenCalled();
+                expect(outline.mock.calls.every(([, , top]) => top === 0)).toBe(true);
+            }
+            outline.mockClear();
+            fireEvent.pointerDown(canvas, { clientX: 310, clientY: 16 });
+            if (resizeIndicator === "none") expect(outline).not.toHaveBeenCalled();
+            else {
+                expect(outline).toHaveBeenCalled();
+                expect(outline.mock.calls.some(([, , top]) => top === 36)).toBe(resizeIndicator === "full");
+            }
+        }
+    );
+
+    test("uses the existing five-pixel hit area and clears immediately outside the header edge", () => {
+        const { hover, frame, outline, ref } = mount();
+        const left = ref.current?.getBounds(1, -1);
+        const right = ref.current?.getBounds(2, -1);
+        if (left === undefined || right === undefined) throw new Error("Missing header bounds");
+        // Native bounds include the one-pixel border on the left column's right side.
+        const hitStart = left.x + left.width - 5;
+        const hitEnd = right.x + 5;
+        for (const x of [hitStart, 310, hitEnd]) {
+            hover(x);
+            expect(frame()?.hoveredResizeCol).toBe(1);
+        }
+        for (const [x, y] of [
+            [hitStart - 1, 16],
+            [hitEnd + 1, 16],
+            [310, 40],
+        ]) {
+            hover(310);
+            const previous = frame();
+            outline.mockClear();
+            hover(x, y);
+            expect(frame()?.hoveredResizeCol).toBeUndefined();
+            expect(computeCanBlit(frame()!, previous)).toBe(false);
+            // Synchronous header damage can precede the state update; the final frame must be clear.
+            outline.mockClear();
+            gridRenderer.drawGrid(frame()!, undefined);
+            expect(outline).not.toHaveBeenCalled();
         }
     });
 
@@ -145,9 +189,19 @@ describe("resizeIndicatorOnHover", () => {
     test("hands off to drag and restores hover at the resized edge, preserving callbacks", () => {
         const onColumnResizeStart = vi.fn();
         const onColumnResizeEnd = vi.fn();
-        const { canvas, hover, frame, result, props, ref } = mount({ onColumnResizeStart, onColumnResizeEnd });
+        const { canvas, hover, frame, result, props, ref, outline } = mount({
+            onColumnResizeStart,
+            onColumnResizeEnd,
+            theme: { resizeIndicatorColor: "#0B7ECB" },
+        });
         hover(310);
+        outline.mockClear();
         fireEvent.pointerDown(canvas, { clientX: 310, clientY: 16 });
+        expect(
+            outline.mock.calls.some(
+                ([, x, top, bottom, color]) => x === 310 && top === 36 && bottom === 1000 && color === "#0B7ECB"
+            )
+        ).toBe(true);
         fireEvent.pointerMove(canvas, { clientX: 350, clientY: 16, buttons: 1 });
         expect(frame()).toMatchObject({ isResizing: true, hoveredResizeCol: undefined });
         result.rerender(
@@ -157,8 +211,11 @@ describe("resizeIndicatorOnHover", () => {
                 columns={props.columns.map((column, index) => (index === 1 ? { ...column, width: 200 } : column))}
             />
         );
+        outline.mockClear();
         fireEvent.pointerUp(canvas, { clientX: 350, clientY: 16 });
         expect(frame()).toMatchObject({ isResizing: false, hoveredResizeCol: 1 });
+        expect(outline).toHaveBeenCalled();
+        expect(outline.mock.calls.every(([, x, top, bottom]) => x === 350 && top === 0 && bottom === 36)).toBe(true);
         expect(onColumnResizeStart).toHaveBeenCalledOnce();
         expect(onColumnResizeEnd).toHaveBeenCalledOnce();
     });
@@ -181,10 +238,21 @@ describe("resizeIndicatorOnHover", () => {
     });
 
     test.each(["single-buffer", "double-buffer", "direct"] as const)(
-        "repairs the native line on header and body damage (%s)",
+        "repairs hover only in the header and drag in the body after damage (%s)",
         renderStrategy => {
-            const { outline, hover, ref } = mount({ experimental: { renderStrategy } });
+            const { outline, hover, ref, canvas } = mount({ experimental: { renderStrategy } });
             hover(310);
+            for (const row of [-1, 0]) {
+                outline.mockClear();
+                act(() => ref.current?.updateCells([{ cell: [1, row] }]));
+                expect(outline.mock.calls.some(([, , top]) => top === 36)).toBe(false);
+                if (row === -1) {
+                    expect(
+                        outline.mock.calls.some(([, x, top, bottom]) => x === 310 && top === 0 && bottom === 36)
+                    ).toBe(true);
+                }
+            }
+            fireEvent.pointerDown(canvas, { clientX: 310, clientY: 16 });
             for (const row of [-1, 0]) {
                 outline.mockClear();
                 act(() => ref.current?.updateCells([{ cell: [1, row] }]));
@@ -202,7 +270,7 @@ describe("resizeIndicatorOnHover", () => {
             columns: basicProps.columns.map(column => ({ ...column, group: "Group" })),
         });
         hover(150, 50);
-        expect(outline.mock.calls.some(([, x, top, bottom]) => x === 150 && top === 0 && bottom === 69)).toBe(true);
-        expect(outline.mock.calls.some(([, x, top]) => x === 150 && top === 68)).toBe(true);
+        expect(outline).toHaveBeenCalled();
+        expect(outline.mock.calls.every(([, x, top, bottom]) => x === 150 && top === 0 && bottom === 68)).toBe(true);
     });
 });
