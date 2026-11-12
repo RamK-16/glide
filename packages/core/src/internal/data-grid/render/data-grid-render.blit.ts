@@ -272,6 +272,13 @@ export function blitResizedCol(
     return drawRegions;
 }
 
+/** По содержимому; объекты могут отсутствовать в неполных аргументах */
+function sameCompactSelection(a: DrawGridArg["disabledRows"], b: DrawGridArg["disabledRows"]): boolean {
+    if (a === b) return true;
+    if (a === undefined || b === undefined) return false;
+    return a.equals(b);
+}
+
 export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefined): boolean | number {
     if (last === undefined) return false;
     if (
@@ -288,8 +295,11 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.isFocused !== last.isFocused ||
         current.drawFocus !== last.drawFocus ||
         current.editorOpen !== last.editorOpen ||
-        current.fillHandle !== last.fillHandle ||
-        current.disabledRows !== last.disabledRows ||
+        // Стиль маркера растяжения и отключённые строки сравниваем по содержимому:
+        // обёртка пересобирает их объекты чаще, чем меняется смысл, а новая
+        // ссылка здесь значила бы полный кадр на каждый клик
+        !deepEqual(current.fillHandle, last.fillHandle) ||
+        !sameCompactSelection(current.disabledRows, last.disabledRows) ||
         current.hasAppendRow !== last.hasAppendRow ||
         current.isResizing !== last.isResizing ||
         current.verticalBorder !== last.verticalBorder ||
