@@ -239,6 +239,25 @@ describe("data-grid: частичная перерисовка при смене
         expect(wideEvents.some(e => e.type === "fillRect" && e.props?.width === 10_000)).toBe(false);
     });
 
+    test("точечная дорисовка ячеек восстанавливает обычные обводки и обводки поверх выделения, в этом порядке", () => {
+        const below = { color: "#0000ff", range: { x: 3, y: 4, width: 1, height: 1 }, style: "solid-outline" as const };
+        const above = {
+            color: "#ff0000",
+            range: { x: 2, y: 4, width: 1, height: 1 },
+            style: "solid-outline" as const,
+            drawAboveSelection: true,
+        };
+        const { damage } = setup({ highlightRegions: [below, above] });
+        const events = damage([[1, 4]]);
+        expect(fullRedraw(events)).toBe(false);
+        const strokeAt = (col: number) =>
+            events.findIndex(
+                e => e.type === "strokeRect" && e.props?.x === COL_X[col] + 0.5 && e.props?.y === HEADER + 4 * ROW + 0.5
+            );
+        expect(strokeAt(3)).toBeGreaterThanOrEqual(0);
+        expect(strokeAt(2)).toBeGreaterThan(strokeAt(3));
+    });
+
     test("клик по ячейке: перерисовывается только её область, другие строки не спрашиваются", () => {
         const { events, askedRows, headerEvents } = setup().change({ selection: sel(1, 5) });
         expect(fullRedraw(events)).toBe(false);

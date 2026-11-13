@@ -1234,10 +1234,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             );
 
             // Обводки регионов подсветки (внешние регионы, диапазоны rangeStack,
-            // кольца ошибок) лежат на крайних пикселях ячеек. Ячейка, залитая до
-            // края, при точечной дорисовке их затирала, пока их не перерисует
-            // полный кадр. Перерисовываем обводки в границах повреждённых ячеек.
-            if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+            // рамка фокуса, кольца ошибок) лежат на крайних пикселях ячеек. Ячейка,
+            // залитая до края, при точечной дорисовке их затирала, пока их не
+            // перерисует полный кадр. Перерисовываем обводки в границах повреждённых
+            // ячеек в том же порядке, что и полный кадр: обычные, маркер растяжения,
+            // регионы с drawAboveSelection.
+            const redrawRingsInDamage = (phase: "below" | "above") => {
+                if (cellDamageRegions === undefined || cellDamageRegions.length === 0) return;
                 ctx.save();
                 ctx.beginPath();
                 for (const r of cellDamageRegions) {
@@ -1264,11 +1267,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     enableLowDprHairline,
                     columnLayout,
                     rowAxis,
-                    "above",
+                    phase,
                     true
                 );
                 ctx.restore();
-            }
+            };
+
+            redrawRingsInDamage("below");
 
             const selectionCurrent = selection.current;
 
@@ -1302,6 +1307,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     rows
                 );
             }
+            redrawRingsInDamage("above");
             repaintBlankArea(ctx);
         };
 
