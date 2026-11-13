@@ -289,15 +289,15 @@ describe("isSelectionOnlyChange", () => {
     });
 
     it("маркер растяжения и отключённые строки сравниваются по содержимому, а не по ссылке", () => {
-        const withHandle = { ...arg, fillHandle: { width: 8 }, disabledRows: CompactSelection.fromSingleSelection(2) };
+        const withHandle = { ...arg, fillHandle: { size: 8 }, disabledRows: CompactSelection.fromSingleSelection(2) };
         const sameContent = {
             ...withHandle,
             selection: sel(1, 1),
-            fillHandle: { width: 8 },
+            fillHandle: { size: 8 },
             disabledRows: CompactSelection.fromSingleSelection(2),
         };
         expect(isSelectionOnlyChange(sameContent, withHandle)).toBe(true);
-        expect(isSelectionOnlyChange({ ...sameContent, fillHandle: { width: 9 } }, withHandle)).toBe(false);
+        expect(isSelectionOnlyChange({ ...sameContent, fillHandle: { size: 9 } }, withHandle)).toBe(false);
         expect(isSelectionOnlyChange({ ...sameContent, fillHandle: false }, withHandle)).toBe(false);
         expect(
             isSelectionOnlyChange({ ...sameContent, disabledRows: CompactSelection.fromSingleSelection(3) }, withHandle)
