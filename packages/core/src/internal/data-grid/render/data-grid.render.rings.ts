@@ -82,7 +82,13 @@ export function drawHighlightRings(
     enableLowDprHairline: boolean = false,
     columnLayout?: ColumnLayout,
     rowAxis?: StickyAxis,
-    phase: "below" | "above" = "below"
+    phase: "below" | "above" = "below",
+    /**
+     * Рисовать обводки сразу, а не только вернуть функцию дорисовки. В кадре тела таблицы
+     * сразу рисовать нельзя: поверх сдвинутого прошлого кадра обводка легла бы второй раз
+     * и полупрозрачные края становились бы темнее с каждым частичным кадром.
+     */
+    drawNow: boolean = true
 ): (() => void) | undefined {
     // "below" — обычные обводки (до нативной рамки выделения), "above" — регионы
     // с drawAboveSelection (после неё, напр. рамки ошибок). accent — без обводки.
@@ -296,7 +302,7 @@ export function drawHighlightRings(
         }
     };
 
-    drawCb();
+    if (drawNow) drawCb();
     return drawCb;
 }
 
@@ -336,7 +342,9 @@ export function drawFillHandle(
     freezeTrailingRows: number,
     hasAppendRow: boolean,
     fillHandle: FillHandle,
-    rows: number
+    rows: number,
+    /** Рисовать маркер сразу, а не только вернуть функцию дорисовки; в кадре тела только после ячеек. */
+    drawNow: boolean = true
 ): (() => void) | undefined {
     if (selectedCell.current === undefined) return undefined;
 
@@ -487,7 +495,7 @@ export function drawFillHandle(
         ctx.restore();
     };
 
-    result();
+    if (drawNow) result();
 
     return result;
 }

@@ -29,6 +29,11 @@ import {
     nextStickySpanInView,
 } from "./data-grid-render.blit.js";
 import { drawHighlightRings, drawFillHandle, drawColumnResizeOutline } from "./data-grid.render.rings.js";
+import {
+    getSelectionChangeRegions,
+    isSelectionOnlyChange,
+    selectionHeaderChanged,
+} from "./data-grid-render.selection-regions.js";
 import { getHairlineWidth } from "./data-grid-render.hairline.js";
 import { rowHeightChangesSince } from "../../scrolling-data-grid/row-offsets.js";
 import { normalizeHiddenIndicator } from "../hidden-columns-indicator.js";
@@ -462,6 +467,16 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // if we are double buffering we need to make sure we can blit. If we can't we need to redraw the whole thing
     let canBlit = renderStrategy !== "direct" && computeCanBlit(arg, lastArg);
 
+    // Сменились только выделение, регионы подсветки или фокус: прошлый кадр годится, поверх него
+    // перерисуем прежние и новые области выделения, см. `getSelectionChangeRegions`.
+    const selectionChange =
+        canBlit === false &&
+        renderStrategy !== "direct" &&
+        lastArg !== undefined &&
+        lastBlitData.current !== undefined &&
+        isSelectionOnlyChange(arg, lastArg);
+    if (selectionChange) canBlit = true;
+
     const canvas = canvasCtx.canvas;
 
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
@@ -501,8 +516,11 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     }
 
     const last = lastBlitData.current;
+    // Присвоение canvas.width выше очистило холст: прошлого кадра на нём больше нет.
+    if (last?.dpr !== undefined && last.dpr !== dpr) canBlit = false;
     if (
         canBlit === true &&
+        !selectionChange &&
         rowHeight === lastArg?.rowHeight &&
         cellXOffset === last?.cellXOffset &&
         cellYOffset === last?.cellYOffset &&
@@ -579,6 +597,31 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
     ) {
         canBlit = false;
+    }
+
+    let selectionRegions: Rectangle[] | undefined;
+    if (selectionChange && canBlit === true && lastArg !== undefined) {
+        selectionRegions = getSelectionChangeRegions({
+            selection,
+            lastSelection: lastArg.selection,
+            highlightRegions,
+            lastHighlightRegions: lastArg.highlightRegions,
+            focusChanged: isFocused !== lastArg.isFocused,
+            columnLayout,
+            cellYOffset,
+            translateY,
+            totalHeaderHeight,
+            width,
+            height,
+            rows,
+            freezeTrailingRows,
+            pinnedRowsCount,
+            stickySpanInView: last?.stickySpanInView === true,
+            fillHandle,
+            getRowHeight,
+            getCellContent,
+        });
+        if (selectionRegions === undefined) canBlit = false;
     }
 
     // Сменились только высоты строк from..to (`RowHeightChanges`): прошлый кадр сдвигаем как обычно
@@ -839,8 +882,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         // когда в damage попала span-ячейка (иначе hover затирает границы объединённого блока
         // и не восстанавливает их). Обычные таблицы без флага и без span — быстрый blit-путь.
         const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
+        // Прямоугольники повреждённых ячеек нужны и быстрому пути: по ним
+        // перерисовываются обводки регионов подсветки (см. ниже)
         const cellDamageRegions =
-            (enableLowDprHairline || spansInDamage) && damageInView
+            damageInView
                 ? getDamageDrawRegions(
                       effectiveCols,
                       height,
@@ -857,12 +902,84 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                   )
                 : undefined;
 
+        // Точечная дорисовка обновляет только ячейки, а фон строки (наведение, зебра, отмеченная
+        // строка) в полном кадре красится и в пустой области правее последней колонки (drawBlanks).
+        // Иначе после смены строки под курсором точечной дорисовкой справа от колонок оставалась
+        // полоса прежнего цвета. Полоса узкая, строк на экране немного: перекрашиваем её целиком.
+        // Без тем строк пустая область от точечной дорисовки не зависит.
+        const lastCol = effectiveCols[effectiveCols.length - 1];
+        const blankLeft = lastCol === undefined ? width : columnLayout.drawX(lastCol.sourceIndex) + lastCol.width;
+        const blankArea: Rectangle | undefined =
+            damageInView && getRowThemeOverride !== undefined && blankLeft < width
+                ? {
+                      x: blankLeft,
+                      y: totalHeaderHeight + 1,
+                      width: width - blankLeft,
+                      height: height - totalHeaderHeight - 1,
+                  }
+                : undefined;
+        const repaintBlankArea = (ctx: CanvasRenderingContext2D) => {
+            if (blankArea === undefined) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(blankArea.x, blankArea.y, blankArea.width, blankArea.height);
+            ctx.clip();
+            ctx.fillStyle = theme.bgCell;
+            ctx.fillRect(blankArea.x, blankArea.y, blankArea.width, blankArea.height);
+            drawBlanks(
+                ctx,
+                effectiveCols,
+                mappedColumns,
+                width,
+                height,
+                totalHeaderHeight,
+                translateX,
+                translateY,
+                cellYOffset,
+                rows,
+                getRowHeight,
+                getRowThemeOverride,
+                selection.rows,
+                disabledRows,
+                freezeTrailingRows,
+                hasAppendRow,
+                [blankArea],
+                undefined,
+                theme
+            );
+            drawGridLines(
+                ctx,
+                effectiveCols,
+                cellYOffset,
+                translateX,
+                translateY,
+                width,
+                height,
+                [blankArea],
+                undefined,
+                groupHeaderHeight,
+                totalHeaderHeight,
+                getRowHeight,
+                getRowThemeOverride,
+                verticalBorder,
+                freezeTrailingRows,
+                rows,
+                theme,
+                false,
+                enableLowDprHairline,
+                horizontalBorder,
+                getCellBorder
+            );
+            ctx.restore();
+        };
+
+        const repairRegions = enableLowDprHairline || spansInDamage ? cellDamageRegions : undefined;
         const doDamage = (ctx: CanvasRenderingContext2D) => {
-            if (cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+            if (repairRegions !== undefined && repairRegions.length > 0) {
                 const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);
                 // cellDamageRegions остаются точной dirty-геометрией, а visualDamageRegions расширяют только область repair.
                 // Так мы дорисовываем соседние grid/highlight штрихи без отдельного hover-хака и без смены normal cell rendering path.
-                const visualDamageRegions = expandDamageDrawRegions(cellDamageRegions, repairPad);
+                const visualDamageRegions = expandDamageDrawRegions(repairRegions, repairPad);
 
                 ctx.save();
                 ctx.beginPath();
@@ -894,7 +1011,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     theme,
                     enableLowDprHairline,
                     columnLayout,
-                    rowAxis
+                    rowAxis,
+                    "below",
+                    false
                 );
 
                 const focusRedraw = drawFocus
@@ -915,7 +1034,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                           freezeTrailingRows,
                           hasAppendRow,
                           fillHandle,
-                          rows
+                          rows,
+                          false
                       )
                     : undefined;
 
@@ -939,7 +1059,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     enableLowDprHairline,
                     columnLayout,
                     rowAxis,
-                    "above"
+                    "above",
+                    false
                 );
 
                 const spans = drawCells(
@@ -1069,6 +1190,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 focusRedraw?.();
                 highlightAboveRedraw?.();
                 ctx.restore();
+                repaintBlankArea(ctx);
                 return;
             }
 
@@ -1111,6 +1233,48 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 minimumCellWidth
             );
 
+            // Обводки регионов подсветки (внешние регионы, диапазоны rangeStack,
+            // рамка фокуса, кольца ошибок) лежат на крайних пикселях ячеек. Ячейка,
+            // залитая до края, при точечной дорисовке их затирала, пока их не
+            // перерисует полный кадр. Перерисовываем обводки в границах повреждённых
+            // ячеек в том же порядке, что и полный кадр: обычные, маркер растяжения,
+            // регионы с drawAboveSelection.
+            const redrawRingsInDamage = (phase: "below" | "above") => {
+                if (cellDamageRegions === undefined || cellDamageRegions.length === 0) return;
+                ctx.save();
+                ctx.beginPath();
+                for (const r of cellDamageRegions) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+                ctx.clip();
+                drawHighlightRings(
+                    ctx,
+                    width,
+                    height,
+                    cellXOffset,
+                    cellYOffset,
+                    translateX,
+                    translateY,
+                    mappedColumns,
+                    freezeColumns,
+                    headerHeight,
+                    groupHeaderHeight,
+                    rowHeight,
+                    freezeTrailingRows,
+                    rows,
+                    highlightRegions,
+                    theme,
+                    enableLowDprHairline,
+                    columnLayout,
+                    rowAxis,
+                    phase,
+                    true
+                );
+                ctx.restore();
+            };
+
+            redrawRingsInDamage("below");
+
             const selectionCurrent = selection.current;
 
             // В эту ветку попадают только кадры без слитых ячеек в damage (они идут
@@ -1143,6 +1307,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     rows
                 );
             }
+            redrawRingsInDamage("above");
+            repaintBlankArea(ctx);
         };
 
         if (damageInView) {
@@ -1201,18 +1367,47 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         return;
     }
 
+    // Шапка отмечает выбранные колонки и колонку выбранной ячейки, поэтому рисуется заново, когда
+    // у выделения сменились колонки (смена только строк её не трогает). На её холсте лежит и
+    // верхняя линия обводок регионов первой видимой строки: при смене регионов, когда такая линия
+    // есть или была, шапка тоже рисуется заново.
     if (
         canBlit !== true ||
         cellXOffset !== last?.cellXOffset ||
         translateX !== last?.translateX ||
         mustDrawFocusOnHeader !== last?.mustDrawFocusOnHeader ||
-        mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader
+        mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader ||
+        (selectionChange && lastArg !== undefined && selectionHeaderChanged(selection, lastArg.selection)) ||
+        (selectionChange &&
+            highlightRegions !== lastArg?.highlightRegions &&
+            (mustDrawHighlightRingsOnHeader || last?.mustDrawHighlightRingsOnHeader === true))
     ) {
         drawHeaderTexture();
     }
 
+    // Сменилось только выделение, но на экране от него ничего не зависит (выделение за кадром,
+    // новый массив регионов с тем же содержимым): тело не трогаем, запоминаем только признаки шапки.
+    if (
+        selectionChange &&
+        selectionRegions !== undefined &&
+        selectionRegions.length === 0 &&
+        changedRowsRegion === undefined &&
+        last !== undefined &&
+        cellXOffset === last.cellXOffset &&
+        cellYOffset === last.cellYOffset &&
+        translateX === last.translateX &&
+        translateY === last.translateY
+    ) {
+        lastBlitData.current = { ...last, mustDrawFocusOnHeader, mustDrawHighlightRingsOnHeader };
+        targetCtx.restore();
+        overlayCtx.restore();
+        return;
+    }
+
     if (canBlit === true) {
         assert(blitSource !== undefined && last !== undefined);
+        const extraRegions = selectionRegions ?? [];
+        if (changedRowsRegion !== undefined) extraRegions.push(changedRowsRegion);
         const { regions } = blitLastFrame(
             targetCtx,
             blitSource,
@@ -1234,7 +1429,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             rowHeight,
             doubleBuffer,
             rowAxis.hasItems ? Math.min(rowAxis.maxEnd, height) : totalHeaderHeight,
-            changedRowsRegion
+            extraRegions
         );
         drawRegions = regions;
     } else if (canBlit !== false) {
@@ -1284,6 +1479,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         targetCtx.restore();
     }
 
+    // Обводки рисуются только после ячеек (вызов highlightRedraw): при сдвиге прошлого кадра
+    // они уже на холсте, и второй слой делал бы полупрозрачные края темнее.
     const highlightRedraw = drawHighlightRings(
         targetCtx,
         width,
@@ -1303,10 +1500,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         theme,
         enableLowDprHairline,
         columnLayout,
-        rowAxis
+        rowAxis,
+        "below",
+        false
     );
 
-    // the overdraw may have nuked out our focus ring right edge.
+    // Маркер растяжения, как и обводки, рисуется только после ячеек (вызов focusRedraw).
     const focusRedraw = drawFocus
         ? drawFillHandle(
               targetCtx,
@@ -1325,7 +1524,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
               freezeTrailingRows,
               hasAppendRow,
               fillHandle,
-              rows
+              rows,
+              false
           )
         : undefined;
 
@@ -1349,7 +1549,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         enableLowDprHairline,
         columnLayout,
         rowAxis,
-        "above"
+        "above",
+        false
     );
 
     targetCtx.fillStyle = theme.bgCell;
@@ -1543,6 +1744,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         mustDrawHighlightRingsOnHeader,
         pinnedColumnsEnd,
         pinnedRowsCount,
+        dpr,
         lastBuffer: doubleBuffer ? (targetBuffer === bufferA ? "a" : "b") : undefined,
         stickySpanInView: nextStickySpanInView(
             cellsStats.stickySpanInView,
