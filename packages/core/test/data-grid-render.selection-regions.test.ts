@@ -304,6 +304,18 @@ describe("isSelectionOnlyChange", () => {
         ).toBe(false);
     });
 
+    it("вместе с выделением сменились функции или параметры рисования тела", () => {
+        const next = { ...arg, selection: sel(1, 1) };
+        expect(isSelectionOnlyChange({ ...next, drawCellCallback: () => true }, arg)).toBe(false);
+        expect(isSelectionOnlyChange({ ...next, getCellRenderer: () => undefined }, arg)).toBe(false);
+        expect(isSelectionOnlyChange({ ...next, freezeTrailingRows: 1 }, arg)).toBe(false);
+        // высоты групп сравниваются по содержимому: новый массив с теми же числами не мешает
+        const groups = { ...arg, enableGroups: true, groupHeaderHeight: [20, 24] };
+        const nextGroups = { ...groups, selection: sel(1, 1) };
+        expect(isSelectionOnlyChange({ ...nextGroups, groupHeaderHeight: [20, 24] }, groups)).toBe(true);
+        expect(isSelectionOnlyChange({ ...nextGroups, groupHeaderHeight: [20, 30] }, groups)).toBe(false);
+    });
+
     it("ничего не сменилось или сменилось что-то ещё", () => {
         expect(isSelectionOnlyChange(arg, arg)).toBe(false);
         expect(isSelectionOnlyChange({ ...arg, selection: sel(1, 1), getCellContent: cell => textCell(cell) }, arg)).toBe(

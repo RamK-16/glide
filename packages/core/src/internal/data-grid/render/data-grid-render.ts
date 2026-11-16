@@ -1370,7 +1370,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // Шапка отмечает выбранные колонки и колонку выбранной ячейки, поэтому рисуется заново, когда
     // у выделения сменились колонки (смена только строк её не трогает). На её холсте лежит и
     // верхняя линия обводок регионов первой видимой строки: при смене регионов, когда такая линия
-    // есть или была, шапка тоже рисуется заново.
+    // есть или была, шапка тоже рисуется заново. Новые функции рисования шапки и групп тоже
+    // перерисовывают её: раньше их подхватывал полный кадр от смены выделения.
     if (
         canBlit !== true ||
         cellXOffset !== last?.cellXOffset ||
@@ -1378,6 +1379,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         mustDrawFocusOnHeader !== last?.mustDrawFocusOnHeader ||
         mustDrawHighlightRingsOnHeader !== last?.mustDrawHighlightRingsOnHeader ||
         (selectionChange && lastArg !== undefined && selectionHeaderChanged(selection, lastArg.selection)) ||
+        (selectionChange &&
+            (drawHeaderCallback !== lastArg?.drawHeaderCallback ||
+                drawGroupHeaderCallback !== lastArg?.drawGroupHeaderCallback ||
+                getGroupDetails !== lastArg?.getGroupDetails)) ||
         (selectionChange &&
             highlightRegions !== lastArg?.highlightRegions &&
             (mustDrawHighlightRingsOnHeader || last?.mustDrawHighlightRingsOnHeader === true))
@@ -1453,8 +1458,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // закреплённых колонок рисуем только в новых полосах: остальная канва
     // скопирована блитом вместе с цветными кусками рамок, и перерисовка серым на
     // всю высоту их затирала (дальше весь рендер идёт под клипом по drawRegions
-    // и восстановить их не может).
-    const clipStickyToRegions = getCellBorder !== undefined && drawRegions.length > 0;
+    // и восстановить их не может). При смене только выделения так же и без рамок ячеек:
+    // разделитель на всю высоту затирал бы обводки регионов на границе вне областей выделения.
+    const clipStickyToRegions =
+        drawRegions.length > 0 && (getCellBorder !== undefined || selectionRegions !== undefined);
     if (clipStickyToRegions) {
         targetCtx.save();
         targetCtx.beginPath();

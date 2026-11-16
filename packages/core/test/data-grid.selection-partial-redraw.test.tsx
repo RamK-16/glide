@@ -346,6 +346,48 @@ describe("data-grid: частичная перерисовка при смене
         expect(fullRedraw(events)).toBe(true);
     });
 
+    test("вместе с выделением сменилась функция drawCell: кадр целиком", () => {
+        const blue: DataGridProps["drawCell"] = args => {
+            args.ctx.fillStyle = "#0000ff";
+            args.ctx.fillRect(args.rect.x, args.rect.y, args.rect.width, args.rect.height);
+            return true;
+        };
+        const { change } = setup({ drawCell: blue, selection: sel(3, 4) });
+        const drawnRows: number[] = [];
+        const green: DataGridProps["drawCell"] = args => {
+            drawnRows.push(args.row);
+            return true;
+        };
+        const { events } = change({ drawCell: green, selection: sel(3, 5) });
+        expect(fullRedraw(events)).toBe(true);
+        // новая функция рисует и ячейки вне прежней и новой областей выделения
+        expect(drawnRows).toContain(20);
+    });
+
+    test("вместе с выделением сменилась функция drawHeader: тело частично, шапка заново", () => {
+        const drawHeader: DataGridProps["drawHeader"] = (_args, draw) => draw();
+        const { change } = setup({ drawHeader, selection: sel(1, 5) });
+        // переход по строкам в той же колонке шапку сам не трогает, её перерисовывает новая функция
+        const { events, headerEvents } = change({ drawHeader: (_args, draw) => draw(), selection: sel(1, 6) });
+        expect(fullRedraw(events)).toBe(false);
+        expect(headerDrawn(headerEvents)).toBe(true);
+    });
+
+    test("разделитель закреплённых колонок рисуется только в областях выделения", () => {
+        // красная обводка региона лежит на разделителе (x = 150), выделение далеко от неё
+        const ring = { color: "#ff000040", range: { x: 1, y: 15, width: 1, height: 2 }, style: "solid" as const };
+        const { change } = setup({ freezeColumns: 1, highlightRegions: [ring], selection: sel(3, 4) });
+        const { events } = change({ selection: sel(3, 5) });
+        expect(fullRedraw(events)).toBe(false);
+        const types = events.map(e => e.type);
+        const boundary = events.findIndex(e => e.type === "moveTo" && e.props?.x === COL_X[1] + 0.5 && e.props?.y === 0);
+        expect(boundary).toBeGreaterThan(0);
+        // перед разделителем стоит клип по областям выделения, а не весь холст
+        const before = types.slice(0, boundary);
+        expect(before.lastIndexOf("clip")).toBeGreaterThan(before.lastIndexOf("restore"));
+        expect(hasClip(events.slice(before.lastIndexOf("save"), boundary), cellRect(3, 5))).toBe(true);
+    });
+
     test("выбрана строка: кадр целиком", () => {
         const { change } = setup();
         const { events } = change({ selection: { ...none, rows: CompactSelection.fromSingleSelection(3) } });

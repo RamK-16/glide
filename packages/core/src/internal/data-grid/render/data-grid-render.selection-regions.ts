@@ -1,3 +1,4 @@
+import { deepEqual } from "../../../common/support.js";
 import type { FillHandle, GridSelection, InnerGridCell, Item, Rectangle } from "../data-grid-types.js";
 import { DEFAULT_FILL_HANDLE } from "../data-grid-types.js";
 import type { ColumnLayout } from "./data-grid-freeze.js";
@@ -6,9 +7,28 @@ import type { Highlight } from "./data-grid-render.cells.js";
 import type { DrawGridArg } from "./draw-grid-arg.js";
 
 /**
+ * Параметры рисования тела, которых нет в `computeCanBlit`. Кадр с новым выделением раньше
+ * рисовался целиком и подхватывал их смену, поэтому при их смене частичный путь выключен.
+ */
+function sameBodyDrawParams(current: DrawGridArg, last: DrawGridArg): boolean {
+    return (
+        current.drawCellCallback === last.drawCellCallback &&
+        current.getCellRenderer === last.getCellRenderer &&
+        current.enableGroups === last.enableGroups &&
+        deepEqual(current.groupHeaderHeight, last.groupHeaderHeight) &&
+        current.freezeTrailingRows === last.freezeTrailingRows &&
+        current.hyperWrapping === last.hyperWrapping &&
+        current.minimumCellWidth === last.minimumCellWidth &&
+        current.enableLowDprHairline === last.enableLowDprHairline &&
+        current.resizeCol === last.resizeCol &&
+        current.resizeIndicator === last.resizeIndicator
+    );
+}
+
+/**
  * Между кадрами сменились только выделение, регионы подсветки или фокус, а данные, темы,
- * размеры и колонки прежние. Тогда прошлый кадр годится, перерисовать нужно лишь прежние и
- * новые области выделения, см. `getSelectionChangeRegions`.
+ * размеры, колонки и функции рисования тела прежние. Тогда прошлый кадр годится, перерисовать
+ * нужно лишь прежние и новые области выделения, см. `getSelectionChangeRegions`.
  */
 export function isSelectionOnlyChange(current: DrawGridArg, last: DrawGridArg): boolean {
     if (
@@ -18,6 +38,7 @@ export function isSelectionOnlyChange(current: DrawGridArg, last: DrawGridArg): 
     ) {
         return false;
     }
+    if (!sameBodyDrawParams(current, last)) return false;
     return (
         computeCanBlit(current, {
             ...last,

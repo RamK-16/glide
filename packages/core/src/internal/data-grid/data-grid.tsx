@@ -413,6 +413,9 @@ const getRowData = (cell: InnerGridCell, getCellRenderer?: GetCellRendererCallba
     return r?.getAccessibilityString(cell) ?? "";
 };
 
+/** Одна функция на все кадры: новая ссылка на каждом кадре выключала бы частичную перерисовку шапки */
+const defaultGroupDetails: GroupDetailsCallback = name => ({ name });
+
 const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p, forwardedRef) => {
     const {
         width,
@@ -1154,7 +1157,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             drawFocus: drawFocusRing,
             editorOpen,
             getCellContent,
-            getGroupDetails: getGroupDetails ?? (name => ({ name })),
+            getGroupDetails: getGroupDetails ?? defaultGroupDetails,
             getRowThemeOverride,
             drawHeaderCallback,
             drawGroupHeaderCallback,
