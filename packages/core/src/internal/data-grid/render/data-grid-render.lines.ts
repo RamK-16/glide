@@ -187,7 +187,9 @@ export function overdrawStickyBoundaries(
     verticalBorder: (col: number) => boolean,
     getRowHeight: (row: number) => number,
     theme: FullTheme,
-    enableLowDprHairline: boolean = false
+    enableLowDprHairline: boolean = false,
+    /** Только разделитель закреплённых колонок, без верхней линии итоговых строк. */
+    verticalOnly: boolean = false
 ) {
     let drawFreezeBorder = false;
     for (const c of effectiveCols) {
@@ -214,7 +216,7 @@ export function overdrawStickyBoundaries(
         ctx.stroke();
     }
 
-    if (freezeTrailingRows > 0) {
+    if (freezeTrailingRows > 0 && !verticalOnly) {
         const hStroke = vColor === hColor && vStroke !== undefined ? vStroke : blendCache(hColor, theme.bgCell);
         const h = getFreezeTrailingHeight(rows, freezeTrailingRows, getRowHeight);
         ctx.beginPath();
@@ -244,6 +246,13 @@ const getMinMaxXY = (drawRegions: Rectangle[] | undefined, width: number, height
             minY = Math.min(minY, r.y - 1);
             maxY = Math.max(maxY, r.y + r.height + 1);
         }
+        // Запас в пиксель не должен выходить за холст: иначе при дорисовке полосы у края
+        // линия строки или колонки на последнем пиксельном ряду рисовалась, а в полном
+        // кадре нет, и после прокрутки у края появлялась лишняя линия.
+        minX = Math.max(0, minX);
+        minY = Math.max(0, minY);
+        maxX = Math.min(width, maxX);
+        maxY = Math.min(height, maxY);
     }
 
     return { minX, maxX, minY, maxY };

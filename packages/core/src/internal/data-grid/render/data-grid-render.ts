@@ -161,8 +161,11 @@ export function clipHeaderDamage(
         (c, drawX, _colDrawY, clipX) => {
             const diff = Math.max(0, clipX - drawX);
 
-            const finalX = drawX + diff + 1;
-            const finalWidth = c.width - diff - 1;
+            // Левый пиксель ячейки шапки принадлежит линии предыдущей колонки, у первой
+            // колонки холста линии слева нет: красим её от самого края, как полный кадр.
+            const inset = drawX + diff === 0 ? 0 : 1;
+            const finalX = drawX + diff + inset;
+            const finalWidth = c.width - diff - inset;
             // Слитая колонка занимает и строку колонки (-1), и групп-ряды (-2…). Клипуем её на
             // всю высоту, если задет ЛЮБОЙ её ряд, — иначе групп-полоса не перерисуется при hover.
             const spannedCol = c.spanGroupHeader === true;
@@ -1280,6 +1283,33 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 ctx.restore();
             };
 
+            // Первая колонка за закреплённой зоной при точечной дорисовке красится от границы
+            // зоны (см. drawCells) и закрывает разделитель закреплённых колонок в своей строке.
+            // Полный кадр рисует разделитель после ячеек: возвращаем его в границах повреждённых
+            // ячеек, только вертикальную линию (верхняя линия итоговых строк ячейками не задета,
+            // второй слой сделал бы её темнее).
+            if (pinnedColumnsEnd > 0 && cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
+                ctx.save();
+                ctx.beginPath();
+                for (const r of cellDamageRegions) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+                ctx.clip();
+                overdrawStickyBoundaries(
+                    ctx,
+                    effectiveCols,
+                    width,
+                    height,
+                    freezeTrailingRows,
+                    rows,
+                    verticalBorder,
+                    getRowHeight,
+                    theme,
+                    enableLowDprHairline,
+                    true
+                );
+                ctx.restore();
+            }
             redrawRingsInDamage("below");
 
             const selectionCurrent = selection.current;
@@ -1446,6 +1476,24 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             extraRegions
         );
         drawRegions = regions;
+        // Горизонтальный сдвиг переписывает столбец пикселей разделителя закреплённых
+        // колонок содержимым соседней колонки. Узкая полоса на границе возвращает его в
+        // кадр вместе с тем, что лежит на нём (обводки регионов и рамки ячеек), обычным
+        // путём отрисовки под клипом. Пустой список областей значит, что сдвига не было
+        // (прыжок больше экрана) и кадр рисуется целиком: полоса там не нужна и вредна,
+        // с ней под клип попала бы только она.
+        if (
+            drawRegions.length > 0 &&
+            pinnedColumnsEnd > 0 &&
+            (cellXOffset !== last.cellXOffset || translateX !== last.translateX)
+        ) {
+            drawRegions.push({
+                x: pinnedColumnsEnd - 1,
+                y: totalHeaderHeight,
+                width: 3,
+                height: height - totalHeaderHeight,
+            });
+        }
     } else if (canBlit !== false) {
         assert(last !== undefined);
         const resizedCol = canBlit;
@@ -1463,14 +1511,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
     }
 
-    // При скролле (drawRegions от блита) с рамками отдельных ячеек разделитель
-    // закреплённых колонок рисуем только в новых полосах: остальная канва
-    // скопирована блитом вместе с цветными кусками рамок, и перерисовка серым на
-    // всю высоту их затирала (дальше весь рендер идёт под клипом по drawRegions
-    // и восстановить их не может). При смене только выделения так же и без рамок ячеек:
-    // разделитель на всю высоту затирал бы обводки регионов на границе вне областей выделения.
-    const clipStickyToRegions =
-        drawRegions.length > 0 && (getCellBorder !== undefined || selectionRegions !== undefined);
+    // При сдвиге прошлого кадра (drawRegions от блита или областей выделения) разделитель
+    // закреплённых колонок рисуем только в новых полосах: остальная канва скопирована
+    // вместе с разделителем и тем, что лежит на нём (цветные куски рамок ячеек, обводки
+    // регионов и выделения), а перерисовка серым на всю высоту это затирала (дальше весь
+    // рендер идёт под клипом по drawRegions и восстановить это не может) и с каждым кадром
+    // делала полупрозрачную линию темнее.
+    const clipStickyToRegions = drawRegions.length > 0;
     if (clipStickyToRegions) {
         targetCtx.save();
         targetCtx.beginPath();

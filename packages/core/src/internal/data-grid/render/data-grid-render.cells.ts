@@ -716,13 +716,22 @@ export function drawCells(
                         const bottom = isSticky ? cellBottom : Math.min(cellBottom, scrollBody.bottom);
                         const h = Math.max(0, bottom - top);
 
+                        // Левый пиксель ячейки принадлежит линии сетки предыдущей колонки, поэтому
+                        // точечная дорисовка его не трогает. У первой колонки холста линии слева нет:
+                        // полный кадр красит её от самого края, и ту же полоску красим здесь, иначе
+                        // в ней оставался бы прежний фон (например, без наведения на строку). Первая
+                        // колонка за закреплённой зоной красится от её границы: там лежит разделитель
+                        // закреплённых колонок, полный кадр рисует его после ячеек, и drawGrid после
+                        // точечной дорисовки возвращает его в границах повреждённых ячеек.
+                        const atPinnedEdge = clipX > 0 && cellX <= clipX;
+                        const left = atPinnedEdge ? clipX : cellX === 0 ? 0 : cellX + 1;
                         // however, not clipping at all is even better. We want to clip if we are the left most col
                         // or overlapping the bottom clip area.
                         if (h !== cellHeight - 1 || cellX + 1 <= clipX) {
                             didDamageClip = true;
                             ctx.save();
                             ctx.beginPath();
-                            ctx.rect(cellX + 1, top, cellWidth - 1, h);
+                            ctx.rect(left, top, cellWidth - (left - cellX), h);
                             ctx.clip();
                         }
 
@@ -743,10 +752,12 @@ export function drawCells(
                         if (damage !== undefined) {
                             // this accounts for the fill handle outline being drawn inset on these cells. We do this
                             // because technically the bottom right corner of the outline are on other cells.
+                            const damageLeft =
+                                clipX > 0 && cellX <= clipX ? clipX : cellX === 0 ? 0 : cellX + 1;
                             ctx.fillRect(
-                                cellX + 1,
+                                damageLeft,
                                 cellY + 1,
-                                cellWidth - (isLastColumn ? 2 : 1),
+                                cellWidth - (damageLeft - cellX) - (isLastColumn ? 1 : 0),
                                 cellHeight - (isLastRow ? 2 : 1)
                             );
                         } else {

@@ -247,15 +247,16 @@ describe("blit с полосой липких строк", () => {
         ).regions;
     }
 
-    it("без липких строк — апстримные регионы", () => {
-        expect(blit(HEADER_H)).toEqual([{ x: 0, y: 600 - ROW_H, width: 600, height: ROW_H }]);
+    it("без липких строк — апстримные регионы плюс пиксель шва", () => {
+        // полоса снизу на пиксель выше шва: там прошлый кадр рисовался без линии у края холста
+        expect(blit(HEADER_H)).toEqual([{ x: 0, y: 600 - ROW_H - 1, width: 600, height: ROW_H + 1 }]);
     });
 
     it("полоса не копируется, а перерисовывается целиком", () => {
         const bandBottom = HEADER_H + 2 * ROW_H;
         expect(blit(bandBottom)).toEqual([
             { x: 0, y: HEADER_H, width: 600, height: bandBottom - HEADER_H + 1 },
-            { x: 0, y: 600 - ROW_H, width: 600, height: ROW_H },
+            { x: 0, y: 600 - ROW_H - 1, width: 600, height: ROW_H + 1 },
         ]);
     });
 });

@@ -344,12 +344,20 @@ describe("data-grid: частичная перерисовка при смене
         expect(hasClip(events, cellRect(2, 3))).toBe(true);
     });
 
+    test("прыжок больше экрана с закреплённой колонкой: кадр целиком, без полосы на границе", () => {
+        const { change } = setup({ freezeColumns: 1, selection: sel(1, 5) });
+        const { events, askedRows } = change({ selection: sel(1, 55), cellYOffset: 50 });
+        expect(fullRedraw(events)).toBe(true);
+        // спрошены строки нового экрана, а не только граница закреплённой зоны
+        expect(askedRows).toContain(60);
+    });
+
     test("выделение и прокрутка за один кадр: сдвиг кадра плюс области выделения", () => {
         const { change } = setup({ selection: sel(1, 5) });
         const { events } = change({ selection: sel(1, 6), cellYOffset: 1 });
         expect(fullRedraw(events)).toBe(false);
-        // новая полоса снизу от сдвига на одну строку
-        expect(hasClip(events, { x: 0, y: SIZE - ROW, width: SIZE, height: ROW })).toBe(true);
+        // новая полоса снизу от сдвига на одну строку, на пиксель выше шва
+        expect(hasClip(events, { x: 0, y: SIZE - ROW - 1, width: SIZE, height: ROW + 1 })).toBe(true);
         // строки на экране поднялись на одну: прежняя ячейка [1,5] стоит там, где была строка 4
         expect(hasClip(events, cellRect(1, 4))).toBe(true);
         expect(hasClip(events, cellRect(1, 5))).toBe(true);

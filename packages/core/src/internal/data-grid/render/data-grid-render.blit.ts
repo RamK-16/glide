@@ -156,11 +156,13 @@ export function blitLastFrame(
             args.dy = (bodyTop + 1) * dpr;
             args.dh = blitHeight * dpr;
 
+            // Полоса на пиксель выше шва: последний ряд прошлого кадра у края холста
+            // рисовался без линии строки, и после сдвига вверх её там не было бы.
             drawRegions.push({
                 x: 0,
-                y: height + deltaY - freezeTrailingRowsHeight,
+                y: height + deltaY - freezeTrailingRowsHeight - 1,
                 width: width,
-                height: -deltaY + freezeTrailingRowsHeight,
+                height: -deltaY + freezeTrailingRowsHeight + 1,
             });
         }
 
@@ -185,10 +187,12 @@ export function blitLastFrame(
             args.dx = stickyWidth * dpr;
             args.dw = blitWidth * dpr;
 
+            // Полоса на пиксель левее шва: последний столбец прошлого кадра у края холста
+            // рисовался без линии колонки, и после сдвига влево её там не было бы.
             drawRegions.push({
-                x: width + deltaX,
+                x: width + deltaX - 1,
                 y: 0,
-                width: -deltaX,
+                width: -deltaX + 1,
                 height: height,
             });
         }
