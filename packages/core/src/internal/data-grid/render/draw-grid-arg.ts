@@ -7,6 +7,7 @@ import type { HiddenColumnsIndicatorInfo } from "../hidden-columns-indicator.js"
 import type { BlitData } from "./data-grid-render.blit.js";
 import type { SpriteManager } from "../data-grid-sprites.js";
 import type {
+    DrawnFrame,
     CompactSelection,
     GridSelection,
     Item,
@@ -96,4 +97,6 @@ export interface DrawGridArg {
     readonly getCellRenderer: GetCellRendererCallback;
     readonly minimumCellWidth: number;
     readonly resizeIndicator: "full" | "header" | "none";
+    /** Отладочный вызов после каждого нарисованного кадра, см. `experimental.onFrameDrawn`. */
+    readonly onFrameDrawn: ((frame: DrawnFrame) => void) | undefined;
 }

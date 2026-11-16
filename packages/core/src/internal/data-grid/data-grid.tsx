@@ -20,6 +20,7 @@ import {
     getTotalGroupHeaderHeight,
 } from "./render/data-grid-render.walk.js";
 import {
+    type DrawnFrame,
     GridCellKind,
     type Rectangle,
     type GridSelection,
@@ -327,6 +328,12 @@ export interface DataGridProps {
                * включая repair этих линий после damage redraw.
                */
               readonly enableLowDprHairline?: boolean;
+              /**
+               * Отладочный вызов после каждого нарисованного кадра холста: вид кадра (целиком, сдвиг
+               * прошлого, только выделение, только ячейки), перерисованные области и признак шапки.
+               * Нужен тестам частичной перерисовки; без него ничего не стоит.
+               */
+              readonly onFrameDrawn?: (frame: DrawnFrame) => void;
               /**
                * Allows providing a custom event target for event listeners.
                * If not provided, the grid will use the window as the event target.
@@ -1178,6 +1185,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             getCellRenderer,
             minimumCellWidth,
             resizeIndicator,
+            onFrameDrawn: experimental?.onFrameDrawn,
         };
 
         // This confusing bit of code due to some poor design. Long story short, the damage property is only used
@@ -1246,6 +1254,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         experimental?.hyperWrapping,
         experimental?.renderStrategy,
         experimental?.enableLowDprHairline,
+        experimental?.onFrameDrawn,
         lastWasTouch,
         renderStateProvider,
         getCellRenderer,

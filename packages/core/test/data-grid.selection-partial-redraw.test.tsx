@@ -3,6 +3,7 @@ import { render, cleanup } from "@testing-library/react";
 import DataGrid, { type DataGridProps, type DataGridRef } from "../src/internal/data-grid/data-grid.js";
 import {
     CompactSelection,
+    type DrawnFrame,
     GridCellKind,
     type GridCell,
     type GridSelection,
@@ -201,7 +202,7 @@ describe("data-grid: частичная перерисовка при смене
                 {...props}
                 getCellContent={spy}
                 {...p}
-                experimental={{ renderStrategy: "single-buffer" }}
+                experimental={{ renderStrategy: "single-buffer", ...props.experimental }}
             />
         );
         const view = render(grid({}));
@@ -460,5 +461,61 @@ describe("data-grid: частичная перерисовка при смене
         const { events } = change({ selection: sel(1, 5) });
         expect(fullRedraw(events)).toBe(false);
         expect(hasClip(events, cellRect(1, 4, 2, 4))).toBe(true);
+    });
+    describe("отметка о кадре onFrameDrawn", () => {
+        const frames: DrawnFrame[] = [];
+        const last = () => frames[frames.length - 1];
+        const tracked = (props: Partial<DataGridProps> = {}) => {
+            frames.length = 0;
+            return setup({ ...props, experimental: { onFrameDrawn: frame => frames.push(frame) } });
+        };
+
+        test("первый кадр целиком, со всем холстом и шапкой", () => {
+            tracked({ selection: sel(1, 5) });
+            expect(frames).toHaveLength(1);
+            expect(last()).toEqual({ kind: "full", header: true, regions: [{ x: 0, y: 0, width: SIZE, height: SIZE }] });
+        });
+
+        test("переход по строкам: только выделение, шапка не трогается; смена колонки рисует шапку", () => {
+            const { change } = tracked({ selection: sel(1, 5) });
+            change({ selection: sel(1, 6) });
+            expect(frames).toHaveLength(2);
+            expect(last().kind).toBe("selection");
+            expect(last().header).toBe(false);
+            // прежняя и новая ячейки, весь холст не перерисован
+            expect(last().regions.length).toBeGreaterThan(0);
+            expect(last().regions.every(r => r.width < SIZE && r.height < SIZE)).toBe(true);
+            change({ selection: sel(3, 6) });
+            expect(last()).toMatchObject({ kind: "selection", header: true });
+        });
+
+        test("повторный рендер без изменений кадра не даёт", () => {
+            const { change } = tracked({ selection: sel(1, 5) });
+            change({});
+            expect(frames).toHaveLength(1);
+        });
+
+        test("выделение ушло за экран: стирается только прежняя ячейка, дальше областей нет", () => {
+            const { change } = tracked({ selection: sel(1, 5) });
+            change({ selection: sel(1, 500) });
+            expect(last()).toMatchObject({ kind: "selection", regions: [cellRect(1, 5)] });
+            change({ selection: sel(1, 600) });
+            expect(last()).toMatchObject({ kind: "selection", regions: [] });
+        });
+
+        test("точечная дорисовка ячеек: damage с их областями", () => {
+            const { damage } = tracked({ selection: sel(1, 5) });
+            damage([[1, 3]]);
+            expect(last().kind).toBe("damage");
+            expect(last().header).toBe(false);
+            expect(last().regions).toHaveLength(1);
+            expect(last().regions[0]).toMatchObject({ x: COL_X[1], width: COL_X[2] - COL_X[1] });
+        });
+
+        test("смена данных вместе с выделением: кадр целиком", () => {
+            const { change } = tracked({ selection: sel(1, 5) });
+            change({ selection: sel(1, 6), rows: 999 });
+            expect(last()).toMatchObject({ kind: "full", header: true });
+        });
     });
 });

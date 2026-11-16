@@ -1,6 +1,6 @@
 /* eslint-disable sonarjs/no-duplicate-string */
 /* eslint-disable unicorn/no-for-loop */
-import { type Rectangle } from "../data-grid-types.js";
+import { type DrawnFrame, type Rectangle } from "../data-grid-types.js";
 import { CellSet } from "../cell-set.js";
 import { type MappedGridColumn, rectBottomRight, remapForDnDState } from "./data-grid-lib.js";
 import { type StickyAxis, attachRowAxis, computeColumnLayout, computeRowAxis, rowAxisOf } from "./data-grid-freeze.js";
@@ -459,6 +459,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         damage,
         minimumCellWidth,
         resizeIndicator,
+        onFrameDrawn,
     } = arg;
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
@@ -671,7 +672,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             }
         }
     }
+    // Отладочная отметка о кадре для тестов частичной перерисовки, см. `experimental.onFrameDrawn`.
+    // Ранний выход выше (ничего не менялось) кадра не даёт, поэтому отметки там нет.
+    let headerDrawn = false;
+    const reportFrame = (kind: DrawnFrame["kind"], regions: readonly Rectangle[]) =>
+        onFrameDrawn?.({ kind, regions, header: headerDrawn });
     const drawHeaderTexture = () => {
+        headerDrawn = true;
         drawGridHeaders(
             overlayCtx,
             effectiveCols,
@@ -1361,6 +1368,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             }
         }
 
+        reportFrame("damage", cellDamageRegions ?? []);
         targetCtx.restore();
         overlayCtx.restore();
 
@@ -1404,6 +1412,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         translateY === last.translateY
     ) {
         lastBlitData.current = { ...last, mustDrawFocusOnHeader, mustDrawHighlightRingsOnHeader };
+        reportFrame("selection", []);
         targetCtx.restore();
         overlayCtx.restore();
         return;
@@ -1762,6 +1771,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         bBufferScroll: targetBuffer === bufferB ? [scrollX, scrollY] : last?.bBufferScroll,
     };
 
+    if (canBlit === false) reportFrame("full", [{ x: 0, y: 0, width, height }]);
+    else reportFrame(selectionChange ? "selection" : "blit", drawRegions);
     targetCtx.restore();
     overlayCtx.restore();
 }
