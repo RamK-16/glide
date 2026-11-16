@@ -239,6 +239,20 @@ describe("data-grid: частичная перерисовка при смене
         expect(wideEvents.some(e => e.type === "fillRect" && e.props?.width === 10_000)).toBe(false);
     });
 
+    test("точечная дорисовка со слитыми ячейками рисует разделитель закреплённых колонок до ячеек, как полный кадр", () => {
+        const spanned = (cell: readonly [number, number]): GridCell =>
+            cell[0] >= 1 && cell[0] <= 2 && cell[1] >= 4 && cell[1] <= 7
+                ? { ...textCell(cell), span: [1, 2], spanRows: [4, 7] }
+                : textCell(cell);
+        const { damage } = setup({ freezeColumns: 1 }, spanned);
+        const events = damage([[1, 5]]);
+        expect(fullRedraw(events)).toBe(false);
+        const boundary = events.findIndex(e => e.type === "moveTo" && e.props?.x === COL_X[1] + 0.5 && e.props?.y === 0);
+        const firstText = events.findIndex(e => e.type === "fillText");
+        expect(boundary).toBeGreaterThanOrEqual(0);
+        expect(firstText).toBeGreaterThan(boundary);
+    });
+
     test("точечная дорисовка ячеек восстанавливает обычные обводки и обводки поверх выделения, в этом порядке", () => {
         const below = { color: "#0000ff", range: { x: 3, y: 4, width: 1, height: 1 }, style: "solid-outline" as const };
         const above = {

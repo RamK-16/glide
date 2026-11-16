@@ -992,6 +992,23 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 ctx.fill();
                 ctx.beginPath();
 
+                // Разделитель закреплённых колонок рисуем в том же порядке, что в полном
+                // кадре: после фона и до ячеек и линий сетки. После ячеек полупрозрачная
+                // линия ложилась второй раз поверх линии сетки, и граница темнела с каждым
+                // наведением. После линий сетки она перекрывала бы рамки getCellBorder.
+                overdrawStickyBoundaries(
+                    ctx,
+                    effectiveCols,
+                    width,
+                    height,
+                    freezeTrailingRows,
+                    rows,
+                    verticalBorder,
+                    getRowHeight,
+                    theme,
+                    enableLowDprHairline
+                );
+
                 const highlightRedraw = drawHighlightRings(
                     ctx,
                     width,
@@ -1144,23 +1161,6 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
                 const lineRepairRegions =
                     spans === undefined ? visualDamageRegions : [...visualDamageRegions, ...spans];
-
-                // Разделитель закреплённых колонок рисуем ДО линий сетки, как в полном
-                // рендере. Иначе при частичной перерисовке (ховер) он ложился поверх
-                // рамок getCellBorder на границе закреплённых колонок, и рамка мигала:
-                // серый разделитель перекрывал цвет рамки при каждом ховере.
-                overdrawStickyBoundaries(
-                    ctx,
-                    effectiveCols,
-                    width,
-                    height,
-                    freezeTrailingRows,
-                    rows,
-                    verticalBorder,
-                    getRowHeight,
-                    theme,
-                    enableLowDprHairline
-                );
 
                 drawGridLines(
                     ctx,
