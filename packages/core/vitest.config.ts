@@ -27,7 +27,7 @@ export default defineConfig({
         deps: {
             optimizer: {
                 web: {
-                    include: ["vitest-canvas-mock"],
+                    include: ["jest-canvas-mock"],
                 },
             },
         },

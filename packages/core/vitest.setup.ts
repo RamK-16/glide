@@ -1,15 +1,16 @@
-import { vi } from "vitest";
+import { afterAll, vi } from "vitest";
 
-// jest-canvas-mock (внутри vitest-canvas-mock) обращается к global.jest при
-// загрузке, поэтому ставим его ДО импорта canvas-mock. Импорт динамический:
-// обычный import поднялся бы наверх и сработал раньше этой строки.
-global.jest = vi;
-await import("vitest-canvas-mock");
+// Load the mock before any suite starts. The vitest-canvas-mock wrapper starts
+// its own unawaited import, which can outlive short suites and their globals.
+vi.stubGlobal("jest", vi);
+const { setupJestCanvasMock } = await import("jest-canvas-mock");
+setupJestCanvasMock(window);
+afterAll(() => vi.unstubAllGlobals());
 
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
-    observe: jest.fn(),
-    unobserve: jest.fn(),
-    disconnect: jest.fn(),
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
 }));
 
 Image.prototype.decode = () => new Promise(resolve => window.setTimeout(resolve, 10));
