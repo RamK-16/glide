@@ -75,8 +75,7 @@ const base: SelectionChangeRegionsArgs = {
     height: HEIGHT,
     rows: 1000,
     freezeTrailingRows: 0,
-    pinnedRowsCount: 0,
-    stickySpanInView: false,
+    pinnedRows: [],
     getRowHeight: () => ROW,
     getCellContent: textCell,
 };
@@ -129,9 +128,21 @@ describe("getSelectionChangeRegions", () => {
         expect(regions({ selection: sel(1, 12), freezeTrailingRows: 1 })).toEqual([cellRect(1, 12)]);
     });
 
-    it("прилипшие строки или липкий блок на экране: кадр целиком", () => {
-        expect(regions({ selection: sel(1, 12), pinnedRowsCount: 1 })).toBeUndefined();
-        expect(regions({ selection: sel(1, 12), stickySpanInView: true })).toBeUndefined();
+    it("прилипшие строки на экране: выделение тела под полосой, прилипшая строка в полосе", () => {
+        const band = [{ row: 3, top: HEADER, height: ROW }];
+        // строка в полосе красится там, где прилипла, а не в потоке тела
+        expect(regions({ selection: sel(1, 3), pinnedRows: band })).toEqual([cellRect(1, 10)]);
+        // область тела начинается под полосой
+        expect(regions({ selection: sel(1, 10), pinnedRows: band })).toEqual([
+            { x: COL - PAD, y: HEADER + ROW, width: COL + PAD * 2, height: PAD },
+        ]);
+    });
+
+    it("прилипшие строки и липкий блок без прокрутки частичному пути не мешают", () => {
+        // прилипшие строки и липкий блок без прокрутки частичному пути не мешают
+        expect(regions({ selection: sel(1, 12), pinnedRows: [{ row: 3, top: HEADER, height: ROW }] })).toEqual([
+            cellRect(1, 12),
+        ]);
     });
 
     it("регионы подсветки: перерисовываются только изменившиеся", () => {

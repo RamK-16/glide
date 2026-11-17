@@ -619,8 +619,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             height,
             rows,
             freezeTrailingRows,
-            pinnedRowsCount,
-            stickySpanInView: last?.stickySpanInView === true,
+            pinnedRows: rowAxis.items
+                .slice(0, rowAxis.pinnedCount)
+                .map((row, i) => ({ row, top: rowAxis.positions[i], height: rowAxis.sizes[i] })),
             fillHandle,
             getRowHeight,
             getCellContent,

@@ -71,6 +71,13 @@ export function selectionHeaderChanged(a: GridSelection, b: GridSelection): bool
     return false;
 }
 
+export interface PinnedRow {
+    readonly row: number;
+    /** Верх строки в полосе прилипших строк, px */
+    readonly top: number;
+    readonly height: number;
+}
+
 export interface SelectionChangeRegionsArgs {
     readonly selection: GridSelection;
     readonly lastSelection: GridSelection;
@@ -86,8 +93,11 @@ export interface SelectionChangeRegionsArgs {
     /** Все строки вместе с итоговыми */
     readonly rows: number;
     readonly freezeTrailingRows: number;
-    readonly pinnedRowsCount: number;
-    readonly stickySpanInView: boolean;
+    /**
+     * Прилипшие строки с их местом в полосе под шапкой, по возрастанию. Строка в полосе
+     * красится там, а её место в потоке тела лежит под полосой.
+     */
+    readonly pinnedRows: readonly PinnedRow[];
     /** Маркер растяжения выходит за край ячейки, запас области считается от его размера */
     readonly fillHandle?: FillHandle;
     readonly getRowHeight: (row: number) => number;
@@ -179,7 +189,6 @@ interface VisibleColumn {
 export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rectangle[] | undefined {
     const { selection, lastSelection, columnLayout, cellYOffset, width, height, rows, getRowHeight, getCellContent } =
         args;
-    if (args.pinnedRowsCount > 0 || args.stickySpanInView) return undefined;
     if (
         selection !== lastSelection &&
         (!selection.columns.equals(lastSelection.columns) || !selection.rows.equals(lastSelection.rows))
@@ -209,6 +218,9 @@ export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rec
     }
     const rowsBottom = y;
     const lastVisibleRow = cellYOffset + rowTops.length - 1;
+    // Полоса прилипших строк закрывает верх тела: области тела начинаются под ней
+    const lastPinned = args.pinnedRows[args.pinnedRows.length - 1];
+    const pinnedRowsEnd = lastPinned === undefined ? 0 : lastPinned.top + lastPinned.height;
 
     // Видимые колонки: прилипшие на своих местах, прокручиваемые обрезаны по краю закреплённой зоны
     const pinnedEnd = columnLayout.axis.pinnedEnd;
@@ -228,7 +240,9 @@ export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rec
         if (expanded === undefined) return undefined;
         const vy0 = Math.max(expanded.y0, cellYOffset);
         const vy1 = Math.min(expanded.y1, lastVisibleRow);
-        if (vy0 > vy1) continue;
+        const inBody = vy0 <= vy1;
+        const inPinned = args.pinnedRows.some(p => p.row >= expanded.y0 && p.row <= expanded.y1);
+        if (!inBody && !inPinned) continue;
         let left = Number.POSITIVE_INFINITY;
         let right = Number.NEGATIVE_INFINITY;
         for (const c of columns) {
@@ -237,12 +251,29 @@ export function getSelectionChangeRegions(args: SelectionChangeRegionsArgs): Rec
             right = Math.max(right, c.right);
         }
         if (left >= right) continue;
+        // Прилипшая строка диапазона красится в полосе под шапкой
+        for (const pinned of args.pinnedRows) {
+            if (pinned.row < expanded.y0 || pinned.row > expanded.y1) continue;
+            const region = clampRect(
+                {
+                    x: left - pad,
+                    y: pinned.top - pad,
+                    width: right - left + pad * 2,
+                    height: pinned.height + pad * 2,
+                },
+                width,
+                height
+            );
+            if (region !== undefined) regions.push(region);
+        }
+        if (!inBody) continue;
         const top = rowTops[vy0 - cellYOffset];
         const bottom = vy1 === lastVisibleRow ? rowsBottom : rowTops[vy1 - cellYOffset + 1];
         const region = clampRect(
             { x: left - pad, y: top - pad, width: right - left + pad * 2, height: bottom - top + pad * 2 },
             width,
-            height
+            height,
+            pinnedRowsEnd
         );
         if (region !== undefined) regions.push(region);
     }
@@ -336,9 +367,9 @@ function growToSpan(r: CellRange, col: number, row: number, cell: InnerGridCell)
     return true;
 }
 
-function clampRect(r: Rectangle, width: number, height: number): Rectangle | undefined {
+function clampRect(r: Rectangle, width: number, height: number, minY = 0): Rectangle | undefined {
     const x = Math.max(0, r.x);
-    const y = Math.max(0, r.y);
+    const y = Math.max(minY, r.y);
     const right = Math.min(width, r.x + r.width);
     const bottom = Math.min(height, r.y + r.height);
     if (right <= x || bottom <= y) return undefined;
