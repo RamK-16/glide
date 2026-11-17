@@ -25,6 +25,8 @@ export interface BlitData {
      * прошлый кадр сдвигать нельзя.
      */
     readonly stickySpanInView?: boolean;
+    /** Масштаб холста кадра: при его смене холст очищается, сдвигать прошлый кадр нельзя. */
+    readonly dpr?: number;
     aBufferScroll: [boolean, boolean] | undefined;
     bBufferScroll: [boolean, boolean] | undefined;
 }
@@ -59,8 +61,8 @@ export function blitLastFrame(
     getRowHeight: number | ((r: number) => number),
     doubleBuffer: boolean,
     stickyRowsBottom: number = totalHeaderHeight,
-    /** Что перерисовать поверх сдвинутого кадра, например строки с новой высотой */
-    extraRegion?: Rectangle
+    /** Что перерисовать поверх сдвинутого кадра: строки с новой высотой, области выделения */
+    extraRegions?: readonly Rectangle[]
 ): {
     regions: Rectangle[];
 } {
@@ -112,7 +114,7 @@ export function blitLastFrame(
     const blitHeight = height - bodyTop - freezeTrailingRowsHeight - Math.abs(deltaY) - 1;
 
     if (blitWidth > 150 && blitHeight > 150) {
-        if (extraRegion !== undefined) drawRegions.push(extraRegion);
+        if (extraRegions !== undefined) drawRegions.push(...extraRegions);
         const args = {
             sx: 0,
             sy: 0,
@@ -154,11 +156,13 @@ export function blitLastFrame(
             args.dy = (bodyTop + 1) * dpr;
             args.dh = blitHeight * dpr;
 
+            // Полоса на пиксель выше шва: последний ряд прошлого кадра у края холста
+            // рисовался без линии строки, и после сдвига вверх её там не было бы.
             drawRegions.push({
                 x: 0,
-                y: height + deltaY - freezeTrailingRowsHeight,
+                y: height + deltaY - freezeTrailingRowsHeight - 1,
                 width: width,
-                height: -deltaY + freezeTrailingRowsHeight,
+                height: -deltaY + freezeTrailingRowsHeight + 1,
             });
         }
 
@@ -183,10 +187,12 @@ export function blitLastFrame(
             args.dx = stickyWidth * dpr;
             args.dw = blitWidth * dpr;
 
+            // Полоса на пиксель левее шва: последний столбец прошлого кадра у края холста
+            // рисовался без линии колонки, и после сдвига влево её там не было бы.
             drawRegions.push({
-                x: width + deltaX,
+                x: width + deltaX - 1,
                 y: 0,
-                width: -deltaX,
+                width: -deltaX + 1,
                 height: height,
             });
         }
@@ -270,6 +276,13 @@ export function blitResizedCol(
     return drawRegions;
 }
 
+/** По содержимому; объекты могут отсутствовать в неполных аргументах */
+function sameCompactSelection(a: DrawGridArg["disabledRows"], b: DrawGridArg["disabledRows"]): boolean {
+    if (a === b) return true;
+    if (a === undefined || b === undefined) return false;
+    return a.equals(b);
+}
+
 export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefined): boolean | number {
     if (last === undefined) return false;
     if (
@@ -286,8 +299,13 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         current.isFocused !== last.isFocused ||
         current.drawFocus !== last.drawFocus ||
         current.editorOpen !== last.editorOpen ||
+        // Стиль маркера растяжения и отключённые строки сравниваем по содержимому:
+        // обёртка пересобирает их объекты чаще, чем меняется смысл, а новая
+        // ссылка здесь значила бы полный кадр на каждый клик
+        !deepEqual(current.fillHandle, last.fillHandle) ||
+        !sameCompactSelection(current.disabledRows, last.disabledRows) ||
+        current.hasAppendRow !== last.hasAppendRow ||
         current.isResizing !== last.isResizing ||
-        current.hoveredResizeCol !== last.hoveredResizeCol ||
         current.resizeIndicator !== last.resizeIndicator ||
         current.verticalBorder !== last.verticalBorder ||
         current.horizontalBorder !== last.horizontalBorder ||

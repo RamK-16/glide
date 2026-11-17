@@ -1,3 +1,10 @@
+# [6.13.0](https://github.com/RamK-16/glide/compare/v6.12.3...v6.13.0) (2026-11-17)
+
+
+### Features
+
+* **data-grid:** при смене выделения, регионов подсветки или фокуса перерисовываются только их области, а не весь экран ([#61](https://github.com/RamK-16/glide/issues/61)) ([b36990a](https://github.com/RamK-16/glide/commit/b36990afd0609fa96551e7f89fb6a4f39f214741))
+
 ## [6.12.3](https://github.com/RamK-16/glide/compare/v6.12.2...v6.12.3) (2026-11-11)
 
 

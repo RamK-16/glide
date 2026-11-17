@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { DataEditorProps, DataEditorRef } from "../src/index.js";
 import * as gridRenderer from "../src/internal/data-grid/render/data-grid-render.js";
 import * as resizeDrawing from "../src/internal/data-grid/render/data-grid.render.rings.js";
-import { computeCanBlit } from "../src/internal/data-grid/render/data-grid-render.blit.js";
 import { EventedDataEditor, basicProps, Context, prep, standardAfterEach, standardBeforeEach } from "./test-utils.js";
 
 vi.mock("../src/common/resize-detector", () => ({
@@ -101,11 +100,9 @@ describe("resizeIndicatorOnHover", () => {
             [310, 40],
         ]) {
             hover(310);
-            const previous = frame();
             outline.mockClear();
             hover(x, y);
             expect(frame()?.hoveredResizeCol).toBeUndefined();
-            expect(computeCanBlit(frame()!, previous)).toBe(false);
             // Synchronous header damage can precede the state update; the final frame must be clear.
             outline.mockClear();
             gridRenderer.drawGrid(frame()!, undefined);
@@ -148,19 +145,49 @@ describe("resizeIndicatorOnHover", () => {
         expect(outline.mock.calls.some(([, x]) => x === 310)).toBe(true);
     });
 
-    test("moves and clears the indicator without reusing a stale canvas frame", () => {
-        const { hover, frame, outline } = mount();
+    test.each(["single-buffer", "double-buffer"] as const)(
+        "redraws only the header when hover enters, moves or leaves (%s)",
+        renderStrategy => {
+            const onFrameDrawn = vi.fn();
+            const { hover, frame, outline } = mount({ experimental: { renderStrategy, onFrameDrawn } });
+            for (const [x, col] of [
+                [310, 1],
+                [480, 2],
+                [400, undefined],
+            ] as const) {
+                onFrameDrawn.mockClear();
+                outline.mockClear();
+                hover(x);
+                expect(frame()?.hoveredResizeCol).toBe(col);
+                expect(onFrameDrawn).toHaveBeenLastCalledWith({ kind: "damage", header: true, regions: [] });
+                if (col !== undefined) expect(outline.mock.calls.some(([, edge]) => edge === x)).toBe(true);
+            }
+        }
+    );
+
+    test("keeps the hover line when an offscreen selection redraws only the header", () => {
+        const onFrameDrawn = vi.fn();
+        const { hover, frame, outline } = mount({
+            rows: 1000,
+            experimental: { onFrameDrawn, renderStrategy: "single-buffer" },
+        });
         hover(310);
-        const first = frame();
-        hover(480);
-        const second = frame();
-        expect(second?.hoveredResizeCol).toBe(2);
-        expect(outline.mock.calls.some(([, x]) => x === 480)).toBe(true);
-        if (first === undefined || second === undefined) throw new Error("Missing draw frames");
-        expect(computeCanBlit(second, first)).toBe(false);
-        hover(400, 80);
-        expect(frame()?.hoveredResizeCol).toBeUndefined();
-        expect(computeCanBlit(frame()!, second)).toBe(false);
+        const hovered = frame();
+        if (hovered === undefined) throw new Error("Missing hover frame");
+        const selectOffscreen = (x: number) => ({
+            ...hovered,
+            selection: {
+                ...hovered.selection,
+                current: { cell: [x, 500] as const, range: { x, y: 500, width: 1, height: 1 }, rangeStack: [] },
+            },
+        });
+        const first = selectOffscreen(1);
+        gridRenderer.drawGrid(first, hovered);
+        outline.mockClear();
+        gridRenderer.drawGrid(selectOffscreen(2), first);
+        expect(onFrameDrawn).toHaveBeenLastCalledWith({ kind: "selection", header: true, regions: [] });
+        expect(outline).toHaveBeenCalledOnce();
+        expect(outline.mock.calls[0].slice(1, 4)).toEqual([310, 0, 36]);
     });
 
     test("clears hover on scroll, blur and leaving the window", () => {
@@ -258,7 +285,9 @@ describe("resizeIndicatorOnHover", () => {
                 act(() => ref.current?.updateCells([{ cell: [1, row] }]));
                 expect(outline.mock.calls.some(([, x, top]) => x === 310 && top === 36)).toBe(true);
                 if (row === -1) {
-                    expect(outline.mock.calls.some(([, x, top]) => x === 310 && top === 0)).toBe(true);
+                    expect(
+                        outline.mock.calls.some(([, x, top, bottom]) => x === 310 && top === 0 && bottom === 37)
+                    ).toBe(true);
                 }
             }
         }
