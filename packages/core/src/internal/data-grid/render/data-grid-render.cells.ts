@@ -350,7 +350,15 @@ export function drawCells(
     getCellRenderer: GetCellRendererCallback,
     overrideCursor: (cursor: React.CSSProperties["cursor"]) => void,
     minimumCellWidth: number,
-    stats?: DrawCellsStats
+    stats?: DrawCellsStats,
+    /**
+     * Какие линии сетки есть у ячейки слева (по видимой колонке) и сверху (по строке).
+     * Точечная дорисовка не красит пиксель линии; где линии нет, красит до края.
+     */
+    lines?: {
+        verticalBorder: (col: number) => boolean;
+        horizontalBorder: ((row: number) => boolean) | undefined;
+    }
 ): Rectangle[] | undefined {
     let toDraw = damage?.size ?? Number.MAX_SAFE_INTEGER;
     const frameTime = performance.now();
@@ -485,16 +493,19 @@ export function drawCells(
                             cell.spanRows === undefined
                                 ? undefined
                                 : spanRowsFragment(rowAxis, row, isSticky, spanStartRow, spanEndRow);
-                        const fragment =
-                            rowsFragment?.kind === "pinned" ? `pinned-${rowsFragment.position}` : "scroll";
+                        const fragment = rowsFragment?.kind === "pinned" ? `pinned-${rowsFragment.position}` : "scroll";
                         const spanKey = `${spanStartRow},${spanEndRow},${startCol},${endCol},${c.sticky},${fragment}`; //alloc
                         if (handledSpans === undefined) handledSpans = new Set();
                         if (!handledSpans.has(spanKey)) {
                             // Горизонталь: colspan — через resolveHorizontalSpanArea (frozen/scrollable
                             // сплит), иначе одиночная колонка. horizontalOk === false → видимая часть
                             // colspan этой колонки в другой freeze-области: блок тут не рисуем.
-                            const { hx, hw, horizontalOk, skipContents: horizontalSkip } =
-                                resolveHorizontalSpanArea(cell.span, drawX, c.width, c, allColumns);
+                            const {
+                                hx,
+                                hw,
+                                horizontalOk,
+                                skipContents: horizontalSkip,
+                            } = resolveHorizontalSpanArea(cell.span, drawX, c.width, c, allColumns);
                             skipContents = horizontalSkip;
                             if (horizontalOk) {
                                 // Вертикаль: rowspan — накопление высот строк блока; origin-строка может
@@ -703,6 +714,11 @@ export function drawCells(
                         }
                     }
 
+                    // Линии слева или сверху нет: пиксель на её месте принадлежит ячейке, точечная
+                    // дорисовка красит его вместе с ней.
+                    const leftLine = lines === undefined || lines.verticalBorder(effectiveColumns.indexOf(c));
+                    const topLine = lines === undefined || (lines.horizontalBorder?.(row) ?? true);
+                    const topInset = topLine ? 1 : 0;
                     let didDamageClip = false;
                     if (damage !== undefined) {
                         // we want to clip each cell individually rather than form a super clip region. The reason for
@@ -711,7 +727,9 @@ export function drawCells(
                         // Для слитой ячейки cellY/cellHeight = весь блок (иначе drawY/rh = одна строка),
                         // чтобы damage-перерисовка покрывала блок целиком, а не одну строку.
                         const top =
-                            !isSticky && pinnedRowsEnd !== undefined ? Math.max(cellY, pinnedRowsEnd) + 1 : cellY + 1;
+                            !isSticky && pinnedRowsEnd !== undefined
+                                ? Math.max(cellY, pinnedRowsEnd) + topInset
+                                : cellY + topInset;
                         const cellBottom = cellY + cellHeight;
                         const bottom = isSticky ? cellBottom : Math.min(cellBottom, scrollBody.bottom);
                         const h = Math.max(0, bottom - top);
@@ -720,14 +738,20 @@ export function drawCells(
                         // точечная дорисовка его не трогает. У первой колонки холста линии слева нет:
                         // полный кадр красит её от самого края, и ту же полоску красим здесь, иначе
                         // в ней оставался бы прежний фон (например, без наведения на строку). Первая
-                        // колонка за закреплённой зоной красится от её границы: там лежит разделитель
-                        // закреплённых колонок, полный кадр рисует его после ячеек, и drawGrid после
-                        // точечной дорисовки возвращает его в границах повреждённых ячеек.
+                        // колонка за закреплённой зоной красится от её границы: на самой границе лежит
+                        // разделитель закреплённых колонок, и если линия там есть (leftLine), её
+                        // пиксель не трогаем, как у обычной линии сетки слева от ячейки.
                         const atPinnedEdge = clipX > 0 && cellX <= clipX;
-                        const left = atPinnedEdge ? clipX : cellX === 0 ? 0 : cellX + 1;
+                        const left = atPinnedEdge
+                            ? leftLine
+                                ? clipX + 1
+                                : clipX
+                            : cellX === 0 || !leftLine
+                              ? cellX
+                              : cellX + 1;
                         // however, not clipping at all is even better. We want to clip if we are the left most col
                         // or overlapping the bottom clip area.
-                        if (h !== cellHeight - 1 || cellX + 1 <= clipX) {
+                        if (h !== cellHeight - topInset || cellX + 1 <= clipX) {
                             didDamageClip = true;
                             ctx.save();
                             ctx.beginPath();
@@ -750,15 +774,24 @@ export function drawCells(
                             prepResult.fillStyle = fill;
                         }
                         if (damage !== undefined) {
-                            // this accounts for the fill handle outline being drawn inset on these cells. We do this
-                            // because technically the bottom right corner of the outline are on other cells.
+                            // Верхний и левый пиксели ячейки принадлежат линиям сетки, см. выше.
+                            // Правый столбец последней колонки и нижний ряд последней строки
+                            // красятся целиком, как в полном кадре: апстрим оставлял их под
+                            // обводку маркера растяжения, и в таблице уже холста там навсегда
+                            // оставался старый фон. Маркер в своей ячейке рисуется заново после.
                             const damageLeft =
-                                clipX > 0 && cellX <= clipX ? clipX : cellX === 0 ? 0 : cellX + 1;
+                                clipX > 0 && cellX <= clipX
+                                    ? leftLine
+                                        ? clipX + 1
+                                        : clipX
+                                    : cellX === 0 || !leftLine
+                                      ? cellX
+                                      : cellX + 1;
                             ctx.fillRect(
                                 damageLeft,
-                                cellY + 1,
-                                cellWidth - (damageLeft - cellX) - (isLastColumn ? 1 : 0),
-                                cellHeight - (isLastRow ? 2 : 1)
+                                cellY + topInset,
+                                cellWidth - (damageLeft - cellX),
+                                cellHeight - topInset
                             );
                         } else {
                             ctx.fillRect(cellX, cellY, cellWidth, cellHeight);

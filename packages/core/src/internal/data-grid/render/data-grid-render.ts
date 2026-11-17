@@ -119,36 +119,43 @@ export function clipHeaderDamage(
         const levelHeight = heights[level] ?? heights[0] ?? 0;
         if (levelHeight <= 0) continue;
         const targetRow = -2 - level;
-        walkGroups(effectiveColumns, width, translateX, levelHeight, level, (span, _group, x, y, w, h, _level, spanMinCol, spanMaxCol, spanAllSpanned) => {
-            // ИНВАРИАНТ (держать в синхроне с drawGroupLevel): групп-спан из ОДНИХ слитых
-            // колонок (все spanGroupHeader) групп-ячейку НЕ рисует — drawGroupLevel пропускает
-            // его как `allSpanned`, а групп-ряд каждой такой колонки восстанавливает её
-            // собственная перерисовка на всю высоту (drawGridHeaders, spanFull). Значит клип
-            // здесь НЕЛЬЗЯ ставить: очистка фона шапки внутри клипа затёрла бы верхнюю полосу
-            // слитой ячейки, а перерисовать её будет некому (сосед задел лишь свой групп-ряд
-            // [n,-2] → damage слитой колонки нет → её пропускают → серое поверх текста, линия
-            // исчезает). Поэтому здесь ТОТ ЖЕ allSpanned-скип, что и в рендере.
-            if (spanAllSpanned) return;
-            // Границы по членам спана (min/max sourceIndex): при DnD-реордере концы
-            // colSpan немонотонны (span[0] > span[1]) и прямоугольник схлопнулся бы.
-            const hasItemInSpan = damage.hasItemInRectangle({
-                x: spanMinCol,
-                y: targetRow,
-                width: spanMaxCol - spanMinCol + 1,
-                height: 1,
-            });
-            if (hasItemInSpan) {
-                // Слитая группа: клипуем на всю слитую высоту, иначе hover-перерисовка
-                // режется по одному групп-ряду (тот же баг, что был у листовой шапки).
-                const region = findSpannedGroupRegion(spannedRegions, span[0], level);
-                let clipH = h;
-                if (region !== undefined && region.level === level) {
-                    clipH = 0;
-                    for (let k = level; k < levels; k++) clipH += heights[k] ?? heights[0] ?? 0;
+        walkGroups(
+            effectiveColumns,
+            width,
+            translateX,
+            levelHeight,
+            level,
+            (span, _group, x, y, w, h, _level, spanMinCol, spanMaxCol, spanAllSpanned) => {
+                // ИНВАРИАНТ (держать в синхроне с drawGroupLevel): групп-спан из ОДНИХ слитых
+                // колонок (все spanGroupHeader) групп-ячейку НЕ рисует — drawGroupLevel пропускает
+                // его как `allSpanned`, а групп-ряд каждой такой колонки восстанавливает её
+                // собственная перерисовка на всю высоту (drawGridHeaders, spanFull). Значит клип
+                // здесь НЕЛЬЗЯ ставить: очистка фона шапки внутри клипа затёрла бы верхнюю полосу
+                // слитой ячейки, а перерисовать её будет некому (сосед задел лишь свой групп-ряд
+                // [n,-2] → damage слитой колонки нет → её пропускают → серое поверх текста, линия
+                // исчезает). Поэтому здесь ТОТ ЖЕ allSpanned-скип, что и в рендере.
+                if (spanAllSpanned) return;
+                // Границы по членам спана (min/max sourceIndex): при DnD-реордере концы
+                // colSpan немонотонны (span[0] > span[1]) и прямоугольник схлопнулся бы.
+                const hasItemInSpan = damage.hasItemInRectangle({
+                    x: spanMinCol,
+                    y: targetRow,
+                    width: spanMaxCol - spanMinCol + 1,
+                    height: 1,
+                });
+                if (hasItemInSpan) {
+                    // Слитая группа: клипуем на всю слитую высоту, иначе hover-перерисовка
+                    // режется по одному групп-ряду (тот же баг, что был у листовой шапки).
+                    const region = findSpannedGroupRegion(spannedRegions, span[0], level);
+                    let clipH = h;
+                    if (region !== undefined && region.level === level) {
+                        clipH = 0;
+                        for (let k = level; k < levels; k++) clipH += heights[k] ?? heights[0] ?? 0;
+                    }
+                    ctx.rect(x - repairPad, y + currentY - repairPad, w + repairPad * 2, clipH + repairPad * 2);
                 }
-                ctx.rect(x - repairPad, y + currentY - repairPad, w + repairPad * 2, clipH + repairPad * 2);
             }
-        });
+        );
         currentY += levelHeight;
     }
 
@@ -596,10 +603,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // Содержимое слитого блока с прилипанием (spanAlign.sticky) выравнивается по видимой
     // части блока: при вертикальной прокрутке сдвинутый прошлый кадр унёс бы его вместе с
     // блоком, поэтому перерисовываем целиком.
-    if (
-        last?.stickySpanInView === true &&
-        (cellYOffset !== last.cellYOffset || translateY !== last.translateY)
-    ) {
+    if (last?.stickySpanInView === true && (cellYOffset !== last.cellYOffset || translateY !== last.translateY)) {
         canBlit = false;
     }
 
@@ -895,23 +899,22 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
         // Прямоугольники повреждённых ячеек нужны и быстрому пути: по ним
         // перерисовываются обводки регионов подсветки (см. ниже)
-        const cellDamageRegions =
-            damageInView
-                ? getDamageDrawRegions(
-                      effectiveCols,
-                      height,
-                      totalHeaderHeight,
-                      translateX,
-                      translateY,
-                      cellYOffset,
-                      rows,
-                      getRowHeight,
-                      freezeTrailingRows,
-                      hasAppendRow,
-                      damage,
-                      getCellContent
-                  )
-                : undefined;
+        const cellDamageRegions = damageInView
+            ? getDamageDrawRegions(
+                  effectiveCols,
+                  height,
+                  totalHeaderHeight,
+                  translateX,
+                  translateY,
+                  cellYOffset,
+                  rows,
+                  getRowHeight,
+                  freezeTrailingRows,
+                  hasAppendRow,
+                  damage,
+                  getCellContent
+              )
+            : undefined;
 
         // Точечная дорисовка обновляет только ячейки, а фон строки (наведение, зебра, отмеченная
         // строка) в полном кадре красится и в пустой области правее последней колонки (drawBlanks).
@@ -984,7 +987,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             ctx.restore();
         };
 
-        const repairRegions = enableLowDprHairline || spansInDamage ? cellDamageRegions : undefined;
+        // Свои рамки ячеек: скрытая линия это обычный столбец фона, а быстрый путь левый пиксель
+        // ячейки за линию и не красит. Ручной путь красит ячейки целиком и рисует линии по ячейкам.
+        const repairRegions =
+            enableLowDprHairline || spansInDamage || getCellBorder !== undefined ? cellDamageRegions : undefined;
         const doDamage = (ctx: CanvasRenderingContext2D) => {
             if (repairRegions !== undefined && repairRegions.length > 0) {
                 const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);
@@ -1003,22 +1009,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 ctx.fill();
                 ctx.beginPath();
 
-                // Разделитель закреплённых колонок рисуем в том же порядке, что в полном
-                // кадре: после фона и до ячеек и линий сетки. После ячеек полупрозрачная
-                // линия ложилась второй раз поверх линии сетки, и граница темнела с каждым
-                // наведением. После линий сетки она перекрывала бы рамки getCellBorder.
-                overdrawStickyBoundaries(
-                    ctx,
-                    effectiveCols,
-                    width,
-                    height,
-                    freezeTrailingRows,
-                    rows,
-                    verticalBorder,
-                    getRowHeight,
-                    theme,
-                    enableLowDprHairline
-                );
+                // Разделитель закреплённых колонок здесь не рисуем: в полном кадре линию
+                // overdrawStickyBoundaries перекрывает заливка фона, и видимую линию на
+                // границе зоны даёт только drawGridLines по правилам verticalBorder и
+                // getCellBorder. Здесь она тоже рисуется линиями сетки после ячеек.
 
                 const highlightRedraw = drawHighlightRings(
                     ctx,
@@ -1241,7 +1235,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 renderStateProvider,
                 getCellRenderer,
                 overrideCursor,
-                minimumCellWidth
+                minimumCellWidth,
+                undefined,
+                { verticalBorder, horizontalBorder }
             );
 
             // Обводки регионов подсветки (внешние регионы, диапазоны rangeStack,
@@ -1284,33 +1280,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 ctx.restore();
             };
 
-            // Первая колонка за закреплённой зоной при точечной дорисовке красится от границы
-            // зоны (см. drawCells) и закрывает разделитель закреплённых колонок в своей строке.
-            // Полный кадр рисует разделитель после ячеек: возвращаем его в границах повреждённых
-            // ячеек, только вертикальную линию (верхняя линия итоговых строк ячейками не задета,
-            // второй слой сделал бы её темнее).
-            if (pinnedColumnsEnd > 0 && cellDamageRegions !== undefined && cellDamageRegions.length > 0) {
-                ctx.save();
-                ctx.beginPath();
-                for (const r of cellDamageRegions) {
-                    ctx.rect(r.x, r.y, r.width, r.height);
-                }
-                ctx.clip();
-                overdrawStickyBoundaries(
-                    ctx,
-                    effectiveCols,
-                    width,
-                    height,
-                    freezeTrailingRows,
-                    rows,
-                    verticalBorder,
-                    getRowHeight,
-                    theme,
-                    enableLowDprHairline,
-                    true
-                );
-                ctx.restore();
-            }
+            // Разделитель закреплённых колонок отдельно не возвращаем: в полном кадре его
+            // рисует drawGridLines как правую линию последней закреплённой колонки, а
+            // точечная дорисовка этот пиксель не трогает (см. drawCells, leftLine).
             redrawRingsInDamage("below");
 
             const selectionCurrent = selection.current;
@@ -1325,6 +1297,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 selectionCurrent !== undefined &&
                 damage.has(rectBottomRight(selectionCurrent.range))
             ) {
+                // Маркер выходит за край ячейки в соседние; их пиксели в этом кадре не красятся,
+                // и маркер лёг бы там поверх обводок, которые ниже дорисовываются только в
+                // повреждённых ячейках. Рисуем его в тех же границах: снаружи остаётся прошлый кадр.
+                ctx.save();
+                ctx.beginPath();
+                for (const r of cellDamageRegions ?? []) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+                ctx.clip();
                 drawFillHandle(
                     ctx,
                     width,
@@ -1344,6 +1325,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     fillHandle,
                     rows
                 );
+                ctx.restore();
             }
             redrawRingsInDamage("above");
             repaintBlankArea(ctx);
@@ -1742,7 +1724,15 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     if (isResizing && resizeIndicator !== "none") {
         // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),
         // а по телу (режим full) на основной канве.
-        drawResizeHeaderOutline(overlayCtx, effectiveCols, translateX, totalHeaderHeight, resizeCol, hiddenColumnsIndicator, theme);
+        drawResizeHeaderOutline(
+            overlayCtx,
+            effectiveCols,
+            translateX,
+            totalHeaderHeight,
+            resizeCol,
+            hiddenColumnsIndicator,
+            theme
+        );
         if (resizeIndicator === "full") {
             walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
                 if (c.sourceIndex === resizeCol) {

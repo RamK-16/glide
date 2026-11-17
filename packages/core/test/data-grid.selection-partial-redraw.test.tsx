@@ -240,7 +240,7 @@ describe("data-grid: частичная перерисовка при смене
         expect(wideEvents.some(e => e.type === "fillRect" && e.props?.width === 10_000)).toBe(false);
     });
 
-    test("точечная дорисовка со слитыми ячейками рисует разделитель закреплённых колонок до ячеек, как полный кадр", () => {
+    test("точечная дорисовка со слитыми ячейками рисует разделитель закреплённых колонок линиями сетки после ячеек, как полный кадр", () => {
         const spanned = (cell: readonly [number, number]): GridCell =>
             cell[0] >= 1 && cell[0] <= 2 && cell[1] >= 4 && cell[1] <= 7
                 ? { ...textCell(cell), span: [1, 2], spanRows: [4, 7] }
@@ -248,10 +248,34 @@ describe("data-grid: частичная перерисовка при смене
         const { damage } = setup({ freezeColumns: 1 }, spanned);
         const events = damage([[1, 5]]);
         expect(fullRedraw(events)).toBe(false);
-        const boundary = events.findIndex(e => e.type === "moveTo" && e.props?.x === COL_X[1] + 0.5 && e.props?.y === 0);
-        const firstText = events.findIndex(e => e.type === "fillText");
-        expect(boundary).toBeGreaterThanOrEqual(0);
-        expect(firstText).toBeGreaterThan(boundary);
+        // линии на всю высоту холста (overdrawStickyBoundaries) нет: в полном кадре её перекрывает фон
+        const overdraw = events.findIndex(e => e.type === "moveTo" && e.props?.x === COL_X[1] + 0.5 && e.props?.y === 0);
+        expect(overdraw).toBe(-1);
+        // без слитого блока линия границы зоны в повреждённой строке рисуется после ячеек,
+        // как линия сетки (слитый блок свою левую линию закрывает и в полном кадре)
+        const plain = setup({ freezeColumns: 1, getCellBorder: () => undefined }).damage([[1, 5]]);
+        expect(fullRedraw(plain)).toBe(false);
+        const firstText = plain.findIndex(e => e.type === "fillText");
+        const rowLine = plain.findIndex(
+            e =>
+                e.type === "moveTo" &&
+                e.props?.x === COL_X[1] + 0.5 &&
+                e.props?.y >= HEADER + 4 * ROW &&
+                e.props?.y <= HEADER + 5 * ROW + 1
+        );
+        expect(firstText).toBeGreaterThanOrEqual(0);
+        expect(rowLine).toBeGreaterThan(firstText);
+    });
+
+    test("без линии слева у первой колонки за закреплённой зоной точечная дорисовка красит её от границы зоны", () => {
+        const lined = setup({ freezeColumns: 1, selection: sel(1, 3) }).damage([[1, 3]]);
+        expect(
+            lined.some(e => e.type === "fillRect" && e.props?.x === COL_X[1] + 1 && e.props?.y === HEADER + 3 * ROW + 1)
+        ).toBe(true);
+        const plain = setup({ freezeColumns: 1, selection: sel(1, 3), verticalBorder: () => false }).damage([[1, 3]]);
+        expect(
+            plain.some(e => e.type === "fillRect" && e.props?.x === COL_X[1] && e.props?.y === HEADER + 3 * ROW + 1)
+        ).toBe(true);
     });
 
     test("точечная дорисовка ячеек восстанавливает обычные обводки и обводки поверх выделения, в этом порядке", () => {
@@ -342,6 +366,19 @@ describe("data-grid: частичная перерисовка при смене
         });
         expect(fullRedraw(events)).toBe(false);
         expect(hasClip(events, cellRect(2, 3))).toBe(true);
+    });
+
+    test("без линий сетки точечная дорисовка красит ячейку от левого и верхнего края", () => {
+        // линии есть: заливка отступает на пиксель слева и сверху под линии
+        const withLines = setup({ selection: sel(3, 3) });
+        const lined = withLines.damage([[1, 3]]);
+        expect(lined.some(e => e.type === "fillRect" && e.props?.x === COL_X[1] + 1 && e.props?.y === HEADER + 3 * ROW + 1)).toBe(
+            true
+        );
+        // линий нет: пиксели на их месте принадлежат ячейке
+        const noLines = setup({ selection: sel(3, 3), verticalBorder: () => false, horizontalBorder: () => false });
+        const plain = noLines.damage([[1, 3]]);
+        expect(plain.some(e => e.type === "fillRect" && e.props?.x === COL_X[1] && e.props?.y === HEADER + 3 * ROW)).toBe(true);
     });
 
     test("прыжок больше экрана с закреплённой колонкой: кадр целиком, без полосы на границе", () => {
