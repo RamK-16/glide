@@ -78,8 +78,8 @@ describe("clipHeaderDamage — repairPad при low-DPR", () => {
 
     it("без low-DPR клип шапки колонки тугой (pad = 0)", () => {
         const rects = captureClipRects(cols, groupH, totalH, new CellSet([[0, -1]]), false);
-        // finalX = drawX + 1, полоса заголовков от groupH до totalH.
-        expect(rects).toEqual([{ x: 1, y: groupH, w: 149, h: totalH - groupH }]);
+        // Первая колонка холста красится от края (слева линии нет), полоса заголовков от groupH до totalH.
+        expect(rects).toEqual([{ x: 0, y: groupH, w: 150, h: totalH - groupH }]);
     });
 
     it("с low-DPR клип раздувается на repairPad во все стороны", () => {
@@ -87,7 +87,7 @@ describe("clipHeaderDamage — repairPad при low-DPR", () => {
         expect(pad).toBeGreaterThanOrEqual(1);
         const rects = captureClipRects(cols, groupH, totalH, new CellSet([[0, -1]]), true);
         expect(rects).toEqual([
-            { x: 1 - pad, y: groupH - pad, w: 149 + pad * 2, h: totalH - groupH + pad * 2 },
+            { x: -pad, y: groupH - pad, w: 150 + pad * 2, h: totalH - groupH + pad * 2 },
         ]);
     });
 });

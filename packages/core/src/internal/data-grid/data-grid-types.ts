@@ -396,6 +396,20 @@ export interface Rectangle {
     height: number;
 }
 
+/** Отладочные сведения о нарисованном кадре холста, см. `experimental.onFrameDrawn`. */
+export interface DrawnFrame {
+    /**
+     * full: кадр целиком; blit: прошлый кадр сдвинут (прокрутка, ресайз колонки) и дорисованы
+     * открывшиеся полосы; selection: только прежние и новые области выделения; damage: только
+     * указанные ячейки (updateCells, наведение).
+     */
+    readonly kind: "full" | "blit" | "selection" | "damage";
+    /** Перерисованные области тела в px холста (CSS px), у full весь холст. */
+    readonly regions: readonly Rectangle[];
+    /** Шапка нарисована заново. */
+    readonly header: boolean;
+}
+
 export function isRectangleEqual(a: Rectangle | undefined, b: Rectangle | undefined): boolean {
     if (a === b) return true;
     if (a === undefined || b === undefined) return false;
