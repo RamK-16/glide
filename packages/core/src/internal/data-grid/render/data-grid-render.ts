@@ -18,7 +18,7 @@ import {
     getSpanBounds,
     getRowSpanBounds,
 } from "./data-grid-render.walk.js";
-import { drawCells, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
+import { drawCells, overlapsRanges, type DrawCellsStats, type GroupDetailsCallback } from "./data-grid-render.cells.js";
 import { drawGridHeaders, drawHiddenColumnsIndicators } from "./data-grid-render.header.js";
 import { drawGridLines, overdrawStickyBoundaries, drawBlanks, drawExtraRowThemes } from "./data-grid-render.lines.js";
 import {
@@ -257,10 +257,13 @@ export function getDamageDrawRegions(
     getCellContent: (cell: readonly [number, number]) => {
         readonly span?: readonly [number, number];
         readonly spanRows?: readonly [number, number];
-    }
+    },
+    /** Отмечает, что в регионы попала прилипшая ячейка над повреждённой ячейкой тела. */
+    stats?: { stickyOverlap: boolean }
 ): Rectangle[] {
     const result: Rectangle[] = [];
     const cellIndex: [number, number] = [0, 0];
+    const rowAxis = rowAxisOf(effectiveColumns);
 
     walkColumns(
         effectiveColumns,
@@ -275,6 +278,9 @@ export function getDamageDrawRegions(
             if (colWidth <= 0) return;
 
             cellIndex[0] = c.sourceIndex;
+            // Прилипшие строки над повреждённой ячейкой тела рисуются заново (см. drawCells),
+            // их прямоугольники тоже попадают в регионы.
+            let underSticky: number[] | undefined;
             walkRowsInCol(
                 startRow,
                 colDrawStartY,
@@ -284,11 +290,22 @@ export function getDamageDrawRegions(
                 freezeTrailingRows,
                 hasAppendRow,
                 undefined,
-                (drawY, row, rh) => {
+                (drawY, row, rh, isSticky) => {
                     if (row < 0) return;
 
                     cellIndex[1] = row;
-                    if (damage.has(cellIndex)) {
+                    if (!damage.has(cellIndex)) {
+                        if (isSticky && underSticky !== undefined && overlapsRanges(underSticky, drawY, drawY + rh)) {
+                            result.push({ x: colDrawX, y: drawY, width: colWidth, height: rh });
+                            if (stats !== undefined) stats.stickyOverlap = true;
+                        }
+                        return;
+                    }
+                    if (!isSticky) {
+                        if (underSticky === undefined) underSticky = [];
+                        underSticky.push(drawY, drawY + rh);
+                    }
+                    {
                         const cell = getCellContent(cellIndex);
                         if (cell.span !== undefined || cell.spanRows !== undefined) {
                             // Слитый блок рисуется на весь прямоугольник, поэтому и
@@ -326,7 +343,7 @@ export function getDamageDrawRegions(
                         }
                     }
                 },
-                rowAxisOf(effectiveColumns)
+                rowAxis
             );
         }
     );
@@ -899,6 +916,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         const spansInDamage = damageInView && damageHasSpanCells(damage, getCellContent);
         // Прямоугольники повреждённых ячеек нужны и быстрому пути: по ним
         // перерисовываются обводки регионов подсветки (см. ниже)
+        const damageStats = { stickyOverlap: false };
         const cellDamageRegions = damageInView
             ? getDamageDrawRegions(
                   effectiveCols,
@@ -912,7 +930,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                   freezeTrailingRows,
                   hasAppendRow,
                   damage,
-                  getCellContent
+                  getCellContent,
+                  damageStats
               )
             : undefined;
 
@@ -989,8 +1008,12 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
         // Свои рамки ячеек: скрытая линия это обычный столбец фона, а быстрый путь левый пиксель
         // ячейки за линию и не красит. Ручной путь красит ячейки целиком и рисует линии по ячейкам.
+        // Ячейка тела под прилипшими строками красится целиком и задевает линию на границе
+        // прилипшей зоны: её возвращают только линии сетки ручного пути.
         const repairRegions =
-            enableLowDprHairline || spansInDamage || getCellBorder !== undefined ? cellDamageRegions : undefined;
+            enableLowDprHairline || spansInDamage || getCellBorder !== undefined || damageStats.stickyOverlap
+                ? cellDamageRegions
+                : undefined;
         const doDamage = (ctx: CanvasRenderingContext2D) => {
             if (repairRegions !== undefined && repairRegions.length > 0) {
                 const repairPad = getBodyDamagePad(enableLowDprHairline, spansInDamage);

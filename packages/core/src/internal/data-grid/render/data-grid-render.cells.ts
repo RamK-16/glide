@@ -424,6 +424,12 @@ export function drawCells(
             }
             reclip();
             let prepResult: PrepResult | undefined = undefined;
+            // Повреждённые ячейки тела, которые заходят под прилипшие строки или под
+            // закреплённые снизу итоговые строки. Полный кадр рисует такую ячейку целиком,
+            // а прилипшие строки кладёт поверх. Точечная дорисовка делает так же: ячейку не
+            // обрезает по границе прилипшей зоны (клип, режущий фигуру, меняет сглаживание
+            // её краёв в Chromium), а прилипшие ячейки над ней рисует заново.
+            let underSticky: number[] | undefined;
 
             walkRowsInCol(
                 startRow,
@@ -455,8 +461,12 @@ export function drawCells(
                     // As soon as this doesn't have any impact of note go back to the saner looking code. The smoke test
                     // here is to scroll to the bottom of a test case first, then scroll back up while profiling and see
                     // how many major GC collections you get. These allocate a lot of objects.
+                    let overSticky = false;
                     if (damage !== undefined && !damage.has(cellIndex)) {
-                        return;
+                        if (!isSticky || underSticky === undefined || !overlapsRanges(underSticky, drawY, drawY + rh)) {
+                            return;
+                        }
+                        overSticky = true;
                     }
                     if (drawRegions.length > 0) {
                         let found = false;
@@ -553,7 +563,7 @@ export function drawCells(
                                 drawingSpan = true;
                             }
                         } else {
-                            toDraw--;
+                            if (!overSticky) toDraw--;
                             return;
                         }
                     }
@@ -726,13 +736,20 @@ export function drawCells(
                         // allows us to damage a large number of cells at once without issue.
                         // Для слитой ячейки cellY/cellHeight = весь блок (иначе drawY/rh = одна строка),
                         // чтобы damage-перерисовка покрывала блок целиком, а не одну строку.
-                        const top =
-                            !isSticky && pinnedRowsEnd !== undefined
-                                ? Math.max(cellY, pinnedRowsEnd) + topInset
-                                : cellY + topInset;
+                        // Ячейку тела под прилипшими строками красим целиком, как полный кадр; слитый
+                        // блок полный кадр обрезает по верху итоговых строк, здесь так же.
+                        const top = cellY + topInset;
                         const cellBottom = cellY + cellHeight;
-                        const bottom = isSticky ? cellBottom : Math.min(cellBottom, scrollBody.bottom);
+                        const bottom = isSticky || !drawingSpan ? cellBottom : Math.min(cellBottom, scrollBody.bottom);
                         const h = Math.max(0, bottom - top);
+                        if (
+                            !isSticky &&
+                            ((pinnedRowsEnd !== undefined && cellY < pinnedRowsEnd) ||
+                                (freezeTrailingRows > 0 && bottom > scrollBody.bottom))
+                        ) {
+                            if (underSticky === undefined) underSticky = [];
+                            underSticky.push(cellY, bottom);
+                        }
 
                         // Левый пиксель ячейки принадлежит линии сетки предыдущей колонки, поэтому
                         // точечная дорисовка его не трогает. У первой колонки холста линии слева нет:
@@ -905,7 +922,7 @@ export function drawCells(
                         ctx.globalAlpha = 1;
                     }
 
-                    toDraw--;
+                    if (!overSticky) toDraw--;
                     if (drawingSpan) {
                         ctx.restore();
                         prepResult?.deprep?.(deprepArg);
@@ -915,7 +932,8 @@ export function drawCells(
                         ctx.font = colFont;
                     }
 
-                    return toDraw <= 0;
+                    // Пока в колонке есть ячейка тела под прилипшими строками, обход доходит до них.
+                    return toDraw <= 0 && underSticky === undefined;
                 },
                 rowAxis
             );
@@ -925,6 +943,14 @@ export function drawCells(
         }
     );
     return result;
+}
+
+/** Пересекает ли отрезок [top, bottom) хотя бы один из отрезков списка (пары подряд). */
+export function overlapsRanges(ranges: readonly number[], top: number, bottom: number): boolean {
+    for (let i = 0; i < ranges.length; i += 2) {
+        if (top < ranges[i + 1] && bottom > ranges[i]) return true;
+    }
+    return false;
 }
 
 const allocatedItem: [number, number] = [0, 0];

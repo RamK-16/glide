@@ -225,6 +225,23 @@ describe("data-grid: частичная перерисовка при смене
         return { change, damage };
     };
 
+    test("ячейка тела под прилипшей строкой рисуется целиком, прилипшая ячейка над ней заново", () => {
+        // строка 2 прилипла под шапкой (36..68), строка 5 стоит в 58..90 и наполовину под ней
+        const { damage } = setup({ stickyRows: [2], cellYOffset: 4, translateY: -10 });
+        const events = damage([[1, 5]]);
+        expect(fullRedraw(events)).toBe(false);
+        // ячейку тела не режем по низу прилипшей зоны
+        expect(events.some(e => e.type === "rect" && e.props?.y === 69)).toBe(false);
+        // прилипшая ячейка той же колонки рисуется после неё
+        const body = events.findIndex(e => e.type === "fillText" && String(e.props?.text) === "1,5");
+        const pinned = events.findIndex(e => e.type === "fillText" && String(e.props?.text) === "1,2");
+        expect(body).toBeGreaterThanOrEqual(0);
+        expect(pinned).toBeGreaterThan(body);
+        // линия на границе прилипшей зоны возвращается линиями сетки после ячеек
+        const line = events.findIndex((e, i) => i > pinned && e.type === "moveTo" && e.props?.y === 68.5);
+        expect(line).toBeGreaterThan(pinned);
+    });
+
     test("точечная дорисовка строки перекрашивает и пустую область правее колонок", () => {
         // колонки занимают 850 из 1000 px; у строки 3 свой фон, он красится и в пустой области
         const { damage } = setup({ getRowThemeOverride: row => (row === 3 ? { bgCell: "#aabbcc" } : undefined) });

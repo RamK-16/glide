@@ -203,6 +203,31 @@ describe("липкие строки", () => {
         );
         expect(regions).toEqual([{ x: 100, y: HEADER_H, width: 100, height: ROW_H }]);
     });
+
+    it("damage ячейки тела под прилипшей строкой добавляет и регион прилипшей ячейки над ней", () => {
+        // сдвиг на 10 px: строка 5 стоит в 56..86, прилипшая строка 2 в полосе 36..66
+        const shifted = computeRowAxis([2, 6], 100, 4, -10, HEADER_H, 400, rowHeight);
+        const plain = computeColumnLayout(makeColumns([100, 100], []), 0, 0, 300, 0);
+        attachRowAxis(plain.effectiveCols, shifted);
+        const regions = getDamageDrawRegions(
+            plain.effectiveCols,
+            400,
+            HEADER_H,
+            0,
+            -10,
+            4,
+            100,
+            rowHeight,
+            0,
+            false,
+            new CellSet([[1, 5]]),
+            () => ({})
+        );
+        expect(regions).toEqual([
+            { x: 100, y: 56, width: 100, height: ROW_H },
+            { x: 100, y: HEADER_H, width: 100, height: ROW_H },
+        ]);
+    });
 });
 
 describe("blit с полосой липких строк", () => {
