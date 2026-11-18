@@ -513,7 +513,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     } = arg;
     const indicatorCol = isResizing ? resizeCol : hoveredResizeCol;
     const showResizeIndicator = indicatorCol !== undefined && resizeIndicator !== "none";
-    // Hover marks only the header edge. The body line belongs to an active resize.
+    // При наведении линия ограничена шапкой. В теле она видна только во время ресайза.
     const showResizeBodyIndicator = showResizeIndicator && isResizing && resizeIndicator === "full";
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
@@ -738,7 +738,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 overlayCtx,
                 effectiveCols,
                 translateX,
-                showResizeBodyIndicator ? overlayHeight : totalHeaderHeight,
+                isResizing ? overlayHeight : totalHeaderHeight,
                 indicatorCol,
                 hiddenColumnsIndicator,
                 theme
@@ -1474,11 +1474,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         drawHeaderResizeIndicator();
     }
 
-    // A resize hover only changes the header canvas. An offscreen selection can also
-    // leave the body untouched. Keep the current body buffer in both cases.
+    // При смене границы в шапке можно сохранить буфер тела. Для выделения за экраном
+    // сохраняем прежнее правило: в теле нет областей, требующих перерисовки.
     if (
-        canBlit === true &&
-        (selectionChange ? selectionRegions?.length === 0 : resizeHoverChanged) &&
+        (selectionChange ? selectionRegions?.length === 0 : canBlit === true && resizeHoverChanged) &&
         changedRowsRegion === undefined &&
         last !== undefined &&
         cellXOffset === last.cellXOffset &&

@@ -31,8 +31,7 @@ export default {
                                 multiple columns to resize them all at once.
                             </MoreInfo>
                         </>
-                    }
-                >
+                    }>
                     <Story />
                 </BeautifulWrapper>
             </SimpleThemeWrapper>
