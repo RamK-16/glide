@@ -6,7 +6,7 @@ export default defineConfig({
     test: {
         include: ["test/**/*.test.tsx", "test/**/*.test.ts"],
         environment: "jsdom",
-        setupFiles: "vitest.setup.ts",
+        setupFiles: "../../config/vitest.setup.ts",
         // threads: false,
         // singleThread: true,
         watch: false,
@@ -27,7 +27,7 @@ export default defineConfig({
         deps: {
             optimizer: {
                 web: {
-                    include: ["vitest-canvas-mock"],
+                    include: ["jest-canvas-mock"],
                 },
             },
         },

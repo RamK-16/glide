@@ -214,12 +214,12 @@ function drawResizeHeaderOutline(
     overlayCtx: CanvasRenderingContext2D,
     effectiveCols: readonly MappedGridColumn[],
     translateX: number,
-    totalHeaderHeight: number,
+    outlineHeight: number,
     resizeCol: number | undefined,
     hiddenColumnsIndicator: DrawGridArg["hiddenColumnsIndicator"],
     theme: DrawGridArg["theme"]
 ) {
-    walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+    walkColumns(effectiveCols, 0, translateX, 0, outlineHeight, (c, x) => {
         if (c.sourceIndex === resizeCol) {
             // Если на правой границе тянущейся колонки стоит индикатор скрытых колонок,
             // линию ресайза в ШАПКЕ не рисуем, она перекрывала бы полосу.
@@ -231,13 +231,35 @@ function drawResizeHeaderOutline(
                     overlayCtx,
                     x + c.width,
                     0,
-                    totalHeaderHeight + 1,
+                    outlineHeight,
                     blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgHeader)
                 );
             }
             return true;
         }
         return false;
+    });
+}
+
+function drawResizeBodyOutline(
+    ctx: CanvasRenderingContext2D,
+    effectiveCols: readonly MappedGridColumn[],
+    translateX: number,
+    totalHeaderHeight: number,
+    height: number,
+    resizeCol: number,
+    theme: DrawGridArg["theme"]
+) {
+    walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
+        if (c.sourceIndex !== resizeCol) return false;
+        drawColumnResizeOutline(
+            ctx,
+            x + c.width,
+            totalHeaderHeight,
+            height,
+            blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
+        );
+        return true;
     });
 }
 
@@ -467,6 +489,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         drawCellCallback,
         highlightRegions,
         resizeCol,
+        hoveredResizeCol,
         imageLoader,
         lastBlitData,
         hoverValues,
@@ -488,6 +511,10 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         resizeIndicator,
         onFrameDrawn,
     } = arg;
+    const indicatorCol = isResizing ? resizeCol : hoveredResizeCol;
+    const showResizeIndicator = indicatorCol !== undefined && resizeIndicator !== "none";
+    // При наведении линия ограничена шапкой. В теле она видна только во время ресайза.
+    const showResizeBodyIndicator = showResizeIndicator && isResizing && resizeIndicator === "full";
     if (width === 0 || height === 0) return;
     const doubleBuffer = renderStrategy === "double-buffer";
     const dpr = Math.min(maxScaleFactor, Math.ceil(window.devicePixelRatio ?? 1));
@@ -546,8 +573,11 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     const last = lastBlitData.current;
     // Присвоение canvas.width выше очистило холст: прошлого кадра на нём больше нет.
     if (last?.dpr !== undefined && last.dpr !== dpr) canBlit = false;
+    const resizeHoverChanged =
+        !isResizing && resizeIndicator !== "none" && hoveredResizeCol !== lastArg?.hoveredResizeCol;
     if (
         canBlit === true &&
+        !resizeHoverChanged &&
         !selectionChange &&
         rowHeight === lastArg?.rowHeight &&
         cellXOffset === last?.cellXOffset &&
@@ -702,6 +732,24 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     let headerDrawn = false;
     const reportFrame = (kind: DrawnFrame["kind"], regions: readonly Rectangle[]) =>
         onFrameDrawn?.({ kind, regions, header: headerDrawn });
+    const drawHeaderResizeIndicator = () => {
+        if (showResizeIndicator) {
+            drawResizeHeaderOutline(
+                overlayCtx,
+                effectiveCols,
+                translateX,
+                isResizing ? overlayHeight : totalHeaderHeight,
+                indicatorCol,
+                hiddenColumnsIndicator,
+                theme
+            );
+        }
+    };
+    const drawBodyResizeIndicator = (ctx: CanvasRenderingContext2D) => {
+        if (showResizeBodyIndicator) {
+            drawResizeBodyOutline(ctx, effectiveCols, translateX, totalHeaderHeight, height, indicatorCol, theme);
+        }
+    };
     const drawHeaderTexture = () => {
         headerDrawn = true;
         drawGridHeaders(
@@ -1356,11 +1404,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
 
         if (damageInView) {
             doDamage(targetCtx);
+            drawBodyResizeIndicator(targetCtx);
             if (mainCtx !== null) {
                 mainCtx.save();
                 mainCtx.scale(dpr, dpr);
                 mainCtx.textBaseline = "middle";
                 doDamage(mainCtx);
+                drawBodyResizeIndicator(mainCtx);
                 mainCtx.restore();
             }
 
@@ -1386,21 +1436,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 drawHeaderTexture();
                 overlayCtx.restore();
 
-                // Во время ресайза частичная перерисовка обновляет фон шапки, но линия
-                // ресайза рисуется только в полном проходе, поэтому фон затирал её левую
-                // половину. Дорисовываем линию шапки и здесь (отсечение уже снято, масштаб
-                // dpr на месте).
-                if (isResizing && resizeIndicator !== "none") {
-                    drawResizeHeaderOutline(
-                        overlayCtx,
-                        effectiveCols,
-                        translateX,
-                        totalHeaderHeight,
-                        resizeCol,
-                        hiddenColumnsIndicator,
-                        theme
-                    );
-                }
+                // Восстанавливаем линию после обновления фона шапки как при drag,
+                // так и при hover. Отсечение уже снято, масштаб dpr на месте.
+                drawHeaderResizeIndicator();
             }
         }
 
@@ -1418,6 +1456,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     // перерисовывают её: раньше их подхватывал полный кадр от смены выделения.
     if (
         canBlit !== true ||
+        resizeHoverChanged ||
         cellXOffset !== last?.cellXOffset ||
         translateX !== last?.translateX ||
         mustDrawFocusOnHeader !== last?.mustDrawFocusOnHeader ||
@@ -1432,14 +1471,13 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
             (mustDrawHighlightRingsOnHeader || last?.mustDrawHighlightRingsOnHeader === true))
     ) {
         drawHeaderTexture();
+        drawHeaderResizeIndicator();
     }
 
-    // Сменилось только выделение, но на экране от него ничего не зависит (выделение за кадром,
-    // новый массив регионов с тем же содержимым): тело не трогаем, запоминаем только признаки шапки.
+    // При смене границы в шапке можно сохранить буфер тела. Для выделения за экраном
+    // сохраняем прежнее правило: в теле нет областей, требующих перерисовки.
     if (
-        selectionChange &&
-        selectionRegions !== undefined &&
-        selectionRegions.length === 0 &&
+        (selectionChange ? selectionRegions?.length === 0 : canBlit === true && resizeHoverChanged) &&
         changedRowsRegion === undefined &&
         last !== undefined &&
         cellXOffset === last.cellXOffset &&
@@ -1448,7 +1486,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         translateY === last.translateY
     ) {
         lastBlitData.current = { ...last, mustDrawFocusOnHeader, mustDrawHighlightRingsOnHeader };
-        reportFrame("selection", []);
+        reportFrame(selectionChange ? "selection" : "damage", []);
         targetCtx.restore();
         overlayCtx.restore();
         return;
@@ -1744,34 +1782,7 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
     focusRedraw?.();
     highlightAboveRedraw?.();
 
-    if (isResizing && resizeIndicator !== "none") {
-        // Линия по шапке рисуется на канве шапки (та же, что при частичной перерисовке),
-        // а по телу (режим full) на основной канве.
-        drawResizeHeaderOutline(
-            overlayCtx,
-            effectiveCols,
-            translateX,
-            totalHeaderHeight,
-            resizeCol,
-            hiddenColumnsIndicator,
-            theme
-        );
-        if (resizeIndicator === "full") {
-            walkColumns(effectiveCols, 0, translateX, 0, totalHeaderHeight, (c, x) => {
-                if (c.sourceIndex === resizeCol) {
-                    drawColumnResizeOutline(
-                        targetCtx,
-                        x + c.width,
-                        totalHeaderHeight,
-                        height,
-                        blend(theme.resizeIndicatorColor ?? theme.accentLight, theme.bgCell)
-                    );
-                    return true;
-                }
-                return false;
-            });
-        }
-    }
+    drawBodyResizeIndicator(targetCtx);
 
     if (mainCtx !== null) {
         mainCtx.fillStyle = theme.bgCell;

@@ -1,8 +1,8 @@
 /* eslint-disable unicorn/consistent-destructuring */
-import clamp from "lodash/clamp.js";
+import { isResizableColumn, offsetColumnSize } from "../data-grid/column-resize.js";
 import * as React from "react";
 import DataGrid, { type DataGridProps, type DataGridRef } from "../data-grid/data-grid.js";
-import type { GridColumn, InnerGridColumn, Rectangle } from "../data-grid/data-grid-types.js";
+import type { GridColumn, Rectangle } from "../data-grid/data-grid-types.js";
 import type { GridMouseEventArgs } from "../data-grid/event-args.js";
 
 type Props = Omit<
@@ -77,31 +77,6 @@ export interface DataGridDndProps extends Props {
     readonly minColumnWidth: number;
     readonly lockColumns: number;
     readonly setScrollDir: (dir: GridMouseEventArgs["scrollEdge"] | undefined) => void;
-}
-
-// Вычисляет новую ширину колонки при ресайзе (drag).
-//
-// width — сырая drag-ширина (event.clientX - resizeColStartX), т.е. расстояние
-//         от левого края колонки до текущей позиции мыши.
-//
-// growOffset — сколько пикселей добавил grow поверх базовой ширины.
-//   Вычитается, потому что drag-ширина = визуальная ширина (base + growOffset),
-//   а onColumnResize должен получить базовую ширину (без grow).
-//   Пример: колонка 400px (base=80, growOffset=320), drag до 395px:
-//     width=395, growOffset=320 → return clamp(75, min, max) → base=75
-//
-//   ВАЖНО: при "Grow Once" (use-column-sizer.ts) growOffset обнуляется после
-//   первого рендера, т.к. grow-ширина запекается в базовую width.
-//   В этом режиме: width=395, growOffset=0 → return clamp(395, min, max).
-//
-// effectiveMax — использует column.maxWidth (жёсткий), а НЕ maxAutoWidth (мягкий).
-//   maxAutoWidth ограничивает только grow и auto-sizing, а maxWidth — и ресайз тоже.
-//   Если колонка через grow получила ширину > maxWidth (из-за maxAutoWidth > maxWidth),
-//   при ресайзе она схлопнется до maxWidth.
-function offsetColumnSize(column: InnerGridColumn, width: number, min: number, max: number): number {
-    const effectiveMin = column.minWidth ?? min;
-    const effectiveMax = column.maxWidth ?? max;
-    return clamp(Math.round(width - (column.growOffset ?? 0)), Math.ceil(effectiveMin), Math.floor(effectiveMax));
 }
 
 const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
@@ -243,8 +218,14 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
                     // resize event to all those columns.
                     if (selectedColumns?.hasIndex(resizeCol) === true) {
                         for (const c of selectedColumns) {
-                            if (c === resizeCol) continue;
                             const col = columns[c];
+                            if (
+                                c === resizeCol ||
+                                c < lockColumns ||
+                                !isResizableColumn(col, minColumnWidth, maxColumnWidth)
+                            ) {
+                                continue;
+                            }
                             const newSize = offsetColumnSize(
                                 col,
                                 lastResizeWidthRef.current,
@@ -264,8 +245,14 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
                     onColumnResizeEnd?.(columns[resizeCol], ns, resizeCol, ns + (columns[resizeCol].growOffset ?? 0));
                     if (selectedColumns.hasIndex(resizeCol)) {
                         for (const c of selectedColumns) {
-                            if (c === resizeCol) continue;
                             const col = columns[c];
+                            if (
+                                c === resizeCol ||
+                                c < lockColumns ||
+                                !isResizableColumn(col, minColumnWidth, maxColumnWidth)
+                            ) {
+                                continue;
+                            }
                             const s = offsetColumnSize(col, lastResizeWidthRef.current, minColumnWidth, maxColumnWidth);
                             onColumnResizeEnd?.(col, s, c, s + (col.growOffset ?? 0));
                         }
@@ -290,6 +277,7 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             dragRow,
             dropRow,
             selectedColumns,
+            lockColumns,
             onColumnResizeEnd,
             columns,
             minColumnWidth,
@@ -343,8 +331,14 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
 
                 if (selectedColumns?.first() === resizeCol) {
                     for (const c of selectedColumns) {
-                        if (c === resizeCol) continue;
                         const col = columns[c];
+                        if (
+                            c === resizeCol ||
+                            c < lockColumns ||
+                            !isResizableColumn(col, minColumnWidth, maxColumnWidth)
+                        ) {
+                            continue;
+                        }
                         const s = offsetColumnSize(col, lastResizeWidthRef.current, minColumnWidth, maxColumnWidth);
                         onColumnResize?.(col, s, c, s + (col.growOffset ?? 0));
                     }
@@ -363,6 +357,7 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             maxColumnWidth,
             onColumnResize,
             selectedColumns,
+            lockColumns,
             canvasRef,
         ]
     );
@@ -457,6 +452,7 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             translateX={p.translateX}
             translateY={p.translateY}
             resizeIndicator={p.resizeIndicator}
+            resizeIndicatorOnHover={p.resizeIndicatorOnHover}
             verticalBorder={p.verticalBorder}
             horizontalBorder={p.horizontalBorder}
             getCellBorder={p.getCellBorder}
@@ -470,6 +466,9 @@ const DataGridDnd: React.FunctionComponent<DataGridDndProps> = p => {
             onDragStart={onDragStartImpl}
             onMouseDown={onMouseDownImpl}
             allowResize={canResize}
+            minColumnWidth={minColumnWidth}
+            maxColumnWidth={maxColumnWidth}
+            lockColumns={lockColumns}
             onMouseUp={onMouseUpImpl}
             dragAndDropState={dragOffset}
             onMouseMoveRaw={onMouseMove}

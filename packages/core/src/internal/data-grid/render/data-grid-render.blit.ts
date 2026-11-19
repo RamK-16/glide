@@ -306,6 +306,7 @@ export function computeCanBlit(current: DrawGridArg, last: DrawGridArg | undefin
         !sameCompactSelection(current.disabledRows, last.disabledRows) ||
         current.hasAppendRow !== last.hasAppendRow ||
         current.isResizing !== last.isResizing ||
+        current.resizeIndicator !== last.resizeIndicator ||
         current.verticalBorder !== last.verticalBorder ||
         current.horizontalBorder !== last.horizontalBorder ||
         current.getCellBorder !== last.getCellBorder ||
