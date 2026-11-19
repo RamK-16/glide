@@ -1,3 +1,10 @@
+# [6.14.0](https://github.com/RamK-16/glide/compare/v6.13.0...v6.14.0) (2026-11-19)
+
+
+### Features
+
+* **data-grid:** линия resize в шапке при hover и на всю высоту при drag ([a0d8412](https://github.com/RamK-16/glide/commit/a0d8412a398a679574d5e713e8ca00808941e4f2))
+
 # [6.13.0](https://github.com/RamK-16/glide/compare/v6.12.3...v6.13.0) (2026-11-17)
 
 
